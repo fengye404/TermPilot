@@ -363,12 +363,17 @@ export default function App() {
     }, delayMs);
   }
 
-  function disconnect(): void {
+  function stopReconnectLoop(): void {
     manuallyDisconnectedRef.current = true;
+    reconnectAttemptRef.current = 0;
     if (reconnectTimerRef.current !== null) {
       window.clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
+  }
+
+  function disconnect(): void {
+    stopReconnectLoop();
     socketRef.current?.close();
     socketRef.current = null;
     setConnectionPhase("idle");
@@ -543,6 +548,17 @@ export default function App() {
           );
           return;
         case "error":
+          if (message.code === "AUTH_FAILED" || message.code === "AUTH_REVOKED") {
+            stopReconnectLoop();
+            setConnectionPhase("idle");
+            setDeviceOnline(false);
+            if (message.code === "AUTH_REVOKED") {
+              setClientToken("");
+            }
+            setPairingMessage(message.message);
+            socket.close();
+            return;
+          }
           window.alert(message.message);
       }
     });
