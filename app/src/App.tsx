@@ -9,10 +9,19 @@ import type {
 import { createReqId } from "@termpilot/protocol";
 
 type SessionMap = Record<string, string>;
+type ConnectionPhase = "idle" | "connecting" | "connected" | "reconnecting";
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:8787/ws";
 const DEFAULT_CLIENT_TOKEN = "demo-client-token";
 const DEFAULT_DEVICE_ID = "pc-main";
+const STORAGE_KEY = "termpilot-app-state";
+
+interface StoredState {
+  wsUrl: string;
+  clientToken: string;
+  deviceId: string;
+  activeSid: string | null;
+}
 
 function getDefaultWsUrl(): string {
   const envUrl = import.meta.env.VITE_RELAY_WS_URL;
@@ -31,11 +40,14 @@ export default function App() {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminal = useRef<Terminal | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const manuallyDisconnectedRef = useRef(false);
+  const reconnectAttemptRef = useRef(0);
 
   const [wsUrl, setWsUrl] = useState(getDefaultWsUrl);
   const [clientToken, setClientToken] = useState(DEFAULT_CLIENT_TOKEN);
   const [deviceId, setDeviceId] = useState(DEFAULT_DEVICE_ID);
-  const [connected, setConnected] = useState(false);
+  const [connectionPhase, setConnectionPhase] = useState<ConnectionPhase>("idle");
   const [deviceOnline, setDeviceOnline] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [buffers, setBuffers] = useState<SessionMap>({});
@@ -49,6 +61,33 @@ export default function App() {
     () => sessions.find((session) => session.sid === activeSid) ?? null,
     [activeSid, sessions],
   );
+  const connected = connectionPhase === "connected";
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as Partial<StoredState>;
+      if (parsed.wsUrl) setWsUrl(parsed.wsUrl);
+      if (parsed.clientToken) setClientToken(parsed.clientToken);
+      if (parsed.deviceId) setDeviceId(parsed.deviceId);
+      if (typeof parsed.activeSid === "string" || parsed.activeSid === null) setActiveSid(parsed.activeSid ?? null);
+    } catch {
+      // ignore malformed local state
+    }
+  }, []);
+
+  useEffect(() => {
+    const payload: StoredState = {
+      wsUrl,
+      clientToken,
+      deviceId,
+      activeSid,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }, [activeSid, clientToken, deviceId, wsUrl]);
 
   useEffect(() => {
     if (!terminalRef.current || terminal.current) {
@@ -89,9 +128,21 @@ export default function App() {
 
   useEffect(() => {
     return () => {
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+      }
       socketRef.current?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (connected) {
+      requestSessions();
+      if (activeSid) {
+        requestReplay(activeSid);
+      }
+    }
+  }, [activeSid, connected]);
 
   function sendMessage(message: unknown): void {
     const socket = socketRef.current;
@@ -121,8 +172,45 @@ export default function App() {
     });
   }
 
-  function connect(): void {
+  function scheduleReconnect(): void {
+    if (manuallyDisconnectedRef.current) {
+      return;
+    }
+    const attempt = reconnectAttemptRef.current + 1;
+    reconnectAttemptRef.current = attempt;
+    const delayMs = Math.min(1000 * 2 ** Math.min(attempt, 4), 12000);
+    setConnectionPhase("reconnecting");
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      connect(false);
+    }, delayMs);
+  }
+
+  function disconnect(): void {
+    manuallyDisconnectedRef.current = true;
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     socketRef.current?.close();
+    socketRef.current = null;
+    setConnectionPhase("idle");
+    setDeviceOnline(false);
+  }
+
+  function connect(resetManual = true): void {
+    if (resetManual) {
+      manuallyDisconnectedRef.current = false;
+      reconnectAttemptRef.current = 0;
+    }
+
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    socketRef.current?.close();
+    setConnectionPhase(resetManual ? "connecting" : "reconnecting");
 
     const url = new URL(wsUrl);
     url.searchParams.set("role", "client");
@@ -132,13 +220,17 @@ export default function App() {
     socketRef.current = socket;
 
     socket.addEventListener("open", () => {
-      setConnected(true);
+      reconnectAttemptRef.current = 0;
+      setConnectionPhase("connected");
       requestSessions();
     });
 
     socket.addEventListener("close", () => {
-      setConnected(false);
+      setConnectionPhase((current) => (manuallyDisconnectedRef.current ? "idle" : current));
       setDeviceOnline(false);
+      if (!manuallyDisconnectedRef.current) {
+        scheduleReconnect();
+      }
     });
 
     socket.addEventListener("message", (event) => {
@@ -155,7 +247,13 @@ export default function App() {
             return;
           }
           setSessions(message.payload.sessions);
-          setActiveSid((current) => current ?? message.payload.sessions[0]?.sid ?? null);
+          setActiveSid((current) => {
+            const next = current ?? message.payload.sessions[0]?.sid ?? null;
+            if (next) {
+              requestReplay(next);
+            }
+            return next;
+          });
           return;
         case "session.created":
         case "session.state": {
@@ -255,7 +353,18 @@ export default function App() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <StatusBadge active={connected} label={connected ? "已连接 Relay" : "Relay 未连接"} />
+            <StatusBadge
+              active={connected}
+              label={
+                connectionPhase === "reconnecting"
+                  ? "正在重连"
+                  : connected
+                    ? "已连接 Relay"
+                    : connectionPhase === "connecting"
+                      ? "连接中"
+                      : "Relay 未连接"
+              }
+            />
             <StatusBadge active={deviceOnline} label={deviceOnline ? "设备在线" : "设备离线"} />
           </div>
         </div>
@@ -269,13 +378,23 @@ export default function App() {
               <Field label="Client Token" value={clientToken} onChange={setClientToken} />
               <Field label="设备 ID" value={deviceId} onChange={setDeviceId} />
               <div className="flex gap-3">
-                <button className="flex-1 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-slate-950" onClick={connect}>
-                  连接
+                <button
+                  className="flex-1 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:opacity-60"
+                  disabled={connectionPhase === "connecting"}
+                  onClick={() => connect(true)}
+                >
+                  {connected ? "重新连接" : connectionPhase === "connecting" ? "连接中" : "连接"}
                 </button>
                 <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={requestSessions}>
                   刷新
                 </button>
+                <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={disconnect}>
+                  断开
+                </button>
               </div>
+              <p className="text-xs text-slate-500">
+                断线后会自动重连。连接参数和最近查看的会话会保存在本机浏览器里。
+              </p>
             </div>
           </Panel>
 
@@ -296,17 +415,13 @@ export default function App() {
                 <p className="text-sm text-slate-400">当前没有会话。</p>
               ) : (
                 sessions.map((session) => (
-                  <button
+                  <div
                     key={session.sid}
                     className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
                       session.sid === activeSid
                         ? "border-sky-400/70 bg-sky-500/10"
                         : "border-slate-800 bg-slate-950/40"
                     }`}
-                    onClick={() => {
-                      setActiveSid(session.sid);
-                      requestReplay(session.sid);
-                    }}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -320,8 +435,8 @@ export default function App() {
                     <div className="mt-3 flex gap-2">
                       <button
                         className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200"
-                        onClick={(event) => {
-                          event.stopPropagation();
+                        type="button"
+                        onClick={() => {
                           setActiveSid(session.sid);
                           requestReplay(session.sid);
                         }}
@@ -330,9 +445,9 @@ export default function App() {
                       </button>
                       <button
                         className="rounded-full border border-rose-500/40 px-3 py-1.5 text-xs text-rose-200 disabled:opacity-40"
+                        type="button"
                         disabled={session.status !== "running"}
-                        onClick={(event) => {
-                          event.stopPropagation();
+                        onClick={() => {
                           sendMessage({
                             type: "session.kill",
                             reqId: createReqId("kill"),
@@ -344,7 +459,7 @@ export default function App() {
                         关闭
                       </button>
                     </div>
-                  </button>
+                  </div>
                 ))
               )}
             </div>
@@ -353,7 +468,7 @@ export default function App() {
 
         <Panel title={activeSession ? `${activeSession.name} · ${activeSession.status === "running" ? "运行中" : "已退出"}` : "当前未选择会话"}>
           <div className="flex h-full min-h-[68vh] flex-col gap-4">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 md:sticky md:top-0 md:z-10 md:bg-slate-900/72 md:pb-2">
               {[
                 ["enter", "Enter"],
                 ["tab", "Tab"],
@@ -363,7 +478,8 @@ export default function App() {
               ].map(([key, label]) => (
                 <button
                   key={key}
-                  className="rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-200"
+                  className="rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-200 disabled:opacity-40"
+                  disabled={!activeSid || !connected}
                   onClick={() => sendKey(key)}
                 >
                   {label}
@@ -377,15 +493,19 @@ export default function App() {
 
             <form className="flex flex-col gap-3 md:flex-row" onSubmit={handleSendCommand}>
               <input
-                className="flex-1 rounded-full border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none ring-0 placeholder:text-slate-500"
+                className="flex-1 rounded-full border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
                 placeholder="输入命令，发送时会自动追加回车"
+                disabled={!activeSid || !connected}
               />
-              <button className="rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-slate-950" type="submit">
+              <button className="rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-slate-950 disabled:opacity-60" type="submit" disabled={!activeSid || !connected}>
                 发送
               </button>
             </form>
+            <p className="text-xs text-slate-500">
+              当前模式是浏览器直开 PWA。适合查看流式输出、补命令和关闭会话，不适合重度长文本输入。
+            </p>
           </div>
         </Panel>
       </section>

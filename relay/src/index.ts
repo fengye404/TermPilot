@@ -51,6 +51,7 @@ const sessionStorePromise: Promise<SessionStore> = (async () => {
   const pool = new Pool({ connectionString: config.databaseUrl });
   const store = new PostgresSessionStore(pool);
   await store.init();
+  app.log.info("relay 已连接 PostgreSQL，会话元数据将写入数据库。");
   return store;
 })();
 
@@ -197,7 +198,15 @@ async function handleClientMessage(socket: ClientSocket, message: ClientToRelayM
 
 await app.register(websocket);
 
-app.get("/health", async () => ({ ok: true }));
+app.get("/health", async () => {
+  const store = await sessionStorePromise;
+  return {
+    ok: true,
+    storeMode: store.mode,
+    agentsOnline: agents.size,
+    clientsOnline: clients.size,
+  };
+});
 
 app.get("/ws", { websocket: true }, (connection, request) => {
   const url = new URL(request.raw.url ?? "/ws", `http://${request.headers.host ?? "127.0.0.1"}`);

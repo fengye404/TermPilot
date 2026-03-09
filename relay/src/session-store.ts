@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import type { SessionRecord } from "@termpilot/protocol";
 
 export interface SessionStore {
+  readonly mode: "memory" | "postgres";
   replaceSessions(deviceId: string, sessions: SessionRecord[]): Promise<void>;
   upsertSession(session: SessionRecord): Promise<void>;
   markSessionExited(deviceId: string, sid: string): Promise<void>;
@@ -11,6 +12,8 @@ export interface SessionStore {
 }
 
 export class MemorySessionStore implements SessionStore {
+  readonly mode = "memory" as const;
+
   private readonly sessions = new Map<string, Map<string, SessionRecord>>();
 
   async replaceSessions(deviceId: string, sessions: SessionRecord[]): Promise<void> {
@@ -49,6 +52,8 @@ export class MemorySessionStore implements SessionStore {
 }
 
 export class PostgresSessionStore implements SessionStore {
+  readonly mode = "postgres" as const;
+
   constructor(private readonly pool: Pool) {}
 
   async init(): Promise<void> {
