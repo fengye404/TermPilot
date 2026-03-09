@@ -1,4 +1,4 @@
-# remote-terminal-control
+# TermPilot
 
 Remote terminal control system for monitoring and driving PC coding sessions from a phone through a relay server.
 
