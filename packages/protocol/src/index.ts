@@ -128,13 +128,6 @@ export interface SessionReplayMessage {
   };
 }
 
-export interface SessionAttachMessage {
-  type: "session.attach";
-  reqId?: string;
-  deviceId: string;
-  sid: string;
-}
-
 export interface SessionOutputMessage {
   type: "session.output";
   deviceId: string;
@@ -173,8 +166,7 @@ export type ClientToRelayMessage =
   | SessionInputMessage
   | SessionResizeMessage
   | SessionKillMessage
-  | SessionReplayMessage
-  | SessionAttachMessage;
+  | SessionReplayMessage;
 
 export type AgentToRelayMessage =
   | SessionListResultMessage
@@ -200,15 +192,10 @@ export type RelayToAgentMessage =
   | SessionCreateMessage
   | SessionInputMessage
   | SessionResizeMessage
-  | SessionKillMessage
-  | SessionAttachMessage;
+  | SessionKillMessage;
 
 export function createReqId(prefix = "req"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 export function parseJsonMessage<T>(raw: string): T | null {

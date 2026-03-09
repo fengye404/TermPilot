@@ -1,0 +1,20 @@
+@import "tailwindcss";
+@import "xterm/css/xterm.css";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 32%),
+    linear-gradient(180deg, #020617, #0f172a 48%, #020617);
+  color: #e2e8f0;
+  font-family: "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}

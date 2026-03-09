@@ -9,8 +9,8 @@
 
 当前原型内置了几个本地命令：
 
-- `npm run dev:agent`：启动常驻 agent
-- `npm run agent:create -- --name demo`：创建新会话
-- `npm run agent:list`：列出会话
-- `npm run agent:kill -- --sid <sid>`：关闭会话
-- `npm run agent:attach -- --sid <sid>`：本地附着到会话
+- `pnpm dev:agent`：启动常驻 agent
+- `pnpm agent:create -- --name demo`：创建新会话
+- `pnpm agent:list`：列出会话
+- `pnpm agent:kill -- --sid <sid>`：关闭会话
+- `pnpm agent:attach -- --sid <sid>`：本地附着到会话

@@ -1,0 +1,25 @@
+{
+  "name": "@termpilot/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts daemon",
+    "create": "tsx src/index.ts create",
+    "list": "tsx src/index.ts list",
+    "kill": "tsx src/index.ts kill",
+    "attach": "tsx src/index.ts attach",
+    "doctor": "tsx src/index.ts doctor",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@termpilot/protocol": "workspace:*",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

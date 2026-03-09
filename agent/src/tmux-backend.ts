@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { cwd as processCwd } from "node:process";
 
-import type { InputKey, SessionRecord } from "../../shared/protocol";
-import { DEFAULT_DEVICE_ID } from "../../shared/protocol";
+import type { InputKey, SessionRecord } from "@termpilot/protocol";
+import { DEFAULT_DEVICE_ID } from "@termpilot/protocol";
 import { loadState, upsertSession, updateSession } from "./state-store";
 
 export interface CreateSessionInput {

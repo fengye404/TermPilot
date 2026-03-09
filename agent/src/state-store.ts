@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import path from "node:path";
 
-import type { SessionRecord } from "../../shared/protocol";
+import type { SessionRecord } from "@termpilot/protocol";
 
 export interface AgentState {
   version: 1;

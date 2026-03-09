@@ -14,12 +14,12 @@ import type {
   SessionRecord,
   SessionResizeMessage,
   SessionStateMessage,
-} from "../../shared/protocol";
+} from "@termpilot/protocol";
 import {
   DEFAULT_AGENT_TOKEN,
   DEFAULT_DEVICE_ID,
   parseJsonMessage,
-} from "../../shared/protocol";
+} from "@termpilot/protocol";
 import { loadState } from "./state-store";
 import {
   bumpSessionSeq,
@@ -242,8 +242,6 @@ export class AgentDaemon {
         return;
       case "session.kill":
         await this.handleKill(message);
-        return;
-      case "session.attach":
         return;
     }
   }

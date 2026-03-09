@@ -14,12 +14,12 @@ import {
 function printHelp(): void {
   console.log(`TermPilot agent 用法：
 
-  npm run dev:agent
-  npm run agent:create -- --name claude-main --cwd /path/to/project
-  npm run agent:list
-  npm run agent:kill -- --sid <sid>
-  npm run agent:attach -- --sid <sid>
-  npm run agent:doctor
+  pnpm dev:agent
+  pnpm agent:create -- --name claude-main --cwd /path/to/project
+  pnpm agent:list
+  pnpm agent:kill -- --sid <sid>
+  pnpm agent:attach -- --sid <sid>
+  pnpm agent:doctor
 `);
 }
 

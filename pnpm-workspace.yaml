@@ -1,0 +1,5 @@
+packages:
+  - "agent"
+  - "app"
+  - "relay"
+  - "packages/*"

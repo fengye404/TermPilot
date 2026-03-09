@@ -1,8 +1,6 @@
-import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync } from "node:fs";
-import path from "node:path";
-
-import { WebSocketServer, type WebSocket } from "ws";
+import Fastify from "fastify";
+import websocket from "@fastify/websocket";
+import { Pool } from "pg";
 
 import type {
   AgentToRelayMessage,
@@ -10,84 +8,62 @@ import type {
   ErrorMessage,
   RelayStateMessage,
   RelayToClientMessage,
-  SessionExitMessage,
   SessionListResultMessage,
   SessionOutputMessage,
   SessionRecord,
-  SessionStateMessage,
-} from "../../shared/protocol";
+} from "@termpilot/protocol";
 import {
-  DEFAULT_AGENT_TOKEN,
-  DEFAULT_CLIENT_TOKEN,
-  isRecord,
   parseJsonMessage,
-} from "../../shared/protocol";
+} from "@termpilot/protocol";
 
-interface ClientConnection {
-  socket: WebSocket;
-  role: "client";
-}
+import { loadConfig } from "./config.js";
+import { MemorySessionStore, PostgresSessionStore, type SessionStore } from "./session-store.js";
+
+type ClientSocket = import("ws").WebSocket;
 
 interface AgentConnection {
-  socket: WebSocket;
-  role: "agent";
+  socket: ClientSocket;
   deviceId: string;
+}
+
+interface ClientConnection {
+  socket: ClientSocket;
 }
 
 interface OutputBuffer {
   frames: SessionOutputMessage[];
 }
 
-const port = Number(process.env.PORT ?? 8787);
-const agentToken = process.env.TERMPILOT_AGENT_TOKEN ?? DEFAULT_AGENT_TOKEN;
-const clientToken = process.env.TERMPILOT_CLIENT_TOKEN ?? DEFAULT_CLIENT_TOKEN;
+const config = loadConfig();
+const app = Fastify({ logger: true });
 
 const agents = new Map<string, AgentConnection>();
 const clients = new Set<ClientConnection>();
 const sessionCache = new Map<string, Map<string, SessionRecord>>();
 const outputBuffers = new Map<string, OutputBuffer>();
 
-function getAppRoot(): string {
-  const candidates = [
-    path.resolve(__dirname, "../../app"),
-    path.resolve(__dirname, "../../../app"),
-  ];
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
+const sessionStorePromise: Promise<SessionStore> = (async () => {
+  if (!config.databaseUrl) {
+    app.log.warn("未提供 DATABASE_URL，当前 relay 使用内存存储会话元数据。");
+    return new MemorySessionStore();
   }
 
-  return candidates[0];
-}
-
-function getContentType(filePath: string): string {
-  const extension = path.extname(filePath);
-  switch (extension) {
-    case ".html":
-      return "text/html; charset=utf-8";
-    case ".css":
-      return "text/css; charset=utf-8";
-    case ".js":
-      return "text/javascript; charset=utf-8";
-    case ".json":
-      return "application/json; charset=utf-8";
-    default:
-      return "text/plain; charset=utf-8";
-  }
-}
+  const pool = new Pool({ connectionString: config.databaseUrl });
+  const store = new PostgresSessionStore(pool);
+  await store.init();
+  return store;
+})();
 
 function broadcastToClients(message: RelayToClientMessage): void {
-  const serialized = JSON.stringify(message);
+  const raw = JSON.stringify(message);
   for (const client of clients) {
     if (client.socket.readyState === client.socket.OPEN) {
-      client.socket.send(serialized);
+      client.socket.send(raw);
     }
   }
 }
 
-function sendError(socket: WebSocket, code: string, message: string, reqId?: string): void {
+function sendError(socket: ClientSocket, code: string, message: string, reqId?: string): void {
   const payload: ErrorMessage = {
     type: "error",
     code,
@@ -97,8 +73,8 @@ function sendError(socket: WebSocket, code: string, message: string, reqId?: str
   socket.send(JSON.stringify(payload));
 }
 
-function broadcastRelayState(): void {
-  const message: RelayStateMessage = {
+function relayStateMessage(): RelayStateMessage {
+  return {
     type: "relay.state",
     payload: {
       agents: Array.from(agents.keys()).map((deviceId) => ({
@@ -107,35 +83,34 @@ function broadcastRelayState(): void {
       })),
     },
   };
-  broadcastToClients(message);
 }
 
-function updateSessionCache(deviceId: string, sessions: SessionRecord[]): void {
-  const cache = new Map<string, SessionRecord>();
+function broadcastRelayState(): void {
+  broadcastToClients(relayStateMessage());
+}
+
+function setCachedSessions(deviceId: string, sessions: SessionRecord[]): void {
+  const bucket = new Map<string, SessionRecord>();
   for (const session of sessions) {
-    cache.set(session.sid, session);
+    bucket.set(session.sid, session);
   }
-  sessionCache.set(deviceId, cache);
+  sessionCache.set(deviceId, bucket);
 }
 
 function upsertCachedSession(session: SessionRecord): void {
-  const cache = sessionCache.get(session.deviceId) ?? new Map<string, SessionRecord>();
-  cache.set(session.sid, session);
-  sessionCache.set(session.deviceId, cache);
+  const bucket = sessionCache.get(session.deviceId) ?? new Map<string, SessionRecord>();
+  bucket.set(session.sid, session);
+  sessionCache.set(session.deviceId, bucket);
 }
 
 function markCachedSessionExited(deviceId: string, sid: string): void {
-  const cache = sessionCache.get(deviceId);
-  if (!cache) {
+  const bucket = sessionCache.get(deviceId);
+  const session = bucket?.get(sid);
+  if (!bucket || !session) {
     return;
   }
 
-  const session = cache.get(sid);
-  if (!session) {
-    return;
-  }
-
-  cache.set(sid, {
+  bucket.set(sid, {
     ...session,
     status: "exited",
     lastActivityAt: new Date().toISOString(),
@@ -144,24 +119,29 @@ function markCachedSessionExited(deviceId: string, sid: string): void {
 
 function pushOutputFrame(frame: SessionOutputMessage): void {
   const key = `${frame.deviceId}:${frame.sid}`;
-  const current = outputBuffers.get(key) ?? { frames: [] };
-  current.frames.push(frame);
-  current.frames = current.frames.slice(-40);
-  outputBuffers.set(key, current);
+  const buffer = outputBuffers.get(key) ?? { frames: [] };
+  buffer.frames.push(frame);
+  buffer.frames = buffer.frames.slice(-40);
+  outputBuffers.set(key, buffer);
 }
 
-function handleAgentMessage(message: AgentToRelayMessage): void {
+async function handleAgentMessage(message: AgentToRelayMessage): Promise<void> {
+  const store = await sessionStorePromise;
+
   switch (message.type) {
     case "session.list.result":
-      updateSessionCache(message.deviceId, message.payload.sessions);
+      setCachedSessions(message.deviceId, message.payload.sessions);
+      await store.replaceSessions(message.deviceId, message.payload.sessions);
       broadcastToClients(message);
       return;
     case "session.created":
       upsertCachedSession(message.payload.session);
+      await store.upsertSession(message.payload.session);
       broadcastToClients(message);
       return;
     case "session.state":
       upsertCachedSession(message.payload.session);
+      await store.upsertSession(message.payload.session);
       broadcastToClients(message);
       return;
     case "session.output":
@@ -170,38 +150,40 @@ function handleAgentMessage(message: AgentToRelayMessage): void {
       return;
     case "session.exit":
       markCachedSessionExited(message.deviceId, message.sid);
+      await store.markSessionExited(message.deviceId, message.sid);
       broadcastToClients(message);
       return;
     case "error":
       broadcastToClients(message);
-      return;
   }
 }
 
-function handleClientMessage(socket: WebSocket, message: ClientToRelayMessage): void {
+async function handleClientMessage(socket: ClientSocket, message: ClientToRelayMessage): Promise<void> {
   if (message.type === "session.replay") {
     const key = `${message.deviceId}:${message.sid}`;
-    const buffer = outputBuffers.get(key);
-    const frames = buffer?.frames ?? [];
-    const filteredFrames = frames.filter((frame) => frame.seq > (message.payload?.afterSeq ?? -1));
-    for (const frame of filteredFrames) {
+    const frames = outputBuffers.get(key)?.frames ?? [];
+    for (const frame of frames.filter((item) => item.seq > (message.payload?.afterSeq ?? -1))) {
       socket.send(JSON.stringify(frame));
     }
     return;
   }
 
-  if (message.type === "session.list" && !agents.has(message.deviceId)) {
-    const sessions = Array.from(sessionCache.get(message.deviceId)?.values() ?? []);
-    const payload: SessionListResultMessage = {
-      type: "session.list.result",
-      reqId: message.reqId,
-      deviceId: message.deviceId,
-      payload: {
-        sessions,
-      },
-    };
-    socket.send(JSON.stringify(payload));
-    return;
+  if (message.type === "session.list") {
+    if (!agents.has(message.deviceId)) {
+      const store = await sessionStorePromise;
+      const cached = sessionCache.get(message.deviceId);
+      const sessions = cached ? Array.from(cached.values()) : await store.listSessions(message.deviceId);
+      const payload: SessionListResultMessage = {
+        type: "session.list.result",
+        reqId: message.reqId,
+        deviceId: message.deviceId,
+        payload: {
+          sessions,
+        },
+      };
+      socket.send(JSON.stringify(payload));
+      return;
+    }
   }
 
   const agent = agents.get(message.deviceId);
@@ -213,113 +195,66 @@ function handleClientMessage(socket: WebSocket, message: ClientToRelayMessage): 
   agent.socket.send(JSON.stringify(message));
 }
 
-const server = createServer((request, response) => {
-  const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
-  const appRoot = getAppRoot();
+await app.register(websocket);
 
-  if (url.pathname === "/health") {
-    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-    response.end(JSON.stringify({ ok: true }));
-    return;
-  }
+app.get("/health", async () => ({ ok: true }));
 
-  const relativePath = url.pathname === "/" ? "/index.html" : url.pathname;
-  const resolvedPath = path.normalize(path.join(appRoot, relativePath));
-
-  if (!resolvedPath.startsWith(appRoot) || !existsSync(resolvedPath) || !statSync(resolvedPath).isFile()) {
-    response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-    response.end("Not Found");
-    return;
-  }
-
-  response.writeHead(200, { "content-type": getContentType(resolvedPath) });
-  response.end(readFileSync(resolvedPath));
-});
-
-const wss = new WebSocketServer({ server, path: "/ws" });
-
-wss.on("connection", (socket, request) => {
-  const url = new URL(request.url ?? "/ws", `http://${request.headers.host ?? "127.0.0.1"}`);
+app.get("/ws", { websocket: true }, (connection, request) => {
+  const url = new URL(request.raw.url ?? "/ws", `http://${request.headers.host ?? "127.0.0.1"}`);
   const role = url.searchParams.get("role");
   const token = url.searchParams.get("token");
   const deviceId = url.searchParams.get("deviceId") ?? undefined;
+  const socket = connection;
 
   if (role === "agent") {
-    if (token !== agentToken || !deviceId) {
+    if (token !== config.agentToken || !deviceId) {
       sendError(socket, "AUTH_FAILED", "agent 认证失败");
       socket.close();
       return;
     }
 
-    const agentConnection: AgentConnection = {
-      socket,
-      role: "agent",
-      deviceId,
-    };
-
-    agents.set(deviceId, agentConnection);
-    socket.send(
-      JSON.stringify({
-        type: "auth.ok",
-        payload: {
-          role: "agent",
-          deviceId,
-        },
-      }),
-    );
+    agents.set(deviceId, { socket, deviceId });
+    socket.send(JSON.stringify({ type: "auth.ok", payload: { role: "agent", deviceId } }));
     broadcastRelayState();
 
     socket.on("message", (raw) => {
-      const message = parseJsonMessage<AgentToRelayMessage>(raw.toString("utf8"));
+      const message = parseJsonMessage<AgentToRelayMessage>(raw.toString());
       if (!message) {
         return;
       }
-      handleAgentMessage(message);
+      void handleAgentMessage(message);
     });
 
     socket.on("close", () => {
       agents.delete(deviceId);
       broadcastRelayState();
     });
-
     return;
   }
 
   if (role === "client") {
-    if (token !== clientToken) {
+    if (token !== config.clientToken) {
       sendError(socket, "AUTH_FAILED", "client 认证失败");
       socket.close();
       return;
     }
 
-    const clientConnection: ClientConnection = {
-      socket,
-      role: "client",
-    };
-
-    clients.add(clientConnection);
-    socket.send(
-      JSON.stringify({
-        type: "auth.ok",
-        payload: {
-          role: "client",
-        },
-      }),
-    );
-    broadcastRelayState();
+    const client = { socket };
+    clients.add(client);
+    socket.send(JSON.stringify({ type: "auth.ok", payload: { role: "client" } }));
+    socket.send(JSON.stringify(relayStateMessage()));
 
     socket.on("message", (raw) => {
-      const message = parseJsonMessage<ClientToRelayMessage>(raw.toString("utf8"));
-      if (!message || !isRecord(message)) {
+      const message = parseJsonMessage<ClientToRelayMessage>(raw.toString());
+      if (!message) {
         return;
       }
-      handleClientMessage(socket, message);
+      void handleClientMessage(socket, message);
     });
 
     socket.on("close", () => {
-      clients.delete(clientConnection);
+      clients.delete(client);
     });
-
     return;
   }
 
@@ -327,6 +262,18 @@ wss.on("connection", (socket, request) => {
   socket.close();
 });
 
-server.listen(port, () => {
-  console.log(`TermPilot relay 已启动: http://127.0.0.1:${port}`);
+const closeStore = async (): Promise<void> => {
+  const store = await sessionStorePromise;
+  await store.close();
+};
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    void app.close().finally(() => closeStore().finally(() => process.exit(0)));
+  });
+}
+
+await app.listen({
+  host: config.host,
+  port: config.port,
 });
