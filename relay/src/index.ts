@@ -127,6 +127,9 @@ function broadcastToClients(message: RelayToClientMessage): void {
 }
 
 function sendError(socket: ClientSocket, code: string, message: string, reqId?: string): void {
+  if (socket.readyState !== socket.OPEN) {
+    return;
+  }
   const payload: ErrorMessage = {
     type: "error",
     code,

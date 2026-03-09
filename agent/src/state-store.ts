@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -47,7 +48,7 @@ export function loadState(): AgentState {
 export function saveState(state: AgentState): void {
   ensureAgentHome();
   const filePath = getStateFilePath();
-  const tempFilePath = `${filePath}.tmp`;
+  const tempFilePath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   writeFileSync(tempFilePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
   renameSync(tempFilePath, filePath);
 }
