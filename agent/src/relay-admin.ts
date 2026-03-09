@@ -3,7 +3,12 @@ import { DEFAULT_AGENT_TOKEN, DEFAULT_DEVICE_ID } from "@termpilot/protocol";
 
 function getRelayBaseUrl(): string {
   const relayUrl = process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws";
-  const url = new URL(relayUrl);
+  let url: URL;
+  try {
+    url = new URL(relayUrl);
+  } catch {
+    throw new Error("TERMPILOT_RELAY_URL 无效，请提供完整的 ws:// 或 wss:// 地址。");
+  }
   url.protocol = url.protocol === "wss:" ? "https:" : "http:";
   url.pathname = "/";
   url.search = "";

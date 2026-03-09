@@ -171,7 +171,11 @@ async function runRevoke(argv: string[]): Promise<void> {
 async function runAudit(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   const deviceId = getDeviceId(argv);
-  const limit = typeof args.limit === "string" ? Number(args.limit) : 20;
+  const parsedLimit = typeof args.limit === "string" ? Number(args.limit) : 20;
+  if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+    throw new Error("请通过 --limit 指定大于 0 的数字。");
+  }
+  const limit = Math.floor(parsedLimit);
   const payload = await listAuditEvents(deviceId, limit);
   if (payload.events.length === 0) {
     console.log(`设备 ${payload.deviceId} 当前没有审计日志。`);
@@ -196,10 +200,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  await ensureTmuxAvailable();
-
   switch (command) {
     case "daemon": {
+      await ensureTmuxAvailable();
       const daemon = createDaemonFromEnv();
       process.on("SIGINT", () => {
         void daemon.stop().finally(() => process.exit(0));
@@ -211,15 +214,18 @@ async function main(): Promise<void> {
       return;
     }
     case "create":
+      await ensureTmuxAvailable();
       await runCreate(rest);
       return;
     case "list":
       runList();
       return;
     case "kill":
+      await ensureTmuxAvailable();
       await runKill(rest);
       return;
     case "attach":
+      await ensureTmuxAvailable();
       await runAttach(rest);
       return;
     case "doctor":

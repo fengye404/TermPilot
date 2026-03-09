@@ -406,7 +406,10 @@ app.get<{ Params: { deviceId: string }; Querystring: { limit?: string } }>("/api
   }
 
   const deviceId = request.params.deviceId.trim();
-  const limit = Math.min(Math.max(Number(request.query.limit ?? 20), 1), 100);
+  const requestedLimit = Number(request.query.limit ?? 20);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.floor(requestedLimit), 1), 100)
+    : 20;
   const { auditStore } = await storesPromise;
   const events = await auditStore.listEvents(deviceId, limit);
   return reply.send({
