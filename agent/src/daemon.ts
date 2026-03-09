@@ -85,7 +85,7 @@ export class AgentDaemon {
           reqId: "initial-sync",
           deviceId: this.options.deviceId,
           payload: {
-            sessions: listSessions(),
+            sessions: listSessions().filter((session) => session.deviceId === this.options.deviceId),
           },
         });
       });

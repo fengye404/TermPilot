@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "xterm";
+import "xterm/css/xterm.css";
 
 import type {
   InputKey,
@@ -163,29 +164,43 @@ export default function App() {
       return;
     }
 
-    const instance = new Terminal({
-      convertEol: true,
-      cursorBlink: true,
-      fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
-      fontSize: 13,
-      theme: {
-        background: "#020617",
-        foreground: "#e2e8f0",
-        cursor: "#38bdf8",
-        black: "#0f172a",
-        brightBlack: "#334155",
-      },
-    });
-    const fitAddon = new FitAddon();
+    let instance: Terminal | null = null;
+    let frameId = 0;
+    let fitFrameId = 0;
 
-    instance.loadAddon(fitAddon);
-    instance.open(terminalRef.current);
-    fitAddon.fit();
-    terminal.current = instance;
-    fitAddonRef.current = fitAddon;
+    frameId = window.requestAnimationFrame(() => {
+      if (!terminalRef.current) {
+        return;
+      }
+
+      instance = new Terminal({
+        convertEol: true,
+        cursorBlink: true,
+        fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
+        fontSize: 13,
+        theme: {
+          background: "#020617",
+          foreground: "#e2e8f0",
+          cursor: "#38bdf8",
+          black: "#0f172a",
+          brightBlack: "#334155",
+        },
+      });
+      const fitAddon = new FitAddon();
+
+      instance.loadAddon(fitAddon);
+      instance.open(terminalRef.current);
+      terminal.current = instance;
+      fitAddonRef.current = fitAddon;
+      fitFrameId = window.requestAnimationFrame(() => {
+        fitTerminal();
+      });
+    });
 
     return () => {
-      instance.dispose();
+      window.cancelAnimationFrame(frameId);
+      window.cancelAnimationFrame(fitFrameId);
+      instance?.dispose();
       terminal.current = null;
       fitAddonRef.current = null;
     };
@@ -197,12 +212,13 @@ export default function App() {
     }
 
     const resize = () => {
-      if (!fitAddonRef.current || !terminal.current) {
+      if (!terminal.current || !fitTerminal()) {
         return;
       }
-
-      fitAddonRef.current.fit();
       if (!connected || !activeSid) {
+        return;
+      }
+      if (terminal.current.cols === 0 || terminal.current.rows === 0) {
         return;
       }
 
@@ -260,15 +276,6 @@ export default function App() {
   }, [sessions]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      return;
-    }
-    if (Notification.permission === "granted") {
-      setNotificationsEnabled(true);
-    }
-  }, []);
-
-  useEffect(() => {
     const previousDeviceOnline = previousDeviceOnlineRef.current;
     const previousSessionStatus = previousSessionStatusRef.current;
     const nextSessionStatus = Object.fromEntries(sessions.map((session) => [session.sid, session.status]));
@@ -293,6 +300,22 @@ export default function App() {
     previousSessionStatusRef.current = nextSessionStatus;
     bootstrappedNotificationsRef.current = true;
   }, [deviceId, deviceOnline, notificationsEnabled, sessions]);
+
+  function fitTerminal(): boolean {
+    if (!fitAddonRef.current || !terminal.current || !terminalRef.current) {
+      return false;
+    }
+    if (terminalRef.current.clientWidth === 0 || terminalRef.current.clientHeight === 0) {
+      return false;
+    }
+
+    try {
+      fitAddonRef.current.fit();
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   function sendMessage(message: unknown): void {
     const socket = socketRef.current;
