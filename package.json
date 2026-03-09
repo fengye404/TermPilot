@@ -16,6 +16,7 @@
     "agent:attach": "pnpm --filter @termpilot/agent run attach",
     "agent:pair": "pnpm --filter @termpilot/agent run pair",
     "agent:grants": "pnpm --filter @termpilot/agent run grants",
+    "agent:audit": "pnpm --filter @termpilot/agent run audit",
     "agent:revoke": "pnpm --filter @termpilot/agent run revoke",
     "agent:doctor": "pnpm --filter @termpilot/agent run doctor"
   }

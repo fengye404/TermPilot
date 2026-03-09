@@ -137,6 +137,8 @@ export async function sendInput(session: SessionRecord, text?: string, key?: Inp
     enter: "Enter",
     tab: "Tab",
     ctrl_c: "C-c",
+    ctrl_d: "C-d",
+    escape: "Escape",
     arrow_up: "Up",
     arrow_down: "Down",
     arrow_left: "Left",

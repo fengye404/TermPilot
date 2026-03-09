@@ -11,6 +11,7 @@
     "attach": "tsx src/index.ts attach",
     "pair": "tsx src/index.ts pair",
     "grants": "tsx src/index.ts grants",
+    "audit": "tsx src/index.ts audit",
     "revoke": "tsx src/index.ts revoke",
     "doctor": "tsx src/index.ts doctor",
     "typecheck": "tsc --noEmit -p tsconfig.json"

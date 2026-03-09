@@ -5,10 +5,19 @@ export const DEFAULT_CLIENT_TOKEN = "demo-client-token";
 export type ConnectionRole = "agent" | "client";
 export type SessionStatus = "running" | "exited";
 export type SessionBackend = "tmux";
+export type AuditActorRole = "agent" | "client" | "relay";
+export type AuditAction =
+  | "pairing.code_created"
+  | "pairing.redeemed"
+  | "grant.revoked"
+  | "session.create_requested"
+  | "session.kill_requested";
 export type InputKey =
   | "enter"
   | "tab"
   | "ctrl_c"
+  | "ctrl_d"
+  | "escape"
   | "arrow_up"
   | "arrow_down"
   | "arrow_left"
@@ -70,6 +79,15 @@ export interface ClientGrantRecord {
   deviceId: string;
   createdAt: string;
   lastUsedAt: string;
+}
+
+export interface AuditEventRecord {
+  id: string;
+  deviceId: string;
+  action: AuditAction;
+  actorRole: AuditActorRole;
+  detail: string;
+  createdAt: string;
 }
 
 export interface ErrorMessage {

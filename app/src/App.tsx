@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "xterm";
 
 import type {
+  InputKey,
   PairingRedeemResponse,
   RelayToClientMessage,
   SessionRecord,
@@ -12,6 +13,17 @@ import { createReqId } from "@termpilot/protocol";
 
 type SessionMap = Record<string, string>;
 type ConnectionPhase = "idle" | "connecting" | "connected" | "reconnecting";
+const SHORTCUT_KEYS: Array<{ key: InputKey; label: string }> = [
+  { key: "enter", label: "Enter" },
+  { key: "tab", label: "Tab" },
+  { key: "ctrl_c", label: "Ctrl+C" },
+  { key: "ctrl_d", label: "Ctrl+D" },
+  { key: "escape", label: "Esc" },
+  { key: "arrow_up", label: "↑" },
+  { key: "arrow_down", label: "↓" },
+  { key: "arrow_left", label: "←" },
+  { key: "arrow_right", label: "→" },
+];
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:8787/ws";
 const DEFAULT_CLIENT_TOKEN = "demo-client-token";
@@ -68,6 +80,7 @@ export default function App() {
   const [pairingMessage, setPairingMessage] = useState("");
   const [pairingPending, setPairingPending] = useState(false);
   const [command, setCommand] = useState("");
+  const [pasteBuffer, setPasteBuffer] = useState("");
   const [createName, setCreateName] = useState("");
   const [createCwd, setCreateCwd] = useState("");
   const [createShell, setCreateShell] = useState("");
@@ -432,7 +445,24 @@ export default function App() {
     setCommand("");
   }
 
-  function sendKey(key: string): void {
+  function handleSendPaste(mode: "raw" | "line"): void {
+    if (!activeSid || !pasteBuffer) {
+      return;
+    }
+
+    sendMessage({
+      type: "session.input",
+      reqId: createReqId("paste"),
+      deviceId,
+      sid: activeSid,
+      payload: {
+        text: mode === "line" ? `${pasteBuffer}\n` : pasteBuffer,
+      },
+    });
+    setPasteBuffer("");
+  }
+
+  function sendKey(key: InputKey): void {
     if (!activeSid) {
       return;
     }
@@ -608,16 +638,10 @@ export default function App() {
         <Panel title={activeSession ? `${activeSession.name} · ${activeSession.status === "running" ? "运行中" : "已退出"}` : "当前未选择会话"}>
           <div className="flex h-full min-h-[68vh] flex-col gap-4">
             <div className="flex flex-wrap gap-2 md:sticky md:top-0 md:z-10 md:bg-slate-900/72 md:pb-2">
-              {[
-                ["enter", "Enter"],
-                ["tab", "Tab"],
-                ["ctrl_c", "Ctrl+C"],
-                ["arrow_up", "↑"],
-                ["arrow_down", "↓"],
-              ].map(([key, label]) => (
+              {SHORTCUT_KEYS.map(({ key, label }) => (
                 <button
                   key={key}
-                  className="rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-200 disabled:opacity-40"
+                  className="min-h-11 rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-200 disabled:opacity-40"
                   disabled={!activeSid || !connected}
                   onClick={() => sendKey(key)}
                 >
@@ -642,6 +666,37 @@ export default function App() {
                 发送
               </button>
             </form>
+            <div className="rounded-3xl border border-slate-800 bg-slate-950/35 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-white">粘贴大段命令</p>
+                <span className="text-xs text-slate-500">适合脚本、多行命令和长 prompt</span>
+              </div>
+              <textarea
+                className="mt-3 min-h-32 w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none placeholder:text-slate-500 disabled:opacity-50"
+                value={pasteBuffer}
+                onChange={(event) => setPasteBuffer(event.target.value)}
+                placeholder="在这里粘贴多行内容。原样发送不会自动补回车；发送并回车会在末尾补一个回车。"
+                disabled={!activeSid || !connected}
+              />
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                <button
+                  className="min-h-11 flex-1 rounded-full border border-slate-700 px-4 py-3 text-sm text-slate-200 disabled:opacity-40"
+                  type="button"
+                  disabled={!activeSid || !connected || !pasteBuffer}
+                  onClick={() => handleSendPaste("raw")}
+                >
+                  原样发送
+                </button>
+                <button
+                  className="min-h-11 flex-1 rounded-full bg-emerald-400 px-4 py-3 text-sm font-medium text-slate-950 disabled:opacity-40"
+                  type="button"
+                  disabled={!activeSid || !connected || !pasteBuffer}
+                  onClick={() => handleSendPaste("line")}
+                >
+                  发送并回车
+                </button>
+              </div>
+            </div>
             <p className="text-xs text-slate-500">
               当前模式是浏览器直开 PWA。适合查看流式输出、补命令和关闭会话，不适合重度长文本输入。
             </p>

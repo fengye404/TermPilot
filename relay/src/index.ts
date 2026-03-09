@@ -4,6 +4,7 @@ import { Pool } from "pg";
 
 import type {
   AgentToRelayMessage,
+  AuditEventRecord,
   ClientGrantRecord,
   ClientToRelayMessage,
   ErrorMessage,
@@ -22,6 +23,7 @@ import {
 } from "@termpilot/protocol";
 
 import { MemoryAuthStore, PostgresAuthStore, type AuthStore } from "./auth-store.js";
+import { MemoryAuditStore, PostgresAuditStore, type AuditStore } from "./audit-store.js";
 import { loadConfig } from "./config.js";
 import { MemorySessionStore, PostgresSessionStore, type SessionStore } from "./session-store.js";
 
@@ -49,23 +51,37 @@ const clients = new Set<ClientConnection>();
 const sessionCache = new Map<string, Map<string, SessionRecord>>();
 const outputBuffers = new Map<string, OutputBuffer>();
 
-const storesPromise: Promise<{ sessionStore: SessionStore; authStore: AuthStore }> = (async () => {
+const storesPromise: Promise<{ sessionStore: SessionStore; authStore: AuthStore; auditStore: AuditStore }> = (async () => {
   if (!config.databaseUrl) {
     app.log.warn("未提供 DATABASE_URL，当前 relay 使用内存存储会话元数据。");
     const sessionStore = new MemorySessionStore();
     const authStore = new MemoryAuthStore();
+    const auditStore = new MemoryAuditStore();
     await authStore.init();
-    return { sessionStore, authStore };
+    await auditStore.init();
+    return { sessionStore, authStore, auditStore };
   }
 
   const pool = new Pool({ connectionString: config.databaseUrl });
   const sessionStore = new PostgresSessionStore(pool);
   const authStore = new PostgresAuthStore(pool);
+  const auditStore = new PostgresAuditStore(pool);
   await sessionStore.init();
   await authStore.init();
+  await auditStore.init();
   app.log.info("relay 已连接 PostgreSQL，会话元数据将写入数据库。");
-  return { sessionStore, authStore };
+  return { sessionStore, authStore, auditStore };
 })();
+
+async function appendAuditEvent(input: {
+  deviceId: string;
+  action: Parameters<AuditStore["addEvent"]>[0]["action"];
+  actorRole: Parameters<AuditStore["addEvent"]>[0]["actorRole"];
+  detail: string;
+}): Promise<void> {
+  const { auditStore } = await storesPromise;
+  await auditStore.addEvent(input);
+}
 
 function clientCanAccessDevice(client: ClientConnection, deviceId: string | undefined): boolean {
   if (!deviceId) {
@@ -243,6 +259,24 @@ async function handleClientMessage(client: ClientConnection, message: ClientToRe
     return;
   }
 
+  if (message.type === "session.create") {
+    await appendAuditEvent({
+      deviceId: message.deviceId,
+      action: "session.create_requested",
+      actorRole: "client",
+      detail: `请求创建会话 ${message.payload.name?.trim() || "(未命名)"}${message.payload.cwd ? ` @ ${message.payload.cwd}` : ""}`,
+    });
+  }
+
+  if (message.type === "session.kill") {
+    await appendAuditEvent({
+      deviceId: message.deviceId,
+      action: "session.kill_requested",
+      actorRole: "client",
+      detail: `请求关闭会话 ${message.sid}`,
+    });
+  }
+
   agent.socket.send(JSON.stringify(message));
 }
 
@@ -284,6 +318,12 @@ app.post<{ Body: PairingCodeRequest }>("/api/pairing-codes", async (request, rep
 
   const { authStore } = await storesPromise;
   const pairing = await authStore.createPairingCode(deviceId, config.pairingTtlMinutes);
+  await appendAuditEvent({
+    deviceId,
+    action: "pairing.code_created",
+    actorRole: "agent",
+    detail: `创建一次性配对码 ${pairing.pairingCode}，有效期至 ${pairing.expiresAt}`,
+  });
   const payload: PairingCodeResponse = {
     deviceId: pairing.deviceId,
     pairingCode: pairing.pairingCode,
@@ -303,6 +343,12 @@ app.post<{ Body: PairingRedeemRequest }>("/api/pairings/redeem", async (request,
   if (!grant) {
     return reply.code(400).send({ message: "配对码无效、已使用或已过期" });
   }
+  await appendAuditEvent({
+    deviceId: grant.deviceId,
+    action: "pairing.redeemed",
+    actorRole: "client",
+    detail: `使用配对码 ${pairingCode} 兑换访问令牌 ${grant.accessToken.slice(0, 8)}...`,
+  });
 
   const payload: PairingRedeemResponse = {
     deviceId: grant.deviceId,
@@ -327,6 +373,23 @@ app.get<{ Params: { deviceId: string } }>("/api/devices/:deviceId/grants", async
   } satisfies { deviceId: string; grants: ClientGrantRecord[] });
 });
 
+app.get<{ Params: { deviceId: string }; Querystring: { limit?: string } }>("/api/devices/:deviceId/audit-events", async (request, reply) => {
+  const authHeader = request.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  if (token !== config.agentToken) {
+    return reply.code(401).send({ message: "agent 认证失败" });
+  }
+
+  const deviceId = request.params.deviceId.trim();
+  const limit = Math.min(Math.max(Number(request.query.limit ?? 20), 1), 100);
+  const { auditStore } = await storesPromise;
+  const events = await auditStore.listEvents(deviceId, limit);
+  return reply.send({
+    deviceId,
+    events,
+  } satisfies { deviceId: string; events: AuditEventRecord[] });
+});
+
 app.delete<{ Params: { deviceId: string; accessToken: string } }>("/api/devices/:deviceId/grants/:accessToken", async (request, reply) => {
   const authHeader = request.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
@@ -339,6 +402,12 @@ app.delete<{ Params: { deviceId: string; accessToken: string } }>("/api/devices/
   if (!revoked) {
     return reply.code(404).send({ message: "访问令牌不存在" });
   }
+  await appendAuditEvent({
+    deviceId: request.params.deviceId.trim(),
+    action: "grant.revoked",
+    actorRole: "agent",
+    detail: `撤销访问令牌 ${request.params.accessToken.trim().slice(0, 8)}...`,
+  });
   return reply.send({
     ok: true,
   });

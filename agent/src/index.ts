@@ -1,6 +1,6 @@
 import { cwd as processCwd } from "node:process";
 
-import type { ClientGrantRecord, PairingCodeResponse } from "@termpilot/protocol";
+import type { AuditEventRecord, ClientGrantRecord, PairingCodeResponse } from "@termpilot/protocol";
 import { DEFAULT_AGENT_TOKEN, DEFAULT_DEVICE_ID } from "@termpilot/protocol";
 
 import { createDaemonFromEnv } from "./daemon";
@@ -24,6 +24,7 @@ function printHelp(): void {
   pnpm agent:attach -- --sid <sid>
   pnpm agent:pair
   pnpm agent:grants
+  pnpm agent:audit
   pnpm agent:revoke -- --token <accessToken>
   pnpm agent:doctor
 `);
@@ -220,6 +221,37 @@ async function runRevoke(argv: string[]): Promise<void> {
   console.log(`已撤销设备 ${deviceId} 的访问令牌 ${accessToken}`);
 }
 
+async function runAudit(argv: string[]): Promise<void> {
+  const args = parseArgs(argv);
+  const deviceId = getDeviceId(argv);
+  const limit = typeof args.limit === "string" ? Number(args.limit) : 20;
+  const response = await fetch(new URL(`/api/devices/${deviceId}/audit-events?limit=${Math.max(1, Math.min(limit, 100))}`, getRelayHttpUrl()), {
+    headers: {
+      authorization: `Bearer ${getAgentToken()}`,
+    },
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`读取审计日志失败: ${message}`);
+  }
+
+  const payload = await response.json() as { deviceId: string; events: AuditEventRecord[] };
+  if (payload.events.length === 0) {
+    console.log(`设备 ${payload.deviceId} 当前没有审计日志。`);
+    return;
+  }
+
+  console.table(
+    payload.events.map((event) => ({
+      createdAt: event.createdAt,
+      action: event.action,
+      actorRole: event.actorRole,
+      detail: event.detail,
+    })),
+  );
+}
+
 async function main(): Promise<void> {
   const [, , command, ...rest] = process.argv;
 
@@ -262,6 +294,9 @@ async function main(): Promise<void> {
       return;
     case "grants":
       await runGrants(rest);
+      return;
+    case "audit":
+      await runAudit(rest);
       return;
     case "revoke":
       await runRevoke(rest);
