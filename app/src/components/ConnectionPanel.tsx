@@ -2,6 +2,7 @@ import { Field, Panel } from "./chrome";
 
 interface ConnectionPanelProps {
   wsUrl: string;
+  wsUrlValid: boolean;
   clientToken: string;
   deviceId: string;
   pairingCode: string;
@@ -45,7 +46,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
             <button
               className="rounded-full bg-emerald-400 px-4 py-3 text-sm font-medium text-slate-950 disabled:opacity-60"
               type="button"
-              disabled={props.pairingPending}
+              disabled={props.pairingPending || !props.wsUrlValid}
               onClick={props.onRedeemPairingCode}
             >
               {props.pairingPending ? "配对中" : "配对"}
@@ -56,7 +57,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
         <div className="flex gap-3">
           <button
             className="flex-1 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:opacity-60"
-            disabled={props.connectionPhase === "connecting"}
+            disabled={props.connectionPhase === "connecting" || !props.wsUrlValid}
             onClick={props.onConnect}
           >
             {connected ? "重新连接" : props.connectionPhase === "connecting" ? "连接中" : "连接"}

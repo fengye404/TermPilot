@@ -67,6 +67,14 @@ function getRelayHttpBaseUrl(wsUrl: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+function tryParseUrl(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -106,7 +114,11 @@ export default function App() {
     [activeSid, sessions],
   );
   const connected = connectionPhase === "connected";
-  const relayHttpBaseUrl = useMemo(() => getRelayHttpBaseUrl(wsUrl), [wsUrl]);
+  const parsedWsUrl = useMemo(() => tryParseUrl(wsUrl), [wsUrl]);
+  const relayHttpBaseUrl = useMemo(
+    () => (parsedWsUrl ? getRelayHttpBaseUrl(parsedWsUrl.toString()) : null),
+    [parsedWsUrl],
+  );
   const filteredSessions = useMemo(() => {
     const query = sessionQuery.trim().toLowerCase();
     return sessions
@@ -421,6 +433,11 @@ export default function App() {
   }
 
   function connect(resetManual = true, tokenOverride?: string): void {
+    if (!parsedWsUrl) {
+      setPairingMessage("WebSocket 地址无效，请先输入完整地址。");
+      setConnectionPhase("idle");
+      return;
+    }
     if (resetManual) {
       manuallyDisconnectedRef.current = false;
       reconnectAttemptRef.current = 0;
@@ -434,7 +451,7 @@ export default function App() {
     socketRef.current?.close();
     setConnectionPhase(resetManual ? "connecting" : "reconnecting");
 
-    const url = new URL(wsUrl);
+    const url = new URL(parsedWsUrl.toString());
     url.searchParams.set("role", "client");
     url.searchParams.set("token", tokenOverride ?? clientToken);
 
@@ -565,6 +582,10 @@ export default function App() {
   }
 
   async function handleRedeemPairingCode(): Promise<void> {
+    if (!relayHttpBaseUrl) {
+      setPairingMessage("WebSocket 地址无效，请先输入完整地址。");
+      return;
+    }
     const code = pairingCode.trim().toUpperCase();
     if (!code) {
       setPairingMessage("请先输入配对码。");
@@ -707,6 +728,7 @@ export default function App() {
         <div className="space-y-5">
           <ConnectionPanel
             wsUrl={wsUrl}
+            wsUrlValid={parsedWsUrl !== null}
             clientToken={clientToken}
             deviceId={deviceId}
             pairingCode={pairingCode}
