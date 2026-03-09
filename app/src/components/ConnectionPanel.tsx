@@ -62,10 +62,18 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
           >
             {connected ? "重新连接" : props.connectionPhase === "connecting" ? "连接中" : "连接"}
           </button>
-          <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={props.onRefresh}>
+          <button
+            className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200 disabled:opacity-40"
+            disabled={!connected}
+            onClick={props.onRefresh}
+          >
             刷新
           </button>
-          <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={props.onDisconnect}>
+          <button
+            className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200 disabled:opacity-40"
+            disabled={props.connectionPhase === "idle"}
+            onClick={props.onDisconnect}
+          >
             断开
           </button>
         </div>

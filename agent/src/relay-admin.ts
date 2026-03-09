@@ -30,43 +30,66 @@ async function readJsonOrThrow<T>(response: Response, message: string): Promise<
   return response.json() as Promise<T>;
 }
 
+async function fetchJson<T>(input: URL, init: RequestInit, message: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(input, init);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "未知网络错误";
+    throw new Error(`${message}: 无法连接 relay (${input.origin})，${detail}`);
+  }
+  return readJsonOrThrow<T>(response, message);
+}
+
 export async function createPairingCode(deviceId: string): Promise<PairingCodeResponse> {
-  const response = await fetch(new URL("/api/pairing-codes", getRelayBaseUrl()), {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${getAgentToken()}`,
-      "content-type": "application/json",
+  return fetchJson<PairingCodeResponse>(
+    new URL("/api/pairing-codes", getRelayBaseUrl()),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${getAgentToken()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ deviceId }),
     },
-    body: JSON.stringify({ deviceId }),
-  });
-  return readJsonOrThrow<PairingCodeResponse>(response, "申请配对码失败");
+    "申请配对码失败",
+  );
 }
 
 export async function listDeviceGrants(deviceId: string): Promise<{ deviceId: string; grants: ClientGrantRecord[] }> {
-  const response = await fetch(new URL(`/api/devices/${deviceId}/grants`, getRelayBaseUrl()), {
-    headers: {
-      authorization: `Bearer ${getAgentToken()}`,
+  return fetchJson<{ deviceId: string; grants: ClientGrantRecord[] }>(
+    new URL(`/api/devices/${deviceId}/grants`, getRelayBaseUrl()),
+    {
+      headers: {
+        authorization: `Bearer ${getAgentToken()}`,
+      },
     },
-  });
-  return readJsonOrThrow<{ deviceId: string; grants: ClientGrantRecord[] }>(response, "读取访问令牌失败");
+    "读取访问令牌失败",
+  );
 }
 
 export async function revokeDeviceGrant(deviceId: string, accessToken: string): Promise<void> {
-  const response = await fetch(new URL(`/api/devices/${deviceId}/grants/${accessToken}`, getRelayBaseUrl()), {
-    method: "DELETE",
-    headers: {
-      authorization: `Bearer ${getAgentToken()}`,
+  await fetchJson<{ ok: true }>(
+    new URL(`/api/devices/${deviceId}/grants/${accessToken}`, getRelayBaseUrl()),
+    {
+      method: "DELETE",
+      headers: {
+        authorization: `Bearer ${getAgentToken()}`,
+      },
     },
-  });
-  await readJsonOrThrow<{ ok: true }>(response, "撤销访问令牌失败");
+    "撤销访问令牌失败",
+  );
 }
 
 export async function listAuditEvents(deviceId: string, limit: number): Promise<{ deviceId: string; events: AuditEventRecord[] }> {
   const constrainedLimit = Math.max(1, Math.min(limit, 100));
-  const response = await fetch(new URL(`/api/devices/${deviceId}/audit-events?limit=${constrainedLimit}`, getRelayBaseUrl()), {
-    headers: {
-      authorization: `Bearer ${getAgentToken()}`,
+  return fetchJson<{ deviceId: string; events: AuditEventRecord[] }>(
+    new URL(`/api/devices/${deviceId}/audit-events?limit=${constrainedLimit}`, getRelayBaseUrl()),
+    {
+      headers: {
+        authorization: `Bearer ${getAgentToken()}`,
+      },
     },
-  });
-  return readJsonOrThrow<{ deviceId: string; events: AuditEventRecord[] }>(response, "读取审计日志失败");
+    "读取审计日志失败",
+  );
 }

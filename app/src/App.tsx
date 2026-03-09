@@ -764,6 +764,7 @@ export default function App() {
           />
 
           <SessionListPanel
+            connected={connected}
             sessions={sessions}
             filteredSessions={filteredSessions}
             activeSid={activeSid}
