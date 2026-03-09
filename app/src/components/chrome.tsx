@@ -16,15 +16,17 @@ export function Field(props: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm text-slate-400">{props.label}</span>
       <input
-        className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none placeholder:text-slate-500"
+        className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none placeholder:text-slate-500 disabled:opacity-50"
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
+        disabled={props.disabled}
       />
     </label>
   );

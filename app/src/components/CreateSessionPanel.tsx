@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Field, Panel } from "./chrome";
 
 interface CreateSessionPanelProps {
+  connected: boolean;
   createName: string;
   createCwd: string;
   createShell: string;
@@ -16,10 +17,10 @@ export function CreateSessionPanel(props: CreateSessionPanelProps) {
   return (
     <Panel title="创建会话">
       <form className="space-y-3" onSubmit={props.onSubmit}>
-        <Field label="名称" value={props.createName} onChange={props.onCreateNameChange} placeholder="claude-main" />
-        <Field label="工作目录" value={props.createCwd} onChange={props.onCreateCwdChange} placeholder="/Users/..." />
-        <Field label="Shell" value={props.createShell} onChange={props.onCreateShellChange} placeholder="/bin/zsh" />
-        <button className="w-full rounded-full bg-emerald-400 px-4 py-2.5 text-sm font-medium text-slate-950" type="submit">
+        <Field label="名称" value={props.createName} onChange={props.onCreateNameChange} placeholder="claude-main" disabled={!props.connected} />
+        <Field label="工作目录" value={props.createCwd} onChange={props.onCreateCwdChange} placeholder="/Users/..." disabled={!props.connected} />
+        <Field label="Shell" value={props.createShell} onChange={props.onCreateShellChange} placeholder="/bin/zsh" disabled={!props.connected} />
+        <button className="w-full rounded-full bg-emerald-400 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:opacity-60" type="submit" disabled={!props.connected}>
           创建
         </button>
       </form>

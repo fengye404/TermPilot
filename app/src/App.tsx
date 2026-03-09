@@ -437,11 +437,20 @@ export default function App() {
     socketRef.current = socket;
 
     socket.addEventListener("open", () => {
+      if (socketRef.current !== socket) {
+        return;
+      }
       reconnectAttemptRef.current = 0;
       setConnectionPhase("connected");
     });
 
     socket.addEventListener("close", () => {
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+      }
+      if (socketRef.current !== null && socketRef.current !== socket) {
+        return;
+      }
       setConnectionPhase((current) => (manuallyDisconnectedRef.current ? "idle" : current));
       setDeviceOnline(false);
       if (!manuallyDisconnectedRef.current) {
@@ -450,6 +459,9 @@ export default function App() {
     });
 
     socket.addEventListener("message", (event) => {
+      if (socketRef.current !== socket) {
+        return;
+      }
       const message = JSON.parse(event.data) as RelayToClientMessage;
 
       switch (message.type) {
@@ -578,6 +590,10 @@ export default function App() {
 
   function handleCreateSession(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    if (!connected) {
+      setPairingMessage("当前未连接 relay，无法创建会话。");
+      return;
+    }
     sendMessage({
       type: "session.create",
       reqId: createReqId("create"),
@@ -699,6 +715,7 @@ export default function App() {
           />
 
           <CreateSessionPanel
+            connected={connected}
             createName={createName}
             createCwd={createCwd}
             createShell={createShell}
