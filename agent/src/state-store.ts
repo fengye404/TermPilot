@@ -142,4 +142,5 @@ export function updateSession(
 
 export function removeStateFile(): void {
   rmSync(getStateFilePath(), { force: true });
+  rmSync(getStateLockPath(), { force: true });
 }
