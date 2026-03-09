@@ -13,6 +13,7 @@ import { createReqId } from "@termpilot/protocol";
 
 type SessionMap = Record<string, string>;
 type ConnectionPhase = "idle" | "connecting" | "connected" | "reconnecting";
+type SessionStatusFilter = "all" | "running" | "exited";
 const SHORTCUT_KEYS: Array<{ key: InputKey; label: string }> = [
   { key: "enter", label: "Enter" },
   { key: "tab", label: "Tab" },
@@ -35,6 +36,8 @@ interface StoredState {
   clientToken: string;
   deviceId: string;
   activeSid: string | null;
+  pinnedSids?: string[];
+  notificationsEnabled?: boolean;
 }
 
 function getDefaultWsUrl(): string {
@@ -67,6 +70,9 @@ export default function App() {
   const reconnectTimerRef = useRef<number | null>(null);
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
+  const previousDeviceOnlineRef = useRef(false);
+  const previousSessionStatusRef = useRef<Record<string, SessionRecord["status"]>>({});
+  const bootstrappedNotificationsRef = useRef(false);
 
   const [wsUrl, setWsUrl] = useState(getDefaultWsUrl);
   const [clientToken, setClientToken] = useState(DEFAULT_CLIENT_TOKEN);
@@ -76,9 +82,13 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [buffers, setBuffers] = useState<SessionMap>({});
   const [activeSid, setActiveSid] = useState<string | null>(null);
+  const [pinnedSids, setPinnedSids] = useState<string[]>([]);
+  const [sessionQuery, setSessionQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>("all");
   const [pairingCode, setPairingCode] = useState("");
   const [pairingMessage, setPairingMessage] = useState("");
   const [pairingPending, setPairingPending] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [command, setCommand] = useState("");
   const [pasteBuffer, setPasteBuffer] = useState("");
   const [createName, setCreateName] = useState("");
@@ -91,6 +101,27 @@ export default function App() {
   );
   const connected = connectionPhase === "connected";
   const relayHttpBaseUrl = useMemo(() => getRelayHttpBaseUrl(wsUrl), [wsUrl]);
+  const filteredSessions = useMemo(() => {
+    const query = sessionQuery.trim().toLowerCase();
+    return sessions
+      .filter((session) => {
+        if (statusFilter !== "all" && session.status !== statusFilter) {
+          return false;
+        }
+        if (!query) {
+          return true;
+        }
+        return session.name.toLowerCase().includes(query) || session.cwd.toLowerCase().includes(query);
+      })
+      .sort((left, right) => {
+        const leftPinned = pinnedSids.includes(left.sid);
+        const rightPinned = pinnedSids.includes(right.sid);
+        if (leftPinned !== rightPinned) {
+          return leftPinned ? -1 : 1;
+        }
+        return right.startedAt.localeCompare(left.startedAt);
+      });
+  }, [pinnedSids, sessionQuery, sessions, statusFilter]);
 
   useEffect(() => {
     try {
@@ -103,6 +134,8 @@ export default function App() {
       if (parsed.clientToken) setClientToken(parsed.clientToken);
       if (parsed.deviceId) setDeviceId(parsed.deviceId);
       if (typeof parsed.activeSid === "string" || parsed.activeSid === null) setActiveSid(parsed.activeSid ?? null);
+      if (Array.isArray(parsed.pinnedSids)) setPinnedSids(parsed.pinnedSids.filter((value): value is string => typeof value === "string"));
+      if (typeof parsed.notificationsEnabled === "boolean") setNotificationsEnabled(parsed.notificationsEnabled);
     } catch {
       // ignore malformed local state
     }
@@ -114,9 +147,11 @@ export default function App() {
       clientToken,
       deviceId,
       activeSid,
+      pinnedSids,
+      notificationsEnabled,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [activeSid, clientToken, deviceId, wsUrl]);
+  }, [activeSid, clientToken, deviceId, notificationsEnabled, pinnedSids, wsUrl]);
 
   useEffect(() => {
     if (!terminalRef.current || terminal.current) {
@@ -214,6 +249,41 @@ export default function App() {
     }
   }, [activeSid, connected]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+    if (Notification.permission === "granted") {
+      setNotificationsEnabled(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const previousDeviceOnline = previousDeviceOnlineRef.current;
+    const previousSessionStatus = previousSessionStatusRef.current;
+    const nextSessionStatus = Object.fromEntries(sessions.map((session) => [session.sid, session.status]));
+
+    if (bootstrappedNotificationsRef.current && notificationsEnabled && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && document.hidden) {
+      if (previousDeviceOnline && !deviceOnline) {
+        new Notification("TermPilot", {
+          body: `设备 ${deviceId} 已离线`,
+        });
+      }
+
+      for (const session of sessions) {
+        if (previousSessionStatus[session.sid] === "running" && session.status === "exited") {
+          new Notification("会话已退出", {
+            body: `${session.name} 已结束`,
+          });
+        }
+      }
+    }
+
+    previousDeviceOnlineRef.current = deviceOnline;
+    previousSessionStatusRef.current = nextSessionStatus;
+    bootstrappedNotificationsRef.current = true;
+  }, [deviceId, deviceOnline, notificationsEnabled, sessions]);
+
   function sendMessage(message: unknown): void {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -276,6 +346,27 @@ export default function App() {
     setSessions([]);
     setBuffers({});
     setPairingMessage("已清除本机保存的访问令牌，请重新配对。");
+  }
+
+  function togglePinnedSession(sid: string): void {
+    setPinnedSids((current) => current.includes(sid) ? current.filter((item) => item !== sid) : [sid, ...current]);
+  }
+
+  async function enableNotifications(): Promise<void> {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setPairingMessage("当前浏览器不支持通知。");
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      setNotificationsEnabled(true);
+      setPairingMessage("已开启浏览器提醒。页面在后台时，会在会话退出或设备离线时提醒。");
+      return;
+    }
+
+    setNotificationsEnabled(false);
+    setPairingMessage("通知权限未开启。");
   }
 
   function connect(resetManual = true, tokenOverride?: string): void {
@@ -561,6 +652,15 @@ export default function App() {
               >
                 清除本机绑定
               </button>
+              <button
+                className="w-full rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200"
+                type="button"
+                onClick={() => {
+                  void enableNotifications();
+                }}
+              >
+                {notificationsEnabled ? "提醒已开启" : "开启浏览器提醒"}
+              </button>
               <p className="text-xs text-slate-500">
                 断线后会自动重连。连接参数、访问令牌和最近查看的会话会保存在本机浏览器里。
               </p>
@@ -579,11 +679,40 @@ export default function App() {
           </Panel>
 
           <Panel title="会话列表">
-            <div className="space-y-2">
-              {sessions.length === 0 ? (
+            <div className="space-y-3">
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none placeholder:text-slate-500"
+                value={sessionQuery}
+                onChange={(event) => setSessionQuery(event.target.value)}
+                placeholder="搜索会话名称或目录"
+              />
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["all", "全部"],
+                  ["running", "运行中"],
+                  ["exited", "已退出"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    className={`min-h-11 rounded-full px-3 py-2 text-sm ${
+                      statusFilter === value
+                        ? "bg-sky-500 text-slate-950"
+                        : "border border-slate-700 text-slate-200"
+                    }`}
+                    type="button"
+                    onClick={() => setStatusFilter(value as SessionStatusFilter)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500">
+                当前显示 {filteredSessions.length} / {sessions.length} 个会话。置顶会话会始终排在最前面。
+              </p>
+              {filteredSessions.length === 0 ? (
                 <p className="text-sm text-slate-400">当前没有会话。</p>
               ) : (
-                sessions.map((session) => (
+                filteredSessions.map((session) => (
                   <div
                     key={session.sid}
                     className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
@@ -602,6 +731,17 @@ export default function App() {
                       </span>
                     </div>
                     <div className="mt-3 flex gap-2">
+                      <button
+                        className={`rounded-full border px-3 py-1.5 text-xs ${
+                          pinnedSids.includes(session.sid)
+                            ? "border-amber-400/50 text-amber-200"
+                            : "border-slate-700 text-slate-200"
+                        }`}
+                        type="button"
+                        onClick={() => togglePinnedSession(session.sid)}
+                      >
+                        {pinnedSids.includes(session.sid) ? "取消置顶" : "置顶"}
+                      </button>
                       <button
                         className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200"
                         type="button"
