@@ -1,0 +1,26 @@
+{
+  "name": "termpilot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "一个基于 tmux 的终端会话跨端查看与控制原型。",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev:relay": "tsx relay/src/index.ts",
+    "dev:agent": "tsx agent/src/index.ts daemon",
+    "agent:create": "tsx agent/src/index.ts create",
+    "agent:list": "tsx agent/src/index.ts list",
+    "agent:kill": "tsx agent/src/index.ts kill",
+    "agent:attach": "tsx agent/src/index.ts attach",
+    "agent:doctor": "tsx agent/src/index.ts doctor"
+  },
+  "dependencies": {
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3"
+  }
+}

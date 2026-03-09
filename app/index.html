@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>TermPilot</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div>
+          <p class="eyebrow">TermPilot</p>
+          <h1>终端会话远程控制</h1>
+        </div>
+        <div class="status-group">
+          <span id="relay-status" class="status offline">未连接</span>
+          <span id="device-status" class="status offline">设备离线</span>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>连接配置</h2>
+        <div class="grid">
+          <label>
+            <span>WebSocket 地址</span>
+            <input id="ws-url" value="" />
+          </label>
+          <label>
+            <span>Client Token</span>
+            <input id="client-token" value="demo-client-token" />
+          </label>
+          <label>
+            <span>设备 ID</span>
+            <input id="device-id" value="pc-main" />
+          </label>
+        </div>
+        <button id="connect-button" class="button primary">连接</button>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>会话列表</h2>
+          <button id="refresh-button" class="button">刷新</button>
+        </div>
+
+        <form id="create-form" class="create-form">
+          <input id="create-name" placeholder="会话名称，例如 claude-main" />
+          <input id="create-cwd" placeholder="工作目录，默认当前目录" />
+          <input id="create-shell" placeholder="Shell，默认 /bin/zsh" />
+          <button class="button primary" type="submit">创建会话</button>
+        </form>
+
+        <div id="session-list" class="session-list"></div>
+      </section>
+
+      <section class="card terminal-card">
+        <div class="section-head">
+          <h2 id="active-title">当前未选择会话</h2>
+          <div class="shortcut-row">
+            <button class="button" data-key="enter">Enter</button>
+            <button class="button" data-key="tab">Tab</button>
+            <button class="button" data-key="ctrl_c">Ctrl+C</button>
+            <button class="button" data-key="arrow_up">↑</button>
+            <button class="button" data-key="arrow_down">↓</button>
+          </div>
+        </div>
+
+        <pre id="terminal-output" class="terminal-output"></pre>
+
+        <form id="input-form" class="input-form">
+          <input
+            id="input-text"
+            autocomplete="off"
+            placeholder="输入命令内容，点击发送后会追加回车"
+          />
+          <button class="button primary" type="submit">发送</button>
+        </form>
+      </section>
+    </div>
+
+    <script src="/main.js"></script>
+  </body>
+  </html>
