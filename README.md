@@ -126,6 +126,8 @@ pnpm agent:create -- --name <name>
 pnpm agent:attach -- --sid <sid>
 pnpm agent:kill -- --sid <sid>
 pnpm agent:pair
+pnpm agent:grants
+pnpm agent:revoke -- --token <accessToken>
 pnpm typecheck
 pnpm build
 ```
@@ -139,6 +141,7 @@ pnpm build
 3. 用 `pnpm agent:create` 创建一个新会话
 4. 用 `pnpm agent:attach` 进入该会话
 5. 在这个会话里运行长期任务
+6. 如需检查或撤销手机访问令牌，可用 `pnpm agent:grants` 和 `pnpm agent:revoke`
 
 ### 手机端
 
@@ -147,6 +150,7 @@ pnpm build
 3. 确认页面已经拿到访问令牌和正确的设备 ID
 4. 在会话列表里选择一个会话
 5. 查看输出、发送输入、关闭会话
+6. 如需换手机或重新绑定，可点击“清除本机绑定”
 
 ### 跨端协作规则
 
@@ -163,4 +167,5 @@ pnpm build
 4. 在电脑前工作时优先用 `pnpm agent:attach`，手机更适合看进度、补命令、做轻控制。
 5. 手机端平时不要手填共享 `client token`；优先走 `pnpm agent:pair` 的一次性配对流程。
 6. 演示和本地开发可以先用内存模式；要长期使用中继服务，优先接上 PostgreSQL。
-7. 养成“先看 `/health` 再排查”的习惯，先确认 `relay` 是否在线，以及当前是 `memory` 还是 `postgres` 模式。
+7. 如果手机丢了、换人了，先在电脑上用 `pnpm agent:grants` 查看已绑定令牌，再用 `pnpm agent:revoke -- --token ...` 立即撤销。
+8. 养成“先看 `/health` 再排查”的习惯，先确认 `relay` 是否在线，以及当前是 `memory` 还是 `postgres` 模式。

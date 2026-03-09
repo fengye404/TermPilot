@@ -4,6 +4,7 @@ import { Pool } from "pg";
 
 import type {
   AgentToRelayMessage,
+  ClientGrantRecord,
   ClientToRelayMessage,
   ErrorMessage,
   PairingCodeRequest,
@@ -308,6 +309,39 @@ app.post<{ Body: PairingRedeemRequest }>("/api/pairings/redeem", async (request,
     accessToken: grant.accessToken,
   };
   return reply.send(payload);
+});
+
+app.get<{ Params: { deviceId: string } }>("/api/devices/:deviceId/grants", async (request, reply) => {
+  const authHeader = request.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  if (token !== config.agentToken) {
+    return reply.code(401).send({ message: "agent 认证失败" });
+  }
+
+  const deviceId = request.params.deviceId.trim();
+  const { authStore } = await storesPromise;
+  const grants = await authStore.listGrants(deviceId);
+  return reply.send({
+    deviceId,
+    grants,
+  } satisfies { deviceId: string; grants: ClientGrantRecord[] });
+});
+
+app.delete<{ Params: { deviceId: string; accessToken: string } }>("/api/devices/:deviceId/grants/:accessToken", async (request, reply) => {
+  const authHeader = request.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  if (token !== config.agentToken) {
+    return reply.code(401).send({ message: "agent 认证失败" });
+  }
+
+  const { authStore } = await storesPromise;
+  const revoked = await authStore.revokeGrant(request.params.deviceId.trim(), request.params.accessToken.trim());
+  if (!revoked) {
+    return reply.code(404).send({ message: "访问令牌不存在" });
+  }
+  return reply.send({
+    ok: true,
+  });
 });
 
 app.get("/ws", { websocket: true }, (connection, request) => {

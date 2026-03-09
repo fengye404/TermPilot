@@ -1,6 +1,6 @@
 import { cwd as processCwd } from "node:process";
 
-import type { PairingCodeResponse } from "@termpilot/protocol";
+import type { ClientGrantRecord, PairingCodeResponse } from "@termpilot/protocol";
 import { DEFAULT_AGENT_TOKEN, DEFAULT_DEVICE_ID } from "@termpilot/protocol";
 
 import { createDaemonFromEnv } from "./daemon";
@@ -23,6 +23,8 @@ function printHelp(): void {
   pnpm agent:kill -- --sid <sid>
   pnpm agent:attach -- --sid <sid>
   pnpm agent:pair
+  pnpm agent:grants
+  pnpm agent:revoke -- --token <accessToken>
   pnpm agent:doctor
 `);
 }
@@ -126,19 +128,27 @@ function getRelayHttpUrl(): string {
   const relayUrl = process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws";
   const url = new URL(relayUrl);
   url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-  url.pathname = "/api/pairing-codes";
+  url.pathname = "/";
   url.search = "";
   return url.toString();
 }
 
-async function runPair(argv: string[]): Promise<void> {
+function getDeviceId(argv: string[]): string {
   const args = parseArgs(argv);
-  const deviceId = typeof args.deviceId === "string"
+  return typeof args.deviceId === "string"
     ? args.deviceId
     : process.env.TERMPILOT_DEVICE_ID ?? DEFAULT_DEVICE_ID;
-  const agentToken = process.env.TERMPILOT_AGENT_TOKEN ?? DEFAULT_AGENT_TOKEN;
+}
 
-  const response = await fetch(getRelayHttpUrl(), {
+function getAgentToken(): string {
+  return process.env.TERMPILOT_AGENT_TOKEN ?? DEFAULT_AGENT_TOKEN;
+}
+
+async function runPair(argv: string[]): Promise<void> {
+  const deviceId = getDeviceId(argv);
+  const agentToken = getAgentToken();
+
+  const response = await fetch(new URL("/api/pairing-codes", getRelayHttpUrl()), {
     method: "POST",
     headers: {
       authorization: `Bearer ${agentToken}`,
@@ -157,6 +167,57 @@ async function runPair(argv: string[]): Promise<void> {
   console.log(`配对码: ${payload.pairingCode}`);
   console.log(`有效期至: ${payload.expiresAt}`);
   console.log("请在手机端输入这个配对码，换取设备访问令牌。");
+}
+
+async function runGrants(argv: string[]): Promise<void> {
+  const deviceId = getDeviceId(argv);
+  const response = await fetch(new URL(`/api/devices/${deviceId}/grants`, getRelayHttpUrl()), {
+    headers: {
+      authorization: `Bearer ${getAgentToken()}`,
+    },
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`读取访问令牌失败: ${message}`);
+  }
+
+  const payload = await response.json() as { deviceId: string; grants: ClientGrantRecord[] };
+  if (payload.grants.length === 0) {
+    console.log(`设备 ${payload.deviceId} 当前没有任何已绑定访问令牌。`);
+    return;
+  }
+
+  console.table(
+    payload.grants.map((grant) => ({
+      token: grant.accessToken,
+      createdAt: grant.createdAt,
+      lastUsedAt: grant.lastUsedAt,
+    })),
+  );
+}
+
+async function runRevoke(argv: string[]): Promise<void> {
+  const args = parseArgs(argv);
+  const accessToken = typeof args.token === "string" ? args.token : undefined;
+  if (!accessToken) {
+    throw new Error("请通过 --token 指定要撤销的访问令牌。");
+  }
+
+  const deviceId = getDeviceId(argv);
+  const response = await fetch(new URL(`/api/devices/${deviceId}/grants/${accessToken}`, getRelayHttpUrl()), {
+    method: "DELETE",
+    headers: {
+      authorization: `Bearer ${getAgentToken()}`,
+    },
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`撤销访问令牌失败: ${message}`);
+  }
+
+  console.log(`已撤销设备 ${deviceId} 的访问令牌 ${accessToken}`);
 }
 
 async function main(): Promise<void> {
@@ -198,6 +259,12 @@ async function main(): Promise<void> {
       return;
     case "pair":
       await runPair(rest);
+      return;
+    case "grants":
+      await runGrants(rest);
+      return;
+    case "revoke":
+      await runRevoke(rest);
       return;
     default:
       printHelp();

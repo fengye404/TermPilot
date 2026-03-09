@@ -1,15 +1,11 @@
 import { randomBytes } from "node:crypto";
 
 import type { Pool } from "pg";
+import type { ClientGrantRecord } from "@termpilot/protocol";
 
 interface PairingCodeRecord {
   deviceId: string;
   expiresAt: string;
-}
-
-interface ClientGrantRecord {
-  accessToken: string;
-  deviceId: string;
 }
 
 export interface AuthStore {
@@ -17,6 +13,8 @@ export interface AuthStore {
   createPairingCode(deviceId: string, ttlMinutes: number): Promise<PairingCodeRecord & { pairingCode: string }>;
   redeemPairingCode(pairingCode: string): Promise<ClientGrantRecord | null>;
   getGrantByAccessToken(accessToken: string): Promise<ClientGrantRecord | null>;
+  listGrants(deviceId: string): Promise<ClientGrantRecord[]>;
+  revokeGrant(deviceId: string, accessToken: string): Promise<boolean>;
 }
 
 function createPairingCodeValue(): string {
@@ -61,16 +59,44 @@ export class MemoryAuthStore implements AuthStore {
     this.pairingCodes.set(pairingCode, record);
 
     const accessToken = createAccessToken();
+    const now = new Date().toISOString();
     const grant = {
       accessToken,
       deviceId: record.deviceId,
+      createdAt: now,
+      lastUsedAt: now,
     };
     this.grants.set(accessToken, grant);
     return grant;
   }
 
   async getGrantByAccessToken(accessToken: string): Promise<ClientGrantRecord | null> {
-    return this.grants.get(accessToken) ?? null;
+    const grant = this.grants.get(accessToken);
+    if (!grant) {
+      return null;
+    }
+
+    const nextGrant = {
+      ...grant,
+      lastUsedAt: new Date().toISOString(),
+    };
+    this.grants.set(accessToken, nextGrant);
+    return nextGrant;
+  }
+
+  async listGrants(deviceId: string): Promise<ClientGrantRecord[]> {
+    return Array.from(this.grants.values())
+      .filter((grant) => grant.deviceId === deviceId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async revokeGrant(deviceId: string, accessToken: string): Promise<boolean> {
+    const grant = this.grants.get(accessToken);
+    if (!grant || grant.deviceId !== deviceId) {
+      return false;
+    }
+    this.grants.delete(accessToken);
+    return true;
   }
 }
 
@@ -154,9 +180,12 @@ export class PostgresAuthStore implements AuthStore {
         [accessToken, record.device_id],
       );
       await client.query("commit");
+      const now = new Date().toISOString();
       return {
         accessToken,
         deviceId: record.device_id,
+        createdAt: now,
+        lastUsedAt: now,
       };
     } catch (error) {
       await client.query("rollback");
@@ -167,12 +196,17 @@ export class PostgresAuthStore implements AuthStore {
   }
 
   async getGrantByAccessToken(accessToken: string): Promise<ClientGrantRecord | null> {
-    const result = await this.pool.query<{ access_token: string; device_id: string }>(
+    const result = await this.pool.query<{
+      access_token: string;
+      device_id: string;
+      created_at: string;
+      last_used_at: string;
+    }>(
       `
       update relay_client_grants
       set last_used_at = now()
       where access_token = $1
-      returning access_token, device_id
+      returning access_token, device_id, created_at, last_used_at
       `,
       [accessToken],
     );
@@ -184,6 +218,43 @@ export class PostgresAuthStore implements AuthStore {
     return {
       accessToken: record.access_token,
       deviceId: record.device_id,
+      createdAt: record.created_at,
+      lastUsedAt: record.last_used_at,
     };
+  }
+
+  async listGrants(deviceId: string): Promise<ClientGrantRecord[]> {
+    const result = await this.pool.query<{
+      access_token: string;
+      device_id: string;
+      created_at: string;
+      last_used_at: string;
+    }>(
+      `
+      select access_token, device_id, created_at, last_used_at
+      from relay_client_grants
+      where device_id = $1
+      order by created_at desc
+      `,
+      [deviceId],
+    );
+
+    return result.rows.map((record) => ({
+      accessToken: record.access_token,
+      deviceId: record.device_id,
+      createdAt: record.created_at,
+      lastUsedAt: record.last_used_at,
+    }));
+  }
+
+  async revokeGrant(deviceId: string, accessToken: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `
+      delete from relay_client_grants
+      where device_id = $1 and access_token = $2
+      `,
+      [deviceId, accessToken],
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 }

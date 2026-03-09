@@ -255,6 +255,16 @@ export default function App() {
     setDeviceOnline(false);
   }
 
+  function clearBinding(): void {
+    disconnect();
+    setClientToken("");
+    setDeviceId(DEFAULT_DEVICE_ID);
+    setActiveSid(null);
+    setSessions([]);
+    setBuffers({});
+    setPairingMessage("已清除本机保存的访问令牌，请重新配对。");
+  }
+
   function connect(resetManual = true, tokenOverride?: string): void {
     if (resetManual) {
       manuallyDisconnectedRef.current = false;
@@ -514,6 +524,13 @@ export default function App() {
                   断开
                 </button>
               </div>
+              <button
+                className="w-full rounded-full border border-rose-500/40 px-4 py-2.5 text-sm text-rose-200"
+                type="button"
+                onClick={clearBinding}
+              >
+                清除本机绑定
+              </button>
               <p className="text-xs text-slate-500">
                 断线后会自动重连。连接参数、访问令牌和最近查看的会话会保存在本机浏览器里。
               </p>

@@ -65,6 +65,13 @@ export interface PairingRedeemResponse {
   accessToken: string;
 }
 
+export interface ClientGrantRecord {
+  accessToken: string;
+  deviceId: string;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
 export interface ErrorMessage {
   type: "error";
   reqId?: string;
