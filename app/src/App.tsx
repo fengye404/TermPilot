@@ -154,7 +154,9 @@ export default function App() {
       const parsed = JSON.parse(raw) as Partial<StoredState>;
       if (parsed.wsUrl) setWsUrl(parsed.wsUrl);
       if (parsed.clientToken) setClientToken(parsed.clientToken);
-      if (parsed.deviceId) setDeviceId(parsed.deviceId);
+      if (typeof parsed.deviceId === "string" && parsed.deviceId.trim()) {
+        setDeviceId(parsed.deviceId.trim());
+      }
       if (typeof parsed.activeSid === "string" || parsed.activeSid === null) setActiveSid(parsed.activeSid ?? null);
       if (Array.isArray(parsed.pinnedSids)) setPinnedSids(parsed.pinnedSids.filter((value): value is string => typeof value === "string"));
       if (typeof parsed.notificationsEnabled === "boolean") setNotificationsEnabled(parsed.notificationsEnabled);
@@ -489,16 +491,17 @@ export default function App() {
       switch (message.type) {
         case "auth.ok":
           {
-            const nextDeviceId = message.payload.deviceId ?? deviceIdRef.current;
+            const nextDeviceId = message.payload.deviceId ?? (deviceIdRef.current.trim() || DEFAULT_DEVICE_ID);
             const previousDeviceId = deviceIdRef.current;
+            const shouldHydrateDeviceId = Boolean(message.payload.deviceId) || !previousDeviceId.trim();
             deviceIdRef.current = nextDeviceId;
             if (nextDeviceId !== previousDeviceId) {
               setSessions([]);
               setBuffers({});
               setActiveSid(null);
             }
-            if (message.payload.deviceId) {
-              setDeviceId(message.payload.deviceId);
+            if (shouldHydrateDeviceId) {
+              setDeviceId(nextDeviceId);
             }
             requestSessions(nextDeviceId);
             if (activeSid) {
