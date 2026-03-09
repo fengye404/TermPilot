@@ -18,6 +18,8 @@
     "agent:grants": "pnpm --filter @termpilot/agent run grants",
     "agent:audit": "pnpm --filter @termpilot/agent run audit",
     "agent:revoke": "pnpm --filter @termpilot/agent run revoke",
-    "agent:doctor": "pnpm --filter @termpilot/agent run doctor"
+    "agent:doctor": "pnpm --filter @termpilot/agent run doctor",
+    "check:stability": "node scripts/check-relay-agent-stability.mjs",
+    "test:ui-smoke": "python3 /Users/fengye/.agents/skills/webapp-testing/scripts/with_server.py --server \"pnpm dev:relay\" --port 8787 --server \"pnpm dev:app\" --port 5173 -- python3 scripts/ui_smoke.py"
   }
 }

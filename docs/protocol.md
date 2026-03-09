@@ -1,249 +1,88 @@
-# TermPilot 协议草案
+# TermPilot 当前协议
 
-## 1. 目标
+## 1. 连接入口
 
-这份文档描述 TermPilot 第一版三端之间的通信协议。
-
-当前协议目标不是一步到位，而是先满足下面几件事：
-
-- 手机和 PC 能连接到同一个中继服务
-- 手机可以查看和控制统一会话池
-- PC 端 agent 可以持续同步会话输出
-- 手机重连后可以补拉最近输出
-
-## 2. 连接方式
-
-手机端和 PC 端都通过 WebSocket 连接中继服务：
+手机端和 agent 都通过 WebSocket 连接 relay：
 
 ```text
 ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 ```
 
-说明：
+- `role=agent`：PC 端 agent
+- `role=client`：手机端或浏览器端
+- `token`：agent 固定令牌或 client 访问令牌
+- `deviceId`：agent 连接时必须带；client 在业务消息里指定
 
-- `role=agent` 表示 PC 端 agent
-- `role=client` 表示手机端
-- `token` 用于最小认证
-- `deviceId` 由 agent 连接时提供，手机端通过消息体指定要控制的设备
+## 2. 当前消息类型
 
-## 3. 消息外层结构
+### 系统消息
 
-所有控制消息都使用 JSON。
+- `auth.ok`
+- `error`
+- `relay.state`
 
-通用字段：
+### 会话消息
 
-- `type`：消息类型
-- `reqId`：请求标识，只有需要响应的消息才带
-- `deviceId`：目标设备 ID
-- `sid`：目标会话 ID
-- `payload`：业务数据
+- `session.list`
+- `session.list.result`
+- `session.create`
+- `session.created`
+- `session.input`
+- `session.resize`
+- `session.kill`
+- `session.replay`
+- `session.output`
+- `session.state`
+- `session.exit`
 
-示例：
+## 3. 会话模型
 
-```json
-{
-  "type": "session.create",
-  "reqId": "req_a1b2c3",
-  "deviceId": "pc-main",
-  "payload": {
-    "name": "claude-main",
-    "cwd": "/Users/fengye/workspace/project",
-    "shell": "/bin/zsh"
-  }
-}
-```
+当前会话对象字段：
 
-## 4. 连接建立后的系统消息
+- `sid`
+- `deviceId`
+- `name`
+- `backend`
+- `shell`
+- `cwd`
+- `status`
+- `startedAt`
+- `lastSeq`
+- `lastActivityAt`
+- `tmuxSessionName`
 
-### 4.1 认证成功
+当前 `backend` 固定为 `tmux`。
 
-中继服务返回：
+## 4. 输入与快捷键
 
-```json
-{
-  "type": "auth.ok",
-  "payload": {
-    "role": "client"
-  }
-}
-```
-
-或：
-
-```json
-{
-  "type": "auth.ok",
-  "payload": {
-    "role": "agent",
-    "deviceId": "pc-main"
-  }
-}
-```
-
-### 4.2 中继状态广播
-
-中继服务向手机端广播在线设备：
-
-```json
-{
-  "type": "relay.state",
-  "payload": {
-    "agents": [
-      {
-        "deviceId": "pc-main",
-        "online": true
-      }
-    ]
-  }
-}
-```
-
-## 5. 会话控制消息
-
-### 5.1 拉取会话列表
-
-手机端发送：
-
-```json
-{
-  "type": "session.list",
-  "reqId": "req_list_001",
-  "deviceId": "pc-main"
-}
-```
-
-返回：
-
-```json
-{
-  "type": "session.list.result",
-  "reqId": "req_list_001",
-  "deviceId": "pc-main",
-  "payload": {
-    "sessions": []
-  }
-}
-```
-
-### 5.2 创建会话
-
-手机端发送：
-
-```json
-{
-  "type": "session.create",
-  "reqId": "req_create_001",
-  "deviceId": "pc-main",
-  "payload": {
-    "name": "claude-main",
-    "cwd": "/Users/fengye/workspace/project",
-    "shell": "/bin/zsh"
-  }
-}
-```
-
-PC 端 agent 返回：
-
-```json
-{
-  "type": "session.created",
-  "reqId": "req_create_001",
-  "deviceId": "pc-main",
-  "payload": {
-    "session": {
-      "sid": "s_123",
-      "deviceId": "pc-main",
-      "name": "claude-main",
-      "backend": "tmux",
-      "shell": "/bin/zsh",
-      "cwd": "/Users/fengye/workspace/project",
-      "status": "running",
-      "startedAt": "2026-03-10T09:00:00.000Z",
-      "lastSeq": 0,
-      "lastActivityAt": "2026-03-10T09:00:00.000Z",
-      "tmuxSessionName": "termpilot-claude-main-1234abcd"
-    }
-  }
-}
-```
-
-### 5.3 输入
-
-发送普通文本：
-
-```json
-{
-  "type": "session.input",
-  "reqId": "req_input_001",
-  "deviceId": "pc-main",
-  "sid": "s_123",
-  "payload": {
-    "text": "claude code\n"
-  }
-}
-```
-
-发送特殊按键：
-
-```json
-{
-  "type": "session.input",
-  "reqId": "req_input_002",
-  "deviceId": "pc-main",
-  "sid": "s_123",
-  "payload": {
-    "key": "ctrl_c"
-  }
-}
-```
-
-第一版建议支持的特殊按键：
+当前支持的特殊按键：
 
 - `enter`
 - `tab`
 - `ctrl_c`
+- `ctrl_d`
+- `escape`
 - `arrow_up`
 - `arrow_down`
 - `arrow_left`
 - `arrow_right`
 
-### 5.4 调整尺寸
+普通输入仍走：
 
 ```json
 {
-  "type": "session.resize",
-  "reqId": "req_resize_001",
+  "type": "session.input",
   "deviceId": "pc-main",
   "sid": "s_123",
   "payload": {
-    "cols": 100,
-    "rows": 28
+    "text": "echo hello\n"
   }
 }
 ```
 
-### 5.5 关闭会话
+## 5. 输出同步策略
 
-```json
-{
-  "type": "session.kill",
-  "reqId": "req_kill_001",
-  "deviceId": "pc-main",
-  "sid": "s_123"
-}
-```
-
-## 6. 输出同步消息
-
-第一版实现采用“快照替换”模式，而不是复杂的字节流增量模式。
-
-原因：
-
-- 更容易先把同一会话双端同步做稳定
-- 更适合 `tmux capture-pane` 这种实现方式
-- 足够支撑智能体持续流式输出的观察场景
-
-输出消息：
+当前不是字节级终端流，而是“快照替换”：
 
 ```json
 {
@@ -252,11 +91,82 @@ PC 端 agent 返回：
   "sid": "s_123",
   "seq": 12,
   "payload": {
-    "data": "...完整屏幕内容或最近窗口内容...",
+    "data": "...当前 pane 快照...",
     "mode": "replace"
   }
 }
 ```
+
+对应实现：
+
+- agent 轮询 `tmux capture-pane`
+- 只有缓冲变化时才推新帧
+- relay 保留最近一段输出帧
+- client 重连后用 `session.replay` 补拉
+
+## 6. 配对与访问令牌 HTTP 接口
+
+### 创建一次性配对码
+
+`POST /api/pairing-codes`
+
+- 需要 `Authorization: Bearer <agent-token>`
+- 请求体：`{ "deviceId": "pc-main" }`
+
+返回：
+
+```json
+{
+  "deviceId": "pc-main",
+  "pairingCode": "ABC-234",
+  "expiresAt": "2026-03-10T09:00:00.000Z"
+}
+```
+
+### 兑换配对码
+
+`POST /api/pairings/redeem`
+
+- 请求体：`{ "pairingCode": "ABC-234" }`
+
+返回：
+
+```json
+{
+  "deviceId": "pc-main",
+  "accessToken": "..."
+}
+```
+
+## 7. 设备管理 HTTP 接口
+
+这些接口都需要 `Authorization: Bearer <agent-token>`。
+
+### 查看当前设备已发出的访问令牌
+
+`GET /api/devices/:deviceId/grants`
+
+### 撤销访问令牌
+
+`DELETE /api/devices/:deviceId/grants/:accessToken`
+
+### 查看审计事件
+
+`GET /api/devices/:deviceId/audit-events?limit=20`
+
+当前审计动作包括：
+
+- `pairing.code_created`
+- `pairing.redeemed`
+- `grant.revoked`
+- `session.create_requested`
+- `session.kill_requested`
+
+## 8. 当前协议边界
+
+- client 侧仍直接处理较多状态拼装，没有事件聚合接口
+- 输出补拉依赖最近缓冲，不是完整历史回放
+- 审计目前只记录关键控制动作，不记录每一次普通输入
 
 字段说明：
 

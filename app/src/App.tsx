@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "xterm";
@@ -11,6 +10,11 @@ import type {
   SessionRecord,
 } from "@termpilot/protocol";
 import { createReqId } from "@termpilot/protocol";
+import { ConnectionPanel } from "./components/ConnectionPanel";
+import { CreateSessionPanel } from "./components/CreateSessionPanel";
+import { SessionListPanel } from "./components/SessionListPanel";
+import { StatusBadge } from "./components/chrome";
+import { TerminalWorkspace } from "./components/TerminalWorkspace";
 
 type SessionMap = Record<string, string>;
 type ConnectionPhase = "idle" | "connecting" | "connected" | "reconnecting";
@@ -649,295 +653,81 @@ export default function App() {
 
       <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-5">
-          <Panel title="连接">
-            <div className="space-y-3">
-              <Field label="WebSocket 地址" value={wsUrl} onChange={setWsUrl} />
-              <Field label="访问令牌" value={clientToken} onChange={setClientToken} />
-              <Field label="设备 ID" value={deviceId} onChange={setDeviceId} />
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                <p className="text-sm font-medium text-white">设备配对</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  电脑上执行 `pnpm agent:pair` 获取一次性配对码，手机输入后会自动换取设备访问令牌。
-                </p>
-                <div className="mt-3 flex gap-3">
-                  <input
-                    className="flex-1 rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm uppercase outline-none placeholder:text-slate-500"
-                    value={pairingCode}
-                    onChange={(event) => setPairingCode(event.target.value)}
-                    placeholder="ABC-234"
-                  />
-                  <button
-                    className="rounded-full bg-emerald-400 px-4 py-3 text-sm font-medium text-slate-950 disabled:opacity-60"
-                    type="button"
-                    disabled={pairingPending}
-                    onClick={() => {
-                      void handleRedeemPairingCode();
-                    }}
-                  >
-                    {pairingPending ? "配对中" : "配对"}
-                  </button>
-                </div>
-                {pairingMessage ? <p className="mt-2 text-xs text-slate-400">{pairingMessage}</p> : null}
-              </div>
-              <div className="flex gap-3">
-                <button
-                  className="flex-1 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:opacity-60"
-                  disabled={connectionPhase === "connecting"}
-                  onClick={() => connect(true)}
-                >
-                  {connected ? "重新连接" : connectionPhase === "connecting" ? "连接中" : "连接"}
-                </button>
-                <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={() => requestSessions(deviceIdRef.current)}>
-                  刷新
-                </button>
-                <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={disconnect}>
-                  断开
-                </button>
-              </div>
-              <button
-                className="w-full rounded-full border border-rose-500/40 px-4 py-2.5 text-sm text-rose-200"
-                type="button"
-                onClick={clearBinding}
-              >
-                清除本机绑定
-              </button>
-              <button
-                className="w-full rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200"
-                type="button"
-                onClick={() => {
-                  void toggleNotifications();
-                }}
-              >
-                {notificationsEnabled ? "关闭浏览器提醒" : "开启浏览器提醒"}
-              </button>
-              <p className="text-xs text-slate-500">
-                断线后会自动重连。连接参数、访问令牌和最近查看的会话会保存在本机浏览器里。
-              </p>
-            </div>
-          </Panel>
+          <ConnectionPanel
+            wsUrl={wsUrl}
+            clientToken={clientToken}
+            deviceId={deviceId}
+            pairingCode={pairingCode}
+            pairingMessage={pairingMessage}
+            pairingPending={pairingPending}
+            connectionPhase={connectionPhase}
+            notificationsEnabled={notificationsEnabled}
+            onWsUrlChange={setWsUrl}
+            onClientTokenChange={setClientToken}
+            onDeviceIdChange={setDeviceId}
+            onPairingCodeChange={setPairingCode}
+            onRedeemPairingCode={() => {
+              void handleRedeemPairingCode();
+            }}
+            onConnect={() => connect(true)}
+            onRefresh={() => requestSessions(deviceIdRef.current)}
+            onDisconnect={disconnect}
+            onClearBinding={clearBinding}
+            onToggleNotifications={() => {
+              void toggleNotifications();
+            }}
+          />
 
-          <Panel title="创建会话">
-            <form className="space-y-3" onSubmit={handleCreateSession}>
-              <Field label="名称" value={createName} onChange={setCreateName} placeholder="claude-main" />
-              <Field label="工作目录" value={createCwd} onChange={setCreateCwd} placeholder="/Users/..." />
-              <Field label="Shell" value={createShell} onChange={setCreateShell} placeholder="/bin/zsh" />
-              <button className="w-full rounded-full bg-emerald-400 px-4 py-2.5 text-sm font-medium text-slate-950" type="submit">
-                创建
-              </button>
-            </form>
-          </Panel>
+          <CreateSessionPanel
+            createName={createName}
+            createCwd={createCwd}
+            createShell={createShell}
+            onCreateNameChange={setCreateName}
+            onCreateCwdChange={setCreateCwd}
+            onCreateShellChange={setCreateShell}
+            onSubmit={handleCreateSession}
+          />
 
-          <Panel title="会话列表">
-            <div className="space-y-3">
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none placeholder:text-slate-500"
-                value={sessionQuery}
-                onChange={(event) => setSessionQuery(event.target.value)}
-                placeholder="搜索会话名称或目录"
-              />
-              <div className="flex flex-wrap gap-2">
-                {[
-                  ["all", "全部"],
-                  ["running", "运行中"],
-                  ["exited", "已退出"],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    className={`min-h-11 rounded-full px-3 py-2 text-sm ${
-                      statusFilter === value
-                        ? "bg-sky-500 text-slate-950"
-                        : "border border-slate-700 text-slate-200"
-                    }`}
-                    type="button"
-                    onClick={() => setStatusFilter(value as SessionStatusFilter)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-slate-500">
-                当前显示 {filteredSessions.length} / {sessions.length} 个会话。置顶会话会始终排在最前面。
-              </p>
-              {filteredSessions.length === 0 ? (
-                <p className="text-sm text-slate-400">
-                  {sessions.length === 0 ? "当前没有会话。" : "没有匹配当前搜索或筛选条件的会话。"}
-                </p>
-              ) : (
-                filteredSessions.map((session) => (
-                  <div
-                    key={session.sid}
-                    className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                      session.sid === activeSid
-                        ? "border-sky-400/70 bg-sky-500/10"
-                        : "border-slate-800 bg-slate-950/40"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-white">{session.name}</p>
-                        <p className="mt-1 text-xs text-slate-400">{session.cwd}</p>
-                      </div>
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] ${session.status === "running" ? "bg-emerald-500/15 text-emerald-300" : "bg-slate-700 text-slate-300"}`}>
-                        {session.status === "running" ? "运行中" : "已退出"}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        className={`rounded-full border px-3 py-1.5 text-xs ${
-                          pinnedSids.includes(session.sid)
-                            ? "border-amber-400/50 text-amber-200"
-                            : "border-slate-700 text-slate-200"
-                        }`}
-                        type="button"
-                        onClick={() => togglePinnedSession(session.sid)}
-                      >
-                        {pinnedSids.includes(session.sid) ? "取消置顶" : "置顶"}
-                      </button>
-                      <button
-                        className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200"
-                        type="button"
-                        onClick={() => {
-                          setActiveSid(session.sid);
-                          requestReplay(session.sid);
-                        }}
-                      >
-                        查看
-                      </button>
-                      <button
-                        className="rounded-full border border-rose-500/40 px-3 py-1.5 text-xs text-rose-200 disabled:opacity-40"
-                        type="button"
-                        disabled={session.status !== "running"}
-                        onClick={() => {
-                          sendMessage({
-                            type: "session.kill",
-                            reqId: createReqId("kill"),
-                            deviceId,
-                            sid: session.sid,
-                          });
-                        }}
-                      >
-                        关闭
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Panel>
+          <SessionListPanel
+            sessions={sessions}
+            filteredSessions={filteredSessions}
+            activeSid={activeSid}
+            pinnedSids={pinnedSids}
+            sessionQuery={sessionQuery}
+            statusFilter={statusFilter}
+            onSessionQueryChange={setSessionQuery}
+            onStatusFilterChange={setStatusFilter}
+            onTogglePinnedSession={togglePinnedSession}
+            onSelectSession={(sid) => {
+              setActiveSid(sid);
+              requestReplay(sid, deviceIdRef.current);
+            }}
+            onKillSession={(sid) => {
+              sendMessage({
+                type: "session.kill",
+                reqId: createReqId("kill"),
+                deviceId,
+                sid,
+              });
+            }}
+          />
         </div>
 
-        <Panel title={activeSession ? `${activeSession.name} · ${activeSession.status === "running" ? "运行中" : "已退出"}` : "当前未选择会话"}>
-          <div className="flex h-full min-h-[68vh] flex-col gap-4">
-            <div className="flex flex-wrap gap-2 md:sticky md:top-0 md:z-10 md:bg-slate-900/72 md:pb-2">
-              {SHORTCUT_KEYS.map(({ key, label }) => (
-                <button
-                  key={key}
-                  className="min-h-11 rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-200 disabled:opacity-40"
-                  disabled={!activeSid || !connected}
-                  onClick={() => sendKey(key)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="min-h-[440px] flex-1 overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/95 p-3">
-              <div ref={terminalRef} className="h-full w-full overflow-hidden" />
-            </div>
-
-            <form className="flex flex-col gap-3 md:flex-row" onSubmit={handleSendCommand}>
-              <input
-                className="flex-1 rounded-full border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
-                value={command}
-                onChange={(event) => setCommand(event.target.value)}
-                placeholder="输入命令，发送时会自动追加回车"
-                disabled={!activeSid || !connected}
-              />
-              <button className="rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-slate-950 disabled:opacity-60" type="submit" disabled={!activeSid || !connected}>
-                发送
-              </button>
-            </form>
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/35 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-white">粘贴大段命令</p>
-                <span className="text-xs text-slate-500">适合脚本、多行命令和长 prompt</span>
-              </div>
-              <textarea
-                className="mt-3 min-h-32 w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none placeholder:text-slate-500 disabled:opacity-50"
-                value={pasteBuffer}
-                onChange={(event) => setPasteBuffer(event.target.value)}
-                placeholder="在这里粘贴多行内容。原样发送不会自动补回车；发送并回车会在末尾补一个回车。"
-                disabled={!activeSid || !connected}
-              />
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                <button
-                  className="min-h-11 flex-1 rounded-full border border-slate-700 px-4 py-3 text-sm text-slate-200 disabled:opacity-40"
-                  type="button"
-                  disabled={!activeSid || !connected || !pasteBuffer}
-                  onClick={() => handleSendPaste("raw")}
-                >
-                  原样发送
-                </button>
-                <button
-                  className="min-h-11 flex-1 rounded-full bg-emerald-400 px-4 py-3 text-sm font-medium text-slate-950 disabled:opacity-40"
-                  type="button"
-                  disabled={!activeSid || !connected || !pasteBuffer}
-                  onClick={() => handleSendPaste("line")}
-                >
-                  发送并回车
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-slate-500">
-              当前模式是浏览器直开 PWA。适合查看流式输出、补命令和关闭会话，不适合重度长文本输入。
-            </p>
-          </div>
-        </Panel>
+        <TerminalWorkspace
+          activeSession={activeSession}
+          activeSid={activeSid}
+          connected={connected}
+          command={command}
+          pasteBuffer={pasteBuffer}
+          shortcutKeys={SHORTCUT_KEYS}
+          terminalRef={terminalRef}
+          onCommandChange={setCommand}
+          onSubmitCommand={handleSendCommand}
+          onPasteBufferChange={setPasteBuffer}
+          onSendPaste={handleSendPaste}
+          onSendKey={sendKey}
+        />
       </section>
     </main>
-  );
-}
-
-function Panel(props: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-3xl border border-slate-800/80 bg-slate-900/72 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-white">{props.title}</h2>
-      </div>
-      {props.children}
-    </section>
-  );
-}
-
-function Field(props: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm text-slate-400">{props.label}</span>
-      <input
-        className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none placeholder:text-slate-500"
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-        placeholder={props.placeholder}
-      />
-    </label>
-  );
-}
-
-function StatusBadge(props: { active: boolean; label: string }) {
-  return (
-    <span
-      className={`rounded-full border px-3 py-2 text-xs font-medium ${
-        props.active
-          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
-          : "border-rose-500/40 bg-rose-500/10 text-rose-200"
-      }`}
-    >
-      {props.label}
-    </span>
   );
 }

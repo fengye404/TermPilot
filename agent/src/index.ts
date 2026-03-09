@@ -1,9 +1,9 @@
 import { cwd as processCwd } from "node:process";
 
 import type { AuditEventRecord, ClientGrantRecord, PairingCodeResponse } from "@termpilot/protocol";
-import { DEFAULT_AGENT_TOKEN, DEFAULT_DEVICE_ID } from "@termpilot/protocol";
 
 import { createDaemonFromEnv } from "./daemon";
+import { createPairingCode, listAuditEvents, listDeviceGrants, resolveDeviceId, revokeDeviceGrant } from "./relay-admin";
 import { getAgentHome, getStateFilePath, loadState } from "./state-store";
 import {
   attachSession,
@@ -125,45 +125,14 @@ async function runDoctor(): Promise<void> {
   console.log("tmux 可用。");
 }
 
-function getRelayHttpUrl(): string {
-  const relayUrl = process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws";
-  const url = new URL(relayUrl);
-  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-  url.pathname = "/";
-  url.search = "";
-  return url.toString();
-}
-
 function getDeviceId(argv: string[]): string {
   const args = parseArgs(argv);
-  return typeof args.deviceId === "string"
-    ? args.deviceId
-    : process.env.TERMPILOT_DEVICE_ID ?? DEFAULT_DEVICE_ID;
-}
-
-function getAgentToken(): string {
-  return process.env.TERMPILOT_AGENT_TOKEN ?? DEFAULT_AGENT_TOKEN;
+  return resolveDeviceId(typeof args.deviceId === "string" ? args.deviceId : undefined);
 }
 
 async function runPair(argv: string[]): Promise<void> {
   const deviceId = getDeviceId(argv);
-  const agentToken = getAgentToken();
-
-  const response = await fetch(new URL("/api/pairing-codes", getRelayHttpUrl()), {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${agentToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ deviceId }),
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`申请配对码失败: ${message}`);
-  }
-
-  const payload = await response.json() as PairingCodeResponse;
+  const payload = await createPairingCode(deviceId);
   console.log(`设备: ${payload.deviceId}`);
   console.log(`配对码: ${payload.pairingCode}`);
   console.log(`有效期至: ${payload.expiresAt}`);
@@ -172,18 +141,7 @@ async function runPair(argv: string[]): Promise<void> {
 
 async function runGrants(argv: string[]): Promise<void> {
   const deviceId = getDeviceId(argv);
-  const response = await fetch(new URL(`/api/devices/${deviceId}/grants`, getRelayHttpUrl()), {
-    headers: {
-      authorization: `Bearer ${getAgentToken()}`,
-    },
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`读取访问令牌失败: ${message}`);
-  }
-
-  const payload = await response.json() as { deviceId: string; grants: ClientGrantRecord[] };
+  const payload = await listDeviceGrants(deviceId);
   if (payload.grants.length === 0) {
     console.log(`设备 ${payload.deviceId} 当前没有任何已绑定访问令牌。`);
     return;
@@ -206,18 +164,7 @@ async function runRevoke(argv: string[]): Promise<void> {
   }
 
   const deviceId = getDeviceId(argv);
-  const response = await fetch(new URL(`/api/devices/${deviceId}/grants/${accessToken}`, getRelayHttpUrl()), {
-    method: "DELETE",
-    headers: {
-      authorization: `Bearer ${getAgentToken()}`,
-    },
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`撤销访问令牌失败: ${message}`);
-  }
-
+  await revokeDeviceGrant(deviceId, accessToken);
   console.log(`已撤销设备 ${deviceId} 的访问令牌 ${accessToken}`);
 }
 
@@ -225,18 +172,7 @@ async function runAudit(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   const deviceId = getDeviceId(argv);
   const limit = typeof args.limit === "string" ? Number(args.limit) : 20;
-  const response = await fetch(new URL(`/api/devices/${deviceId}/audit-events?limit=${Math.max(1, Math.min(limit, 100))}`, getRelayHttpUrl()), {
-    headers: {
-      authorization: `Bearer ${getAgentToken()}`,
-    },
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`读取审计日志失败: ${message}`);
-  }
-
-  const payload = await response.json() as { deviceId: string; events: AuditEventRecord[] };
+  const payload = await listAuditEvents(deviceId, limit);
   if (payload.events.length === 0) {
     console.log(`设备 ${payload.deviceId} 当前没有审计日志。`);
     return;
