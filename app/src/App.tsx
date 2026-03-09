@@ -70,6 +70,7 @@ export default function App() {
   const reconnectTimerRef = useRef<number | null>(null);
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
+  const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
   const previousSessionStatusRef = useRef<Record<string, SessionRecord["status"]>>({});
   const bootstrappedNotificationsRef = useRef(false);
@@ -122,6 +123,10 @@ export default function App() {
         return right.startedAt.localeCompare(left.startedAt);
       });
   }, [pinnedSids, sessionQuery, sessions, statusFilter]);
+
+  useEffect(() => {
+    deviceIdRef.current = deviceId;
+  }, [deviceId]);
 
   useEffect(() => {
     try {
@@ -242,12 +247,17 @@ export default function App() {
 
   useEffect(() => {
     if (connected) {
-      requestSessions();
+      requestSessions(deviceIdRef.current);
       if (activeSid) {
-        requestReplay(activeSid);
+        requestReplay(activeSid, deviceIdRef.current);
       }
     }
   }, [activeSid, connected]);
+
+  useEffect(() => {
+    const existing = new Set(sessions.map((session) => session.sid));
+    setPinnedSids((current) => current.filter((sid) => existing.has(sid)));
+  }, [sessions]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -292,19 +302,19 @@ export default function App() {
     socket.send(JSON.stringify(message));
   }
 
-  function requestSessions(): void {
+  function requestSessions(deviceIdOverride?: string): void {
     sendMessage({
       type: "session.list",
       reqId: createReqId("list"),
-      deviceId,
+      deviceId: deviceIdOverride ?? deviceIdRef.current,
     });
   }
 
-  function requestReplay(sid: string): void {
+  function requestReplay(sid: string, deviceIdOverride?: string): void {
     sendMessage({
       type: "session.replay",
       reqId: createReqId("replay"),
-      deviceId,
+      deviceId: deviceIdOverride ?? deviceIdRef.current,
       sid,
       payload: {
         afterSeq: -1,
@@ -346,13 +356,22 @@ export default function App() {
     setSessions([]);
     setBuffers({});
     setPairingMessage("已清除本机保存的访问令牌，请重新配对。");
+    previousDeviceOnlineRef.current = false;
+    previousSessionStatusRef.current = {};
+    bootstrappedNotificationsRef.current = false;
   }
 
   function togglePinnedSession(sid: string): void {
     setPinnedSids((current) => current.includes(sid) ? current.filter((item) => item !== sid) : [sid, ...current]);
   }
 
-  async function enableNotifications(): Promise<void> {
+  async function toggleNotifications(): Promise<void> {
+    if (notificationsEnabled) {
+      setNotificationsEnabled(false);
+      setPairingMessage("已关闭浏览器提醒。");
+      return;
+    }
+
     if (typeof window === "undefined" || !("Notification" in window)) {
       setPairingMessage("当前浏览器不支持通知。");
       return;
@@ -393,7 +412,6 @@ export default function App() {
     socket.addEventListener("open", () => {
       reconnectAttemptRef.current = 0;
       setConnectionPhase("connected");
-      requestSessions();
     });
 
     socket.addEventListener("close", () => {
@@ -409,22 +427,30 @@ export default function App() {
 
       switch (message.type) {
         case "auth.ok":
-          if (message.payload.deviceId) {
-            setDeviceId(message.payload.deviceId);
+          {
+            const nextDeviceId = message.payload.deviceId ?? deviceIdRef.current;
+            deviceIdRef.current = nextDeviceId;
+            if (message.payload.deviceId) {
+              setDeviceId(message.payload.deviceId);
+            }
+            requestSessions(nextDeviceId);
+            if (activeSid) {
+              requestReplay(activeSid, nextDeviceId);
+            }
           }
           return;
         case "relay.state":
-          setDeviceOnline(message.payload.agents.some((agent) => agent.deviceId === deviceId && agent.online));
+          setDeviceOnline(message.payload.agents.some((agent) => agent.deviceId === deviceIdRef.current && agent.online));
           return;
         case "session.list.result":
-          if (message.deviceId !== deviceId) {
+          if (message.deviceId !== deviceIdRef.current) {
             return;
           }
           setSessions(message.payload.sessions);
           setActiveSid((current) => {
             const next = current ?? message.payload.sessions[0]?.sid ?? null;
             if (next) {
-              requestReplay(next);
+              requestReplay(next, deviceIdRef.current);
             }
             return next;
           });
@@ -432,7 +458,7 @@ export default function App() {
         case "session.created":
         case "session.state": {
           const session = message.payload.session;
-          if (session.deviceId !== deviceId) {
+          if (session.deviceId !== deviceIdRef.current) {
             return;
           }
           setSessions((current) => {
@@ -445,13 +471,13 @@ export default function App() {
           return;
         }
         case "session.output":
-          if (message.deviceId !== deviceId) {
+          if (message.deviceId !== deviceIdRef.current) {
             return;
           }
           setBuffers((current) => ({ ...current, [message.sid]: message.payload.data }));
           return;
         case "session.exit":
-          if (message.deviceId !== deviceId) {
+          if (message.deviceId !== deviceIdRef.current) {
             return;
           }
           setSessions((current) =>
@@ -638,7 +664,7 @@ export default function App() {
                 >
                   {connected ? "重新连接" : connectionPhase === "connecting" ? "连接中" : "连接"}
                 </button>
-                <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={requestSessions}>
+                <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={() => requestSessions(deviceIdRef.current)}>
                   刷新
                 </button>
                 <button className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200" onClick={disconnect}>
@@ -656,10 +682,10 @@ export default function App() {
                 className="w-full rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200"
                 type="button"
                 onClick={() => {
-                  void enableNotifications();
+                  void toggleNotifications();
                 }}
               >
-                {notificationsEnabled ? "提醒已开启" : "开启浏览器提醒"}
+                {notificationsEnabled ? "关闭浏览器提醒" : "开启浏览器提醒"}
               </button>
               <p className="text-xs text-slate-500">
                 断线后会自动重连。连接参数、访问令牌和最近查看的会话会保存在本机浏览器里。
@@ -710,7 +736,9 @@ export default function App() {
                 当前显示 {filteredSessions.length} / {sessions.length} 个会话。置顶会话会始终排在最前面。
               </p>
               {filteredSessions.length === 0 ? (
-                <p className="text-sm text-slate-400">当前没有会话。</p>
+                <p className="text-sm text-slate-400">
+                  {sessions.length === 0 ? "当前没有会话。" : "没有匹配当前搜索或筛选条件的会话。"}
+                </p>
               ) : (
                 filteredSessions.map((session) => (
                   <div
