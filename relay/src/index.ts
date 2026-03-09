@@ -37,6 +37,7 @@ interface AgentConnection {
 interface ClientConnection {
   socket: ClientSocket;
   deviceScope: "*" | Set<string>;
+  accessToken?: string;
 }
 
 interface OutputBuffer {
@@ -133,6 +134,16 @@ function sendError(socket: ClientSocket, code: string, message: string, reqId?: 
     reqId,
   };
   socket.send(JSON.stringify(payload));
+}
+
+function disconnectClientsByAccessToken(accessToken: string): void {
+  for (const client of clients) {
+    if (client.accessToken !== accessToken) {
+      continue;
+    }
+    sendError(client.socket, "AUTH_REVOKED", "当前访问令牌已被撤销");
+    client.socket.close();
+  }
 }
 
 function relayStateMessage(): RelayStateMessage {
@@ -416,6 +427,7 @@ app.delete<{ Params: { deviceId: string; accessToken: string } }>("/api/devices/
   if (!revoked) {
     return reply.code(404).send({ message: "访问令牌不存在" });
   }
+  disconnectClientsByAccessToken(request.params.accessToken.trim());
   await appendAuditEvent({
     deviceId: request.params.deviceId.trim(),
     action: "grant.revoked",
@@ -478,6 +490,7 @@ app.get("/ws", { websocket: true }, (connection, request) => {
           client = {
             socket,
             deviceScope: new Set([grant.deviceId]),
+            accessToken: grant.accessToken,
           };
         }
       }
