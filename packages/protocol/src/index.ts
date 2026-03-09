@@ -46,6 +46,25 @@ export interface AuthOkMessage {
   };
 }
 
+export interface PairingCodeRequest {
+  deviceId: string;
+}
+
+export interface PairingCodeResponse {
+  deviceId: string;
+  pairingCode: string;
+  expiresAt: string;
+}
+
+export interface PairingRedeemRequest {
+  pairingCode: string;
+}
+
+export interface PairingRedeemResponse {
+  deviceId: string;
+  accessToken: string;
+}
+
 export interface ErrorMessage {
   type: "error";
   reqId?: string;

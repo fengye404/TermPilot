@@ -87,7 +87,15 @@ pnpm dev:app
 
 ### 4. 创建并进入第一个会话
 
-在电脑上创建一个受 TermPilot 管理的会话：
+先在电脑上申请一个一次性配对码：
+
+```bash
+pnpm agent:pair
+```
+
+然后在手机端打开页面，把这个配对码填进“设备配对”区域。配对成功后，页面会自动拿到设备访问令牌。
+
+接着在电脑上创建一个受 TermPilot 管理的会话：
 
 ```bash
 pnpm agent:create -- --name claude-main
@@ -117,6 +125,7 @@ pnpm agent:list
 pnpm agent:create -- --name <name>
 pnpm agent:attach -- --sid <sid>
 pnpm agent:kill -- --sid <sid>
+pnpm agent:pair
 pnpm typecheck
 pnpm build
 ```
@@ -126,16 +135,18 @@ pnpm build
 ### 电脑端
 
 1. 启动 `relay` 和 `agent`
-2. 用 `pnpm agent:create` 创建一个新会话
-3. 用 `pnpm agent:attach` 进入该会话
-4. 在这个会话里运行长期任务
+2. 用 `pnpm agent:pair` 申请手机配对码
+3. 用 `pnpm agent:create` 创建一个新会话
+4. 用 `pnpm agent:attach` 进入该会话
+5. 在这个会话里运行长期任务
 
 ### 手机端
 
 1. 打开 `http://127.0.0.1:5173`
-2. 确认连接到正确的 WebSocket 地址
-3. 在会话列表里选择一个会话
-4. 查看输出、发送输入、关闭会话
+2. 输入电脑端刚生成的配对码
+3. 确认页面已经拿到访问令牌和正确的设备 ID
+4. 在会话列表里选择一个会话
+5. 查看输出、发送输入、关闭会话
 
 ### 跨端协作规则
 
@@ -150,5 +161,6 @@ pnpm build
 2. 会话名称直接写任务语义，比如 `claude-main`、`open-code-api`、`deploy-watch`。
 3. 需要跨端继续看的任务，一开始就通过 `pnpm agent:create` 创建，不要先在普通终端里跑再想着接管。
 4. 在电脑前工作时优先用 `pnpm agent:attach`，手机更适合看进度、补命令、做轻控制。
-5. 演示和本地开发可以先用内存模式；要长期使用中继服务，优先接上 PostgreSQL。
-6. 养成“先看 `/health` 再排查”的习惯，先确认 `relay` 是否在线，以及当前是 `memory` 还是 `postgres` 模式。
+5. 手机端平时不要手填共享 `client token`；优先走 `pnpm agent:pair` 的一次性配对流程。
+6. 演示和本地开发可以先用内存模式；要长期使用中继服务，优先接上 PostgreSQL。
+7. 养成“先看 `/health` 再排查”的习惯，先确认 `relay` 是否在线，以及当前是 `memory` 还是 `postgres` 模式。

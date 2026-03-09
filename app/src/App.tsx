@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "xterm";
 
 import type {
+  PairingRedeemResponse,
   RelayToClientMessage,
   SessionRecord,
 } from "@termpilot/protocol";
@@ -37,6 +38,15 @@ function getDefaultWsUrl(): string {
   return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:8787/ws`;
 }
 
+function getRelayHttpBaseUrl(wsUrl: string): string {
+  const url = new URL(wsUrl);
+  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+
 export default function App() {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -54,6 +64,9 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [buffers, setBuffers] = useState<SessionMap>({});
   const [activeSid, setActiveSid] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState("");
+  const [pairingMessage, setPairingMessage] = useState("");
+  const [pairingPending, setPairingPending] = useState(false);
   const [command, setCommand] = useState("");
   const [createName, setCreateName] = useState("");
   const [createCwd, setCreateCwd] = useState("");
@@ -64,6 +77,7 @@ export default function App() {
     [activeSid, sessions],
   );
   const connected = connectionPhase === "connected";
+  const relayHttpBaseUrl = useMemo(() => getRelayHttpBaseUrl(wsUrl), [wsUrl]);
 
   useEffect(() => {
     try {
@@ -241,7 +255,7 @@ export default function App() {
     setDeviceOnline(false);
   }
 
-  function connect(resetManual = true): void {
+  function connect(resetManual = true, tokenOverride?: string): void {
     if (resetManual) {
       manuallyDisconnectedRef.current = false;
       reconnectAttemptRef.current = 0;
@@ -257,7 +271,7 @@ export default function App() {
 
     const url = new URL(wsUrl);
     url.searchParams.set("role", "client");
-    url.searchParams.set("token", clientToken);
+    url.searchParams.set("token", tokenOverride ?? clientToken);
 
     const socket = new WebSocket(url);
     socketRef.current = socket;
@@ -281,6 +295,9 @@ export default function App() {
 
       switch (message.type) {
         case "auth.ok":
+          if (message.payload.deviceId) {
+            setDeviceId(message.payload.deviceId);
+          }
           return;
         case "relay.state":
           setDeviceOnline(message.payload.agents.some((agent) => agent.deviceId === deviceId && agent.online));
@@ -333,6 +350,43 @@ export default function App() {
           window.alert(message.message);
       }
     });
+  }
+
+  async function handleRedeemPairingCode(): Promise<void> {
+    const code = pairingCode.trim().toUpperCase();
+    if (!code) {
+      setPairingMessage("请先输入配对码。");
+      return;
+    }
+
+    setPairingPending(true);
+    setPairingMessage("");
+    try {
+      const response = await fetch(`${relayHttpBaseUrl}/api/pairings/redeem`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ pairingCode: code }),
+      });
+
+      const payload = await response.json().catch(() => null) as PairingRedeemResponse | { message?: string } | null;
+      if (!response.ok || !payload || !("accessToken" in payload)) {
+        const message = payload && "message" in payload && payload.message ? payload.message : "配对失败";
+        throw new Error(message);
+      }
+
+      setDeviceId(payload.deviceId);
+      setClientToken(payload.accessToken);
+      setPairingCode("");
+      setPairingMessage(`已绑定设备 ${payload.deviceId}，现在可以直接连接。`);
+      connect(true, payload.accessToken);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "配对失败";
+      setPairingMessage(message);
+    } finally {
+      setPairingPending(false);
+    }
   }
 
   function handleCreateSession(event: React.FormEvent<HTMLFormElement>): void {
@@ -418,8 +472,33 @@ export default function App() {
           <Panel title="连接">
             <div className="space-y-3">
               <Field label="WebSocket 地址" value={wsUrl} onChange={setWsUrl} />
-              <Field label="Client Token" value={clientToken} onChange={setClientToken} />
+              <Field label="访问令牌" value={clientToken} onChange={setClientToken} />
               <Field label="设备 ID" value={deviceId} onChange={setDeviceId} />
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-sm font-medium text-white">设备配对</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  电脑上执行 `pnpm agent:pair` 获取一次性配对码，手机输入后会自动换取设备访问令牌。
+                </p>
+                <div className="mt-3 flex gap-3">
+                  <input
+                    className="flex-1 rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm uppercase outline-none placeholder:text-slate-500"
+                    value={pairingCode}
+                    onChange={(event) => setPairingCode(event.target.value)}
+                    placeholder="ABC-234"
+                  />
+                  <button
+                    className="rounded-full bg-emerald-400 px-4 py-3 text-sm font-medium text-slate-950 disabled:opacity-60"
+                    type="button"
+                    disabled={pairingPending}
+                    onClick={() => {
+                      void handleRedeemPairingCode();
+                    }}
+                  >
+                    {pairingPending ? "配对中" : "配对"}
+                  </button>
+                </div>
+                {pairingMessage ? <p className="mt-2 text-xs text-slate-400">{pairingMessage}</p> : null}
+              </div>
               <div className="flex gap-3">
                 <button
                   className="flex-1 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:opacity-60"
@@ -436,7 +515,7 @@ export default function App() {
                 </button>
               </div>
               <p className="text-xs text-slate-500">
-                断线后会自动重连。连接参数和最近查看的会话会保存在本机浏览器里。
+                断线后会自动重连。连接参数、访问令牌和最近查看的会话会保存在本机浏览器里。
               </p>
             </div>
           </Panel>

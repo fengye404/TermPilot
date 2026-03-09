@@ -9,6 +9,7 @@
     "list": "tsx src/index.ts list",
     "kill": "tsx src/index.ts kill",
     "attach": "tsx src/index.ts attach",
+    "pair": "tsx src/index.ts pair",
     "doctor": "tsx src/index.ts doctor",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

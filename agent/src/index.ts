@@ -1,5 +1,8 @@
 import { cwd as processCwd } from "node:process";
 
+import type { PairingCodeResponse } from "@termpilot/protocol";
+import { DEFAULT_AGENT_TOKEN, DEFAULT_DEVICE_ID } from "@termpilot/protocol";
+
 import { createDaemonFromEnv } from "./daemon";
 import { getAgentHome, getStateFilePath, loadState } from "./state-store";
 import {
@@ -19,6 +22,7 @@ function printHelp(): void {
   pnpm agent:list
   pnpm agent:kill -- --sid <sid>
   pnpm agent:attach -- --sid <sid>
+  pnpm agent:pair
   pnpm agent:doctor
 `);
 }
@@ -118,6 +122,43 @@ async function runDoctor(): Promise<void> {
   console.log("tmux 可用。");
 }
 
+function getRelayHttpUrl(): string {
+  const relayUrl = process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws";
+  const url = new URL(relayUrl);
+  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+  url.pathname = "/api/pairing-codes";
+  url.search = "";
+  return url.toString();
+}
+
+async function runPair(argv: string[]): Promise<void> {
+  const args = parseArgs(argv);
+  const deviceId = typeof args.deviceId === "string"
+    ? args.deviceId
+    : process.env.TERMPILOT_DEVICE_ID ?? DEFAULT_DEVICE_ID;
+  const agentToken = process.env.TERMPILOT_AGENT_TOKEN ?? DEFAULT_AGENT_TOKEN;
+
+  const response = await fetch(getRelayHttpUrl(), {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${agentToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ deviceId }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`申请配对码失败: ${message}`);
+  }
+
+  const payload = await response.json() as PairingCodeResponse;
+  console.log(`设备: ${payload.deviceId}`);
+  console.log(`配对码: ${payload.pairingCode}`);
+  console.log(`有效期至: ${payload.expiresAt}`);
+  console.log("请在手机端输入这个配对码，换取设备访问令牌。");
+}
+
 async function main(): Promise<void> {
   const [, , command, ...rest] = process.argv;
 
@@ -154,6 +195,9 @@ async function main(): Promise<void> {
       return;
     case "doctor":
       await runDoctor();
+      return;
+    case "pair":
+      await runPair(rest);
       return;
     default:
       printHelp();

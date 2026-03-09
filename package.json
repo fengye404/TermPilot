@@ -14,6 +14,7 @@
     "agent:list": "pnpm --filter @termpilot/agent run list",
     "agent:kill": "pnpm --filter @termpilot/agent run kill",
     "agent:attach": "pnpm --filter @termpilot/agent run attach",
+    "agent:pair": "pnpm --filter @termpilot/agent run pair",
     "agent:doctor": "pnpm --filter @termpilot/agent run doctor"
   }
 }

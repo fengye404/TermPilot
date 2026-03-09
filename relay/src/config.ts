@@ -6,6 +6,7 @@ export interface RelayConfig {
   agentToken: string;
   clientToken: string;
   databaseUrl?: string;
+  pairingTtlMinutes: number;
 }
 
 export function loadConfig(): RelayConfig {
@@ -15,5 +16,6 @@ export function loadConfig(): RelayConfig {
     agentToken: process.env.TERMPILOT_AGENT_TOKEN ?? DEFAULT_AGENT_TOKEN,
     clientToken: process.env.TERMPILOT_CLIENT_TOKEN ?? DEFAULT_CLIENT_TOKEN,
     databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
+    pairingTtlMinutes: Number(process.env.TERMPILOT_PAIRING_TTL_MINUTES ?? 10),
   };
 }
