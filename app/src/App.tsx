@@ -114,6 +114,7 @@ export default function App() {
     [activeSid, sessions],
   );
   const connected = connectionPhase === "connected";
+  const canControlDevice = connected && deviceOnline;
   const parsedWsUrl = useMemo(() => tryParseUrl(wsUrl), [wsUrl]);
   const relayHttpBaseUrl = useMemo(
     () => (parsedWsUrl ? getRelayHttpBaseUrl(parsedWsUrl.toString()) : null),
@@ -233,7 +234,7 @@ export default function App() {
       if (!terminal.current || !fitTerminal()) {
         return;
       }
-      if (!connected || !activeSid) {
+      if (!canControlDevice || !activeSid) {
         return;
       }
       if (terminal.current.cols === 0 || terminal.current.rows === 0) {
@@ -259,7 +260,7 @@ export default function App() {
     return () => {
       observer.disconnect();
     };
-  }, [activeSid, connected, deviceId]);
+  }, [activeSid, canControlDevice, deviceId]);
 
   useEffect(() => {
     if (!terminal.current) {
@@ -630,8 +631,8 @@ export default function App() {
 
   function handleCreateSession(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (!connected) {
-      setPairingMessage("当前未连接 relay，无法创建会话。");
+    if (!canControlDevice) {
+      setPairingMessage(deviceOnline ? "当前未连接 relay，无法创建会话。" : `设备 ${deviceId || DEFAULT_DEVICE_ID} 当前离线，无法创建会话。`);
       return;
     }
     sendMessage({
@@ -649,7 +650,7 @@ export default function App() {
 
   function handleSendCommand(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (!activeSid || !command.trim()) {
+    if (!activeSid || !command.trim() || !canControlDevice) {
       return;
     }
 
@@ -666,7 +667,7 @@ export default function App() {
   }
 
   function handleSendPaste(mode: "raw" | "line"): void {
-    if (!activeSid || !pasteBuffer) {
+    if (!activeSid || !pasteBuffer || !canControlDevice) {
       return;
     }
 
@@ -683,7 +684,7 @@ export default function App() {
   }
 
   function sendKey(key: InputKey): void {
-    if (!activeSid) {
+    if (!activeSid || !canControlDevice) {
       return;
     }
 
@@ -756,7 +757,7 @@ export default function App() {
           />
 
           <CreateSessionPanel
-            connected={connected}
+            canControl={canControlDevice}
             createName={createName}
             createCwd={createCwd}
             createShell={createShell}
@@ -767,7 +768,7 @@ export default function App() {
           />
 
           <SessionListPanel
-            connected={connected}
+            canControl={canControlDevice}
             sessions={sessions}
             filteredSessions={filteredSessions}
             activeSid={activeSid}
@@ -795,7 +796,7 @@ export default function App() {
         <TerminalWorkspace
           activeSession={activeSession}
           activeSid={activeSid}
-          connected={connected}
+          canControl={canControlDevice}
           command={command}
           pasteBuffer={pasteBuffer}
           shortcutKeys={SHORTCUT_KEYS}

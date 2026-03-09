@@ -5,7 +5,7 @@ import { Panel } from "./chrome";
 type SessionStatusFilter = "all" | "running" | "exited";
 
 interface SessionListPanelProps {
-  connected: boolean;
+  canControl: boolean;
   sessions: SessionRecord[];
   filteredSessions: SessionRecord[];
   activeSid: string | null;
@@ -100,7 +100,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
                 <button
                   className="rounded-full border border-rose-500/40 px-3 py-1.5 text-xs text-rose-200 disabled:opacity-40"
                   type="button"
-                  disabled={session.status !== "running" || !props.connected}
+                  disabled={session.status !== "running" || !props.canControl}
                   onClick={() => props.onKillSession(session.sid)}
                 >
                   关闭

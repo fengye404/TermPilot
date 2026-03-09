@@ -50,6 +50,18 @@ def wait_for_pairing_code() -> str:
     raise RuntimeError(f"等待 agent 配对码超时: {last_error}")
 
 
+def goto_with_retry(page, url: str, attempts: int = 3) -> None:
+    last_error: Exception | None = None
+    for _ in range(attempts):
+        try:
+            page.goto(url, wait_until="networkidle")
+            return
+        except Exception as error:  # noqa: BLE001
+            last_error = error
+            time.sleep(0.5)
+    raise RuntimeError(f"页面打开失败: {last_error}")
+
+
 def main() -> None:
     session_one = f"ui-one-{subprocess.getoutput('date +%s')}"
     session_two = f"ui-two-{subprocess.getoutput('date +%s')}"
@@ -74,7 +86,7 @@ def main() -> None:
             errors: list[str] = []
             page.on("pageerror", lambda error: errors.append(f"pageerror: {error}"))
 
-            page.goto("http://127.0.0.1:5173", wait_until="networkidle")
+            goto_with_retry(page, "http://127.0.0.1:5173")
             page.get_by_placeholder("ABC-234").fill(pairing_code)
             page.get_by_role("button", name="配对").click()
             page.get_by_text("已绑定设备", exact=False).wait_for(timeout=15000)

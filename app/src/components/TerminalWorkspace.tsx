@@ -6,7 +6,7 @@ import { Panel } from "./chrome";
 interface TerminalWorkspaceProps {
   activeSession: SessionRecord | null;
   activeSid: string | null;
-  connected: boolean;
+  canControl: boolean;
   command: string;
   pasteBuffer: string;
   shortcutKeys: Array<{ key: InputKey; label: string }>;
@@ -27,7 +27,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             <button
               key={key}
               className="min-h-11 rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-200 disabled:opacity-40"
-              disabled={!props.activeSid || !props.connected}
+              disabled={!props.activeSid || !props.canControl}
               onClick={() => props.onSendKey(key)}
             >
               {label}
@@ -45,9 +45,9 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             value={props.command}
             onChange={(event) => props.onCommandChange(event.target.value)}
             placeholder="输入命令，发送时会自动追加回车"
-            disabled={!props.activeSid || !props.connected}
+            disabled={!props.activeSid || !props.canControl}
           />
-          <button className="rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-slate-950 disabled:opacity-60" type="submit" disabled={!props.activeSid || !props.connected}>
+          <button className="rounded-full bg-sky-500 px-5 py-3 text-sm font-medium text-slate-950 disabled:opacity-60" type="submit" disabled={!props.activeSid || !props.canControl}>
             发送
           </button>
         </form>
@@ -61,13 +61,13 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             value={props.pasteBuffer}
             onChange={(event) => props.onPasteBufferChange(event.target.value)}
             placeholder="在这里粘贴多行内容。原样发送不会自动补回车；发送并回车会在末尾补一个回车。"
-            disabled={!props.activeSid || !props.connected}
+            disabled={!props.activeSid || !props.canControl}
           />
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
             <button
               className="min-h-11 flex-1 rounded-full border border-slate-700 px-4 py-3 text-sm text-slate-200 disabled:opacity-40"
               type="button"
-              disabled={!props.activeSid || !props.connected || !props.pasteBuffer}
+              disabled={!props.activeSid || !props.canControl || !props.pasteBuffer}
               onClick={() => props.onSendPaste("raw")}
             >
               原样发送
@@ -75,7 +75,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             <button
               className="min-h-11 flex-1 rounded-full bg-emerald-400 px-4 py-3 text-sm font-medium text-slate-950 disabled:opacity-40"
               type="button"
-              disabled={!props.activeSid || !props.connected || !props.pasteBuffer}
+              disabled={!props.activeSid || !props.canControl || !props.pasteBuffer}
               onClick={() => props.onSendPaste("line")}
             >
               发送并回车
