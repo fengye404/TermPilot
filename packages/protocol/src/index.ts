@@ -236,7 +236,8 @@ export type RelayToAgentMessage =
   | SessionCreateMessage
   | SessionInputMessage
   | SessionResizeMessage
-  | SessionKillMessage;
+  | SessionKillMessage
+  | ErrorMessage;
 
 export function createReqId(prefix = "req"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;

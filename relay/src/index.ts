@@ -453,11 +453,20 @@ app.get("/ws", { websocket: true }, (connection, request) => {
       return;
     }
 
+    const previousAgent = agents.get(deviceId);
+    if (previousAgent && previousAgent.socket !== socket) {
+      sendError(previousAgent.socket, "AGENT_REPLACED", `设备 ${deviceId} 已由新的 agent 接管`);
+      previousAgent.socket.close();
+    }
     agents.set(deviceId, { socket, deviceId });
     socket.send(JSON.stringify({ type: "auth.ok", payload: { role: "agent", deviceId } }));
     broadcastRelayState();
 
     socket.on("message", (raw) => {
+      const current = agents.get(deviceId);
+      if (current?.socket !== socket) {
+        return;
+      }
       const message = parseJsonMessage<AgentToRelayMessage>(raw.toString());
       if (!message) {
         return;

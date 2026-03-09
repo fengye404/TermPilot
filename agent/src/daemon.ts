@@ -221,6 +221,9 @@ export class AgentDaemon {
     switch (message.type) {
       case "auth.ok":
         return;
+      case "error":
+        this.handleError(message);
+        return;
       case "session.list":
         this.sendSessionListResult({
           type: "session.list.result",
@@ -243,6 +246,14 @@ export class AgentDaemon {
       case "session.kill":
         await this.handleKill(message);
         return;
+    }
+  }
+
+  private handleError(message: ErrorMessage): void {
+    if (message.code === "AUTH_FAILED" || message.code === "AGENT_REPLACED") {
+      this.running = false;
+      this.socket?.close();
+      console.error(`agent 已停止: ${message.message}`);
     }
   }
 
