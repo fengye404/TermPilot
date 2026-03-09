@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "xterm";
 
 import type {
@@ -39,6 +40,7 @@ function getDefaultWsUrl(): string {
 export default function App() {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const terminal = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const manuallyDisconnectedRef = useRef(false);
@@ -107,15 +109,56 @@ export default function App() {
         brightBlack: "#334155",
       },
     });
+    const fitAddon = new FitAddon();
 
+    instance.loadAddon(fitAddon);
     instance.open(terminalRef.current);
+    fitAddon.fit();
     terminal.current = instance;
+    fitAddonRef.current = fitAddon;
 
     return () => {
       instance.dispose();
       terminal.current = null;
+      fitAddonRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!terminalRef.current || !fitAddonRef.current) {
+      return;
+    }
+
+    const resize = () => {
+      if (!fitAddonRef.current || !terminal.current) {
+        return;
+      }
+
+      fitAddonRef.current.fit();
+      if (!connected || !activeSid) {
+        return;
+      }
+
+      sendMessage({
+        type: "session.resize",
+        reqId: createReqId("resize"),
+        deviceId,
+        sid: activeSid,
+        payload: {
+          cols: terminal.current.cols,
+          rows: terminal.current.rows,
+        },
+      });
+    };
+
+    const observer = new ResizeObserver(() => resize());
+    observer.observe(terminalRef.current);
+    resize();
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [activeSid, connected, deviceId]);
 
   useEffect(() => {
     if (!terminal.current) {
