@@ -157,6 +157,7 @@ function setCachedSessions(deviceId: string, sessions: SessionRecord[]): void {
     bucket.set(session.sid, session);
   }
   sessionCache.set(deviceId, bucket);
+  pruneOutputBuffers(deviceId, bucket);
 }
 
 function upsertCachedSession(session: SessionRecord): void {
@@ -177,6 +178,19 @@ function markCachedSessionExited(deviceId: string, sid: string): void {
     status: "exited",
     lastActivityAt: new Date().toISOString(),
   });
+}
+
+function pruneOutputBuffers(deviceId: string, sessions: Map<string, SessionRecord>): void {
+  const prefix = `${deviceId}:`;
+  for (const key of outputBuffers.keys()) {
+    if (!key.startsWith(prefix)) {
+      continue;
+    }
+    const sid = key.slice(prefix.length);
+    if (!sessions.has(sid)) {
+      outputBuffers.delete(key);
+    }
+  }
 }
 
 function pushOutputFrame(frame: SessionOutputMessage): void {
@@ -440,7 +454,10 @@ app.get("/ws", { websocket: true }, (connection, request) => {
     });
 
     socket.on("close", () => {
-      agents.delete(deviceId);
+      const current = agents.get(deviceId);
+      if (current?.socket === socket) {
+        agents.delete(deviceId);
+      }
       broadcastRelayState();
     });
     return;

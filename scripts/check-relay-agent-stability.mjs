@@ -1,11 +1,10 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
 import WebSocket from "ws";
 
 const cwd = "/Users/fengye/workspace/TermPilot";
-const relayUrl = "ws://127.0.0.1:8787/ws";
-const healthUrl = "http://127.0.0.1:8787/health";
 const deviceId = "pc-stability";
 const sessionName = `stability-${Date.now()}`;
 
@@ -29,8 +28,35 @@ function startProcess(name, command, args, env = {}) {
   return child;
 }
 
-async function waitForHealth(expectedAgentsOnline) {
+async function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("无法获取空闲端口"));
+        return;
+      }
+      const { port } = address;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+    server.on("error", reject);
+  });
+}
+
+async function waitForHealth(expectedAgentsOnline, healthUrl, processes = []) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
+    for (const processInfo of processes) {
+      if (processInfo.exitCode !== null) {
+        throw new Error(`${processInfo.spawnfile ?? "子进程"} 在健康检查完成前已退出，exitCode=${processInfo.exitCode}`);
+      }
+    }
     try {
       const response = await fetch(healthUrl);
       if (response.ok) {
@@ -73,7 +99,7 @@ async function runPnpm(args) {
   });
 }
 
-function connectClient() {
+function connectClient(relayUrl) {
   const socket = new WebSocket(`${relayUrl}?role=client&token=demo-client-token`);
   const queue = [];
   const waiters = [];
@@ -167,19 +193,23 @@ async function main() {
   let sid = null;
 
   try {
+    const relayPort = String(await getFreePort());
+    const relayUrl = `ws://127.0.0.1:${relayPort}/ws`;
+    const healthUrl = `http://127.0.0.1:${relayPort}/health`;
+
     relay = startProcess("relay", "pnpm", ["dev:relay"], {
       HOST: "127.0.0.1",
-      PORT: "8787",
+      PORT: relayPort,
     });
     agent = startProcess("agent", "pnpm", ["dev:agent"], {
       TERMPILOT_DEVICE_ID: deviceId,
       TERMPILOT_RELAY_URL: relayUrl,
     });
 
-    await waitForHealth(1);
+    await waitForHealth(1, healthUrl, [relay, agent]);
     sid = await createManagedSession();
 
-    const clientA = connectClient();
+    const clientA = connectClient(relayUrl);
     await clientA.open();
     console.log("stability: client A connected");
     clientA.send({ type: "session.list", reqId: "list-a", deviceId });
@@ -188,14 +218,14 @@ async function main() {
     await waitForOutput(clientA, sid, "first-stability");
     clientA.close();
 
-    const clientB = connectClient();
+    const clientB = connectClient(relayUrl);
     await clientB.open();
     console.log("stability: client B connected");
     clientB.send({ type: "session.input", reqId: "input-b", deviceId, sid, payload: { text: "echo while-disconnected\n" } });
     await delay(2000);
     clientB.close();
 
-    const clientC = connectClient();
+    const clientC = connectClient(relayUrl);
     await clientC.open();
     console.log("stability: client C connected");
     clientC.send({ type: "session.replay", reqId: "replay-c", deviceId, sid, payload: { afterSeq: -1 } });
@@ -206,12 +236,12 @@ async function main() {
     await new Promise((resolve) => relay.once("close", resolve));
     relay = startProcess("relay", "pnpm", ["dev:relay"], {
       HOST: "127.0.0.1",
-      PORT: "8787",
+      PORT: relayPort,
     });
 
-    await waitForHealth(1);
+    await waitForHealth(1, healthUrl, [relay, agent]);
 
-    const clientD = connectClient();
+    const clientD = connectClient(relayUrl);
     await clientD.open();
     console.log("stability: client D connected after relay restart");
     clientD.send({ type: "session.list", reqId: "list-d", deviceId });

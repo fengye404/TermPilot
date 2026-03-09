@@ -456,7 +456,13 @@ export default function App() {
         case "auth.ok":
           {
             const nextDeviceId = message.payload.deviceId ?? deviceIdRef.current;
+            const previousDeviceId = deviceIdRef.current;
             deviceIdRef.current = nextDeviceId;
+            if (nextDeviceId !== previousDeviceId) {
+              setSessions([]);
+              setBuffers({});
+              setActiveSid(null);
+            }
             if (message.payload.deviceId) {
               setDeviceId(message.payload.deviceId);
             }
@@ -474,8 +480,19 @@ export default function App() {
             return;
           }
           setSessions(message.payload.sessions);
+          setBuffers((current) => {
+            const nextBuffers: SessionMap = {};
+            for (const session of message.payload.sessions) {
+              if (current[session.sid]) {
+                nextBuffers[session.sid] = current[session.sid];
+              }
+            }
+            return nextBuffers;
+          });
           setActiveSid((current) => {
-            const next = current ?? message.payload.sessions[0]?.sid ?? null;
+            const next = current && message.payload.sessions.some((session) => session.sid === current)
+              ? current
+              : message.payload.sessions[0]?.sid ?? null;
             if (next) {
               requestReplay(next, deviceIdRef.current);
             }
@@ -543,6 +560,9 @@ export default function App() {
         throw new Error(message);
       }
 
+      setSessions([]);
+      setBuffers({});
+      setActiveSid(null);
       setDeviceId(payload.deviceId);
       setClientToken(payload.accessToken);
       setPairingCode("");
