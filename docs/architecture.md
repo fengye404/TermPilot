@@ -1,34 +1,28 @@
 # TermPilot 当前代码架构
 
-## 1. 产品目标
+## 1. 当前产品形态
 
-TermPilot 聚焦一个很窄但很实用的场景：
+- 一个 npm 包：`termpilot`
+- 一个服务器命令：`termpilot relay`
+- 一个电脑命令：`termpilot agent`
+- 手机端不安装，直接打开 relay 域名
+- relay 同时负责 WebSocket 中继和 Web UI 托管
 
-- 电脑上运行终端里的智能体任务
-- 用户离开电脑后，任务继续运行
-- 手机继续查看同一个会话的流式输出
-- 手机可以继续发命令、切会话、关会话
-
-它做的是“终端会话跨端延续”，不是远程桌面。
-
-## 2. 系统拓扑
+对应拓扑：
 
 ```text
-手机端 PWA  --ws/wss-->  relay  <--ws/wss--  PC 端 agent
+手机浏览器  --https/ws-->  relay  <--ws-->  PC 端 agent
                               |
                      配对、设备权限、消息路由、
-                     输出缓冲、审计日志、会话元数据
+                     输出缓冲、审计日志、会话元数据、
+                     静态网页托管
 ```
 
-关键约束：
-
-- 手机和 PC 都只发起出站连接
-- 所有命令执行都发生在 PC 上
-- 所有需要跨端同步的任务，都必须运行在 TermPilot 管理的 `tmux` 会话里
-
-## 3. 目录结构
+## 2. 目录结构
 
 ```text
+src/
+  cli.ts
 agent/
   src/
 app/
@@ -42,29 +36,31 @@ scripts/
 docs/
 ```
 
-### `packages/protocol/`
+### `src/cli.ts`
 
-共享三端协议类型：
+统一 CLI 入口，负责把内部多模块收敛成外部单命令产品：
 
-- 会话消息
-- 配对与令牌数据结构
-- 审计事件结构
+- `termpilot relay`
+- `termpilot agent`
+- `termpilot pair/create/list/attach/kill/...`
 
 ### `agent/`
 
-PC 端常驻进程和本地 CLI：
+PC 端常驻进程和本地命令实现：
 
+- `src/cli.ts`：agent 侧命令实现
+- `src/index.ts`：开发态入口包装
 - `src/daemon.ts`：常驻连接、轮询 `tmux`、同步输出与状态
 - `src/tmux-backend.ts`：`tmux` 会话创建、输入、关闭、附着、抓屏
-- `src/index.ts`：本地 CLI 入口
 - `src/relay-admin.ts`：agent 调用 relay 管理接口的轻量客户端
 - `src/state-store.ts`：本地 JSON 状态文件
 
 ### `relay/`
 
-中继和状态中心：
+中继和网页托管层：
 
-- `src/index.ts`：WebSocket 路由、HTTP 接口、消息转发
+- `src/server.ts`：WebSocket 路由、HTTP 接口、消息转发、静态网页托管
+- `src/index.ts`：开发态入口包装
 - `src/session-store.ts`：会话元数据存储
 - `src/auth-store.ts`：配对码与访问令牌存储
 - `src/audit-store.ts`：审计事件存储
@@ -81,14 +77,22 @@ PC 端常驻进程和本地 CLI：
 - `src/components/TerminalWorkspace.tsx`：终端区域、快捷键和粘贴发送
 - `src/components/chrome.tsx`：通用面板与字段组件
 
-### `scripts/`
+### `packages/protocol/`
 
-验证脚本：
+三端共享协议类型：
 
-- `check-relay-agent-stability.mjs`：relay/agent 稳定性检查
-- `ui_smoke.py`：贴近真实使用的 UI 烟雾测试
+- 会话消息
+- 配对与令牌数据结构
+- 审计事件结构
 
-## 4. 运行时数据流
+## 3. 运行时数据流
+
+### 启动链路
+
+1. 服务器执行 `termpilot relay`
+2. relay 监听 HTTP/WebSocket，并托管 `app/dist`
+3. 电脑执行 `termpilot agent --relay ...`
+4. 手机上直接打开 relay 域名
 
 ### 会话创建
 
@@ -108,36 +112,37 @@ PC 端常驻进程和本地 CLI：
 
 ### 配对与访问控制
 
-1. 电脑端执行 `pnpm agent:pair`
+1. 电脑端执行 `termpilot pair`
 2. relay 创建一次性配对码
 3. 手机端输入配对码，兑换设备访问令牌
 4. client WebSocket 以后携带设备令牌
 5. relay 只向该 client 暴露允许访问的设备和会话
 
-## 5. 当前实现边界
+## 4. 当前实现边界
 
 - 当前终端同步策略仍是“快照替换”，不是字节级增量流
 - relay 输出缓冲只保留最近一段，不做长期日志归档
 - 不接管 TermPilot 体系外的历史终端
 - 手机端定位是“查看、轻输入、轻控制”，不追求桌面级重度编辑体验
 
-## 6. 代码层面的当前取舍
+## 5. 当前代码取舍
 
-- `app` 的状态和副作用仍集中在 `App.tsx`，但渲染层已经拆到独立组件，便于继续收口
-- `relay` 仍保留单一入口文件来表达完整路由流，但存储和审计已拆成独立模块
-- `agent` 保持“CLI + daemon + tmux backend”三层，不引入额外框架
+- 对外形态已经统一成单一 CLI，但仓库内部仍保留 `agent/app/relay` 三个目录，方便独立开发
+- `app` 的状态和副作用仍集中在 `App.tsx`，但渲染层已经拆到独立组件
+- `relay` 已从单文件脚本式入口拆成 `server.ts + index.ts`
+- `agent` 已从单文件 CLI 拆成 `cli.ts + index.ts + daemon.ts + tmux-backend.ts`
 
-## 7. 当前验证方式
+## 6. 当前验证方式
 
-日常最有价值的验证命令：
+最有价值的检查命令：
 
 - `pnpm typecheck`
 - `pnpm build`
-- `pnpm check:stability`
 - `pnpm test:ui-smoke`
+- `pnpm check:stability`
 
-如果这些都通过，基本能覆盖：
+它们覆盖的重点是：
 
-- relay/agent 主链路
+- `termpilot relay` 和 `termpilot agent` 主链路
 - 输出缓冲与重连一致性
 - 手机端配对、切会话、关会话、清除绑定

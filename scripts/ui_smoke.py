@@ -1,11 +1,14 @@
 import re
 import subprocess
 import time
+import os
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
 ROOT = Path("/Users/fengye/workspace/TermPilot")
+APP_URL = os.environ.get("TERMPILOT_APP_URL", "http://127.0.0.1:8787")
+RELAY_URL = os.environ.get("TERMPILOT_RELAY_URL", "ws://127.0.0.1:8787/ws")
 
 
 def run_pnpm(args: list[str]) -> str:
@@ -20,7 +23,7 @@ def run_pnpm(args: list[str]) -> str:
 
 
 def create_session(name: str) -> str:
-    output = run_pnpm(["agent:create", "--", "--name", name])
+    output = run_pnpm(["cli", "--", "create", "--name", name])
     match = re.search(r"已创建会话\s+([a-f0-9-]+)", output)
     if not match:
         raise RuntimeError(f"无法解析会话 sid:\n{output}")
@@ -28,11 +31,11 @@ def create_session(name: str) -> str:
 
 
 def kill_session(sid: str) -> None:
-    run_pnpm(["agent:kill", "--", "--sid", sid])
+    run_pnpm(["cli", "--", "kill", "--sid", sid])
 
 
 def get_pairing_code() -> str:
-    output = run_pnpm(["agent:pair"])
+    output = run_pnpm(["cli", "--", "pair"])
     match = re.search(r"配对码:\s*(\S+)", output)
     if not match:
         raise RuntimeError(f"无法解析配对码:\n{output}")
@@ -68,8 +71,12 @@ def main() -> None:
     sid_one = ""
     sid_two = ""
     agent = subprocess.Popen(
-        ["pnpm", "dev:agent"],
+        ["node", "dist/cli.js", "agent"],
         cwd=ROOT,
+        env={
+            **os.environ,
+            "TERMPILOT_RELAY_URL": RELAY_URL,
+        },
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -86,7 +93,7 @@ def main() -> None:
             errors: list[str] = []
             page.on("pageerror", lambda error: errors.append(f"pageerror: {error}"))
 
-            goto_with_retry(page, "http://127.0.0.1:5173")
+            goto_with_retry(page, APP_URL)
             page.get_by_placeholder("ABC-234").fill(pairing_code)
             page.get_by_role("button", name="配对").click()
             page.get_by_text("已绑定设备", exact=False).wait_for(timeout=15000)

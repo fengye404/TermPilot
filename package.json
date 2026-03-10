@@ -1,15 +1,30 @@
 {
   "name": "termpilot",
   "version": "0.1.0",
-  "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.31.0",
   "description": "一个基于 tmux 的终端会话跨端查看与控制原型。",
+  "bin": {
+    "termpilot": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "app/dist",
+    "README.md",
+    "docs",
+    ".env.example"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "build": "pnpm -r typecheck && pnpm --filter @termpilot/app build",
-    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r typecheck && tsc --noEmit -p tsconfig.json && pnpm --filter @termpilot/app build && tsup",
+    "build:web": "pnpm --filter @termpilot/app build",
+    "typecheck": "pnpm -r typecheck && tsc --noEmit -p tsconfig.json",
     "dev:app": "pnpm --filter @termpilot/app run dev",
     "dev:relay": "pnpm --filter @termpilot/relay run dev",
     "dev:agent": "pnpm --filter @termpilot/agent run dev",
+    "cli": "node dist/cli.js",
     "agent:create": "pnpm --filter @termpilot/agent run create",
     "agent:list": "pnpm --filter @termpilot/agent run list",
     "agent:kill": "pnpm --filter @termpilot/agent run kill",
@@ -19,7 +34,19 @@
     "agent:audit": "pnpm --filter @termpilot/agent run audit",
     "agent:revoke": "pnpm --filter @termpilot/agent run revoke",
     "agent:doctor": "pnpm --filter @termpilot/agent run doctor",
-    "check:stability": "node scripts/check-relay-agent-stability.mjs",
-    "test:ui-smoke": "python3 /Users/fengye/.agents/skills/webapp-testing/scripts/with_server.py --server \"pnpm dev:relay\" --port 8787 --server \"pnpm dev:app\" --port 5173 -- python3 scripts/ui_smoke.py"
+    "check:stability": "pnpm build && node scripts/check-relay-agent-stability.mjs",
+    "test:ui-smoke": "pnpm build && TERMPILOT_APP_URL=http://127.0.0.1:18787 TERMPILOT_RELAY_URL=ws://127.0.0.1:18787/ws python3 /Users/fengye/.agents/skills/webapp-testing/scripts/with_server.py --server \"PORT=18787 node dist/cli.js relay\" --port 18787 -- python3 scripts/ui_smoke.py",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.2.0",
+    "fastify": "^5.6.1",
+    "pg": "^8.16.3",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
   }
 }

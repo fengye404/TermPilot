@@ -55,7 +55,11 @@ function getDefaultWsUrl(): string {
     return DEFAULT_WS_URL;
   }
 
-  return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:8787/ws`;
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  if (window.location.port === "5173") {
+    return `${protocol}//${window.location.hostname}:8787/ws`;
+  }
+  return `${protocol}//${window.location.host}/ws`;
 }
 
 function getRelayHttpBaseUrl(wsUrl: string): string {

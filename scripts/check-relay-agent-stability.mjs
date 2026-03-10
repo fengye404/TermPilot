@@ -167,7 +167,7 @@ function connectClient(relayUrl) {
 }
 
 async function createManagedSession() {
-  const output = await runPnpm(["agent:create", "--", "--deviceId", deviceId, "--name", sessionName]);
+  const output = await runPnpm(["cli", "--", "create", "--deviceId", deviceId, "--name", sessionName]);
   const match = output.match(/已创建会话\s+([a-f0-9-]+)/i);
   if (!match) {
     throw new Error(`无法从创建输出中解析 sid: ${output}`);
@@ -176,7 +176,7 @@ async function createManagedSession() {
 }
 
 async function killManagedSession(sid) {
-  await runPnpm(["agent:kill", "--", "--sid", sid]);
+  await runPnpm(["cli", "--", "kill", "--sid", sid]);
 }
 
 async function waitForOutput(client, sid, text, timeoutMs = 15_000) {
@@ -197,11 +197,11 @@ async function main() {
     const relayUrl = `ws://127.0.0.1:${relayPort}/ws`;
     const healthUrl = `http://127.0.0.1:${relayPort}/health`;
 
-    relay = startProcess("relay", "pnpm", ["dev:relay"], {
+    relay = startProcess("relay", "node", ["dist/cli.js", "relay"], {
       HOST: "127.0.0.1",
       PORT: relayPort,
     });
-    agent = startProcess("agent", "pnpm", ["dev:agent"], {
+    agent = startProcess("agent", "node", ["dist/cli.js", "agent"], {
       TERMPILOT_DEVICE_ID: deviceId,
       TERMPILOT_RELAY_URL: relayUrl,
     });
@@ -234,7 +234,7 @@ async function main() {
 
     relay.kill("SIGINT");
     await new Promise((resolve) => relay.once("close", resolve));
-    relay = startProcess("relay", "pnpm", ["dev:relay"], {
+    relay = startProcess("relay", "node", ["dist/cli.js", "relay"], {
       HOST: "127.0.0.1",
       PORT: relayPort,
     });

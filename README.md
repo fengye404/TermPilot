@@ -1,179 +1,135 @@
 # TermPilot
 
-TermPilot 是一个终端优先的远程控制系统，用来在手机上查看和控制电脑上的终端智能体任务。
+TermPilot 是一个终端优先的远程控制工具。电脑上跑 `tmux` 会话，手机直接打开 relay 域名查看和控制同一批会话。
 
-## 技术栈
+## 产品形态
 
-- 语言：TypeScript
-- 运行时：Node.js 24 LTS
-- 包管理：pnpm workspace
-- 手机端：React + Vite + Tailwind CSS v4 + xterm.js + PWA
-- 中继服务：Fastify + WebSocket + PostgreSQL
-- PC 端：Node.js + tmux
-
-## 仓库结构
-
-- `agent/`：PC 端 agent，负责管理本地 `tmux` 会话并向中继服务发起连接
-- `app/`：手机端 PWA，使用 React + Vite + Tailwind CSS + xterm.js
-- `relay/`：部署在个人服务器上的中继服务，使用 Fastify + WebSocket
-- `packages/protocol/`：三端共享协议类型
-- `scripts/`：稳定性检查与 UI 烟雾测试脚本
-- `docs/`：架构、协议与技术选型文档
-
-## 文档入口
-
-- `docs/architecture.md`：当前代码架构
-- `docs/protocol.md`：消息协议与配对接口
-- `docs/tech-selection-2026.md`：技术选型
-- `docs/README.md`：文档索引
-
-## 运行前提
-
-- 本机需要安装 `tmux`
-- Node.js 版本建议使用 24 LTS
-- 已安装 `pnpm`
-- 如需使用 PostgreSQL，请先准备本地或远程数据库
-- 如需自定义 token、端口、数据库或设备 ID，可参考 `.env.example`
+- 一个 npm 包：`termpilot`
+- 一个服务器命令：`termpilot relay`
+- 一个电脑命令：`termpilot agent`
+- 手机端不安装，直接打开 relay 域名
+- relay 同时负责消息中继和网页托管
 
 ## 快速开始
 
-### 1. 安装依赖
+### 服务器
+
+发布后：
+
+```bash
+npm install -g termpilot
+termpilot relay
+```
+
+当前仓库内本地验证：
 
 ```bash
 pnpm install
+pnpm build
+npm install -g .
+termpilot relay
 ```
 
-### 2. 准备 PostgreSQL
-
-如果你只是快速体验，可以先跳过这一步，`relay` 会退回到内存模式。
-
-如果你要验证完整链路，推荐本地直接起一个 `termpilot` 数据库。以 macOS + Homebrew 为例：
+常用参数：
 
 ```bash
-brew services start postgresql@17
-/opt/homebrew/opt/postgresql@17/bin/createdb termpilot
-export DATABASE_URL=postgresql://$(whoami)@127.0.0.1:5432/termpilot
+termpilot relay --host 0.0.0.0 --port 8787
+DATABASE_URL=postgresql://user:pass@127.0.0.1:5432/termpilot termpilot relay
 ```
 
-### 3. 启动三端
-
-分别开三个终端：
+### 电脑
 
 ```bash
-pnpm dev:relay
+npm install -g termpilot
+termpilot agent --relay ws://your-domain.com/ws
 ```
+
+本地测试：
 
 ```bash
-pnpm dev:agent
+termpilot agent --relay ws://127.0.0.1:8787/ws
 ```
+
+### 手机
+
+直接打开 relay 域名：
+
+- `https://your-domain.com`
+
+首次使用时，在电脑上申请一次性配对码：
 
 ```bash
-pnpm dev:app
+termpilot pair
 ```
 
-手机端页面默认地址：
+然后在手机页面输入配对码。
 
-- `http://127.0.0.1:5173`
+## 日常使用
 
-中继服务健康检查：
-
-- `http://127.0.0.1:8787/health`
-
-返回里会包含：
-
-- `storeMode=memory`
-- 或 `storeMode=postgres`
-
-### 4. 创建并进入第一个会话
-
-先在电脑上申请一个一次性配对码：
+创建会话并进入：
 
 ```bash
-pnpm agent:pair
+termpilot create --name claude-main --cwd /path/to/project
+termpilot list
+termpilot attach --sid <sid>
 ```
 
-然后在手机端打开页面，把这个配对码填进“设备配对”区域。配对成功后，页面会自动拿到设备访问令牌。
-
-接着在电脑上创建一个受 TermPilot 管理的会话：
+在会话里运行：
 
 ```bash
-pnpm agent:create -- --name claude-main
+claude code
+# 或
+open code
 ```
 
-查看当前会话列表：
-
-```bash
-pnpm agent:list
-```
-
-把本地终端附着到某个会话：
-
-```bash
-pnpm agent:attach -- --sid <sid>
-```
-
-此时你可以在这个会话里运行 `claude code`、`open code` 或其他长期任务；手机端打开同一个会话后，会看到同样的流式输出。
+此时手机和电脑看到的是同一个会话，输出会同步刷新。
 
 ## 常用命令
 
 ```bash
-pnpm dev:relay
-pnpm dev:agent
-pnpm dev:app
-pnpm agent:list
-pnpm agent:create -- --name <name>
-pnpm agent:attach -- --sid <sid>
-pnpm agent:kill -- --sid <sid>
-pnpm agent:pair
-pnpm agent:grants
-pnpm agent:audit
-pnpm agent:revoke -- --token <accessToken>
-pnpm check:stability
-pnpm test:ui-smoke
-pnpm typecheck
-pnpm build
+termpilot relay
+termpilot agent --relay ws://127.0.0.1:8787/ws
+termpilot pair
+termpilot create --name claude-main
+termpilot list
+termpilot attach --sid <sid>
+termpilot kill --sid <sid>
+termpilot grants
+termpilot audit --limit 30
+termpilot revoke --token <accessToken>
+termpilot doctor
 ```
-
-## 使用方式
-
-### 电脑端
-
-1. 启动 `relay` 和 `agent`
-2. 用 `pnpm agent:pair` 申请手机配对码
-3. 用 `pnpm agent:create` 创建一个新会话
-4. 用 `pnpm agent:attach` 进入该会话
-5. 在这个会话里运行长期任务
-6. 如需检查或撤销手机访问令牌，可用 `pnpm agent:grants` 和 `pnpm agent:revoke`
-7. 如需回看关键操作，可用 `pnpm agent:audit -- --limit 30`
-
-### 手机端
-
-1. 打开 `http://127.0.0.1:5173`
-2. 输入电脑端刚生成的配对码
-3. 确认页面已经拿到访问令牌和正确的设备 ID
-4. 在会话列表里选择一个会话
-5. 查看输出、发送输入、关闭会话
-6. 如需换手机或重新绑定，可点击“清除本机绑定”
-7. 需要粘贴长命令时，优先使用页面里的“粘贴大段命令”
-8. 会话很多时，可直接用搜索、状态筛选和置顶功能整理列表
-
-### 跨端协作规则
-
-- 电脑和手机看到的是同一批会话
-- 任一端创建的会话，另一端都能看到
-- 任一端关闭的会话，另一端都会同步状态
-- 需要跨端同步的任务，必须从 TermPilot 管理的会话里启动
 
 ## 最佳实践
 
-1. 一个长期任务用一个独立会话，不要把多个智能体混在同一页里跑。
-2. 会话名称直接写任务语义，比如 `claude-main`、`open-code-api`、`deploy-watch`。
-3. 需要跨端继续看的任务，一开始就通过 `pnpm agent:create` 创建，不要先在普通终端里跑再想着接管。
-4. 在电脑前工作时优先用 `pnpm agent:attach`，手机更适合看进度、补命令、做轻控制。
-5. 手机端平时不要手填共享 `client token`；优先走 `pnpm agent:pair` 的一次性配对流程。
-6. 演示和本地开发可以先用内存模式；要长期使用中继服务，优先接上 PostgreSQL。
-7. 如果手机丢了、换人了，先在电脑上用 `pnpm agent:grants` 查看已绑定令牌，再用 `pnpm agent:revoke -- --token ...` 立即撤销。
-8. 想追问题时先看 `pnpm agent:audit`，它会记录配对码创建、兑换、令牌撤销、会话创建和关闭请求。
-9. 会话多了以后，把常看的任务置顶；手机端筛选“运行中”会更适合盯长任务。
-10. 如果浏览器支持通知，建议开启“浏览器提醒”；页面切到后台时，会在设备离线或会话退出时提醒。
-11. 养成“先看 `/health` 再排查”的习惯，先确认 `relay` 是否在线，以及当前是 `memory` 还是 `postgres` 模式。
+1. 需要跨端同步的任务，一开始就用 `termpilot create` 创建，不要先在普通终端里跑再想着接管。
+2. 一个长期任务用一个独立会话，名称直接写任务语义，比如 `claude-main`、`deploy-watch`。
+3. 电脑前重操作优先 `termpilot attach`，手机更适合看进度、补命令和关闭会话。
+4. 手机优先走一次性配对码，不要长期依赖共享 `client token`。
+5. 要长期使用 relay，优先接 PostgreSQL；本地演示可以先用内存模式。
+6. 换手机或访问权变更时，先 `termpilot grants`，再 `termpilot revoke --token ...`。
+7. 想排查控制历史时先看 `termpilot audit --limit 30`。
+
+## 本地开发
+
+```bash
+pnpm install
+pnpm dev:relay
+pnpm dev:app
+pnpm dev:agent
+```
+
+常用检查：
+
+```bash
+pnpm typecheck
+pnpm build
+pnpm test:ui-smoke
+pnpm check:stability
+```
+
+更多实现说明：
+
+- [当前架构](/Users/fengye/workspace/TermPilot/docs/architecture.md)
+- [当前协议](/Users/fengye/workspace/TermPilot/docs/protocol.md)
+- [技术选型](/Users/fengye/workspace/TermPilot/docs/tech-selection-2026.md)

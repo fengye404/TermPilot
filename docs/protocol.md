@@ -2,7 +2,7 @@
 
 ## 1. 连接入口
 
-手机端和 agent 都通过 WebSocket 连接 relay：
+手机端和 agent 都通过 relay 的同一个 WebSocket 入口连接：
 
 ```text
 ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
@@ -15,13 +15,13 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 
 ## 2. 当前消息类型
 
-### 系统消息
+系统消息：
 
 - `auth.ok`
 - `error`
 - `relay.state`
 
-### 会话消息
+会话消息：
 
 - `session.list`
 - `session.list.result`
@@ -104,7 +104,7 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 - relay 保留最近一段输出帧
 - client 重连后用 `session.replay` 补拉
 
-## 6. 配对与访问令牌 HTTP 接口
+## 6. HTTP 接口
 
 ### 创建一次性配对码
 
@@ -113,34 +113,11 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 - 需要 `Authorization: Bearer <agent-token>`
 - 请求体：`{ "deviceId": "pc-main" }`
 
-返回：
-
-```json
-{
-  "deviceId": "pc-main",
-  "pairingCode": "ABC-234",
-  "expiresAt": "2026-03-10T09:00:00.000Z"
-}
-```
-
 ### 兑换配对码
 
 `POST /api/pairings/redeem`
 
 - 请求体：`{ "pairingCode": "ABC-234" }`
-
-返回：
-
-```json
-{
-  "deviceId": "pc-main",
-  "accessToken": "..."
-}
-```
-
-## 7. 设备管理 HTTP 接口
-
-这些接口都需要 `Authorization: Bearer <agent-token>`。
 
 ### 查看当前设备已发出的访问令牌
 
@@ -153,6 +130,25 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 ### 查看审计事件
 
 `GET /api/devices/:deviceId/audit-events?limit=20`
+
+### 健康检查
+
+`GET /health`
+
+返回：
+
+- `ok`
+- `storeMode`
+- `agentsOnline`
+- `clientsOnline`
+- `webUiReady`
+
+## 7. 当前产品入口与协议的关系
+
+- `termpilot relay` 对外暴露 HTTP + WebSocket
+- 手机端直接访问 relay 域名，再走 `/ws`
+- `termpilot agent` 始终只和 `/ws`、`/api/*` 交互
+- 手机端网页不再要求单独部署
 
 当前审计动作包括：
 
@@ -174,9 +170,7 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 - `data`：当前终端快照
 - `mode=replace`：客户端收到后直接替换当前渲染内容
 
-这不是最终形态，但足以支持第一版。
-
-## 7. 会话状态消息
+## 9. 会话状态消息
 
 会话状态变化时发送：
 
@@ -205,7 +199,7 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 }
 ```
 
-## 8. 输出补拉
+## 10. 输出补拉
 
 手机端重连或重新进入会话时，可以请求补拉最近输出：
 
@@ -220,40 +214,3 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
   }
 }
 ```
-
-中继服务会把缓冲区里 `seq > afterSeq` 的消息重新发给手机端。
-
-第一版由于使用快照模式，即使只保留最近几十帧，也足够把当前屏幕恢复出来。
-
-## 9. 错误消息
-
-统一错误格式：
-
-```json
-{
-  "type": "error",
-  "reqId": "req_input_001",
-  "deviceId": "pc-main",
-  "code": "SESSION_NOT_FOUND",
-  "message": "会话 s_123 不存在"
-}
-```
-
-第一版建议至少保留这些错误码：
-
-- `AUTH_FAILED`
-- `DEVICE_OFFLINE`
-- `SESSION_NOT_FOUND`
-- `SESSION_CREATE_FAILED`
-- `SESSION_INPUT_FAILED`
-- `SESSION_RESIZE_FAILED`
-- `SESSION_KILL_FAILED`
-
-## 10. 未来演进方向
-
-后续如果第一版跑稳，可以按下面顺序升级协议：
-
-1. 从快照模式升级到增量输出模式
-2. 增加更完整的终端按键支持
-3. 增加会话归档与历史查询
-4. 增加更严格的认证和权限控制
