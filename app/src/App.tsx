@@ -84,6 +84,7 @@ export default function App() {
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
+  const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
   const previousSessionStatusRef = useRef<Record<string, SessionRecord["status"]>>({});
   const bootstrappedNotificationsRef = useRef(false);
@@ -145,6 +146,31 @@ export default function App() {
   useEffect(() => {
     deviceIdRef.current = deviceId;
   }, [deviceId]);
+
+  useEffect(() => {
+    const normalizedDeviceId = deviceId.trim() || DEFAULT_DEVICE_ID;
+    if (!connected) {
+      requestedDeviceIdRef.current = normalizedDeviceId;
+      return;
+    }
+    if (requestedDeviceIdRef.current === normalizedDeviceId) {
+      return;
+    }
+
+    requestedDeviceIdRef.current = normalizedDeviceId;
+    setDeviceOnline(false);
+    setSessions([]);
+    setBuffers({});
+    setActiveSid(null);
+
+    const timeoutId = window.setTimeout(() => {
+      requestSessions(normalizedDeviceId);
+    }, 200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [connected, deviceId]);
 
   useEffect(() => {
     try {

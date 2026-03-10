@@ -50,7 +50,7 @@ def wait_for_pairing_code() -> str:
     raise RuntimeError(f"等待 agent 配对码超时: {last_error}")
 
 
-def goto_with_retry(page, url: str, attempts: int = 3) -> None:
+def goto_with_retry(page, url: str, attempts: int = 6) -> None:
     last_error: Exception | None = None
     for _ in range(attempts):
         try:
@@ -58,7 +58,7 @@ def goto_with_retry(page, url: str, attempts: int = 3) -> None:
             return
         except Exception as error:  # noqa: BLE001
             last_error = error
-            time.sleep(0.5)
+            time.sleep(1)
     raise RuntimeError(f"页面打开失败: {last_error}")
 
 
