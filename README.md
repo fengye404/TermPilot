@@ -59,7 +59,7 @@ termpilot agent --relay ws://127.0.0.1:8787/ws
 首次使用时，在电脑上申请一次性配对码：
 
 ```bash
-termpilot pair
+termpilot pair --relay ws://your-domain.com/ws
 ```
 
 然后在手机页面输入配对码。
@@ -67,7 +67,37 @@ termpilot pair
 配对成功后：
 
 - 访问令牌会自动写回页面
-- 手机端点“查看”会自动跳到终端区
+- 手机端默认先显示会话列表
+- 点进一个会话后才进入终端详情页
+- 连接信息和设备设置都在页面底部折叠区
+
+## 最短使用路径
+
+电脑上先挂着 agent：
+
+```bash
+termpilot agent --relay ws://your-domain.com/ws
+```
+
+然后同一台电脑另开一个终端申请配对码：
+
+```bash
+termpilot pair --relay ws://your-domain.com/ws
+```
+
+配对完成后，你日常最简单的启动方式就是：
+
+```bash
+termpilot claude code
+```
+
+或者：
+
+```bash
+termpilot open code
+```
+
+这会直接创建一个受 TermPilot 管理的 tmux 会话，并在当前终端里 attach 进去。手机上会同步看到同一个会话。
 
 ## 日常使用
 
@@ -77,6 +107,12 @@ termpilot pair
 termpilot create --name claude-main --cwd /path/to/project
 termpilot list
 termpilot attach --sid <sid>
+```
+
+如果你不想手动 `create + attach`，可以直接把命令交给 TermPilot：
+
+```bash
+termpilot claude code
 ```
 
 在会话里运行：

@@ -13,7 +13,7 @@ import { createReqId } from "@termpilot/protocol";
 import { ConnectionPanel } from "./components/ConnectionPanel";
 import { CreateSessionPanel } from "./components/CreateSessionPanel";
 import { SessionListPanel } from "./components/SessionListPanel";
-import { NoticeBanner, StatusBadge } from "./components/chrome";
+import { NoticeBanner, Panel } from "./components/chrome";
 import { TerminalWorkspace } from "./components/TerminalWorkspace";
 
 type SessionMap = Record<string, string>;
@@ -127,6 +127,7 @@ export default function App() {
     () => sessions.find((session) => session.sid === activeSid) ?? null,
     [activeSid, sessions],
   );
+  const isPaired = clientToken.trim().length > 0;
   const connected = connectionPhase === "connected";
   const canControlDevice = connected && deviceOnline;
   const parsedWsUrl = useMemo(() => tryParseUrl(wsUrl), [wsUrl]);
@@ -330,6 +331,16 @@ export default function App() {
       }
     }
   }, [activeSid, connected]);
+
+  useEffect(() => {
+    if (!clientToken.trim() || parsedWsUrl === null) {
+      return;
+    }
+    if (socketRef.current || connectionPhase !== "idle" || manuallyDisconnectedRef.current) {
+      return;
+    }
+    connect(false);
+  }, [clientToken, connectionPhase, parsedWsUrl]);
 
   useEffect(() => {
     const existing = new Set(sessions.map((session) => session.sid));
@@ -588,7 +599,7 @@ export default function App() {
           setActiveSid((current) => {
             const next = current && message.payload.sessions.some((session) => session.sid === current)
               ? current
-              : message.payload.sessions[0]?.sid ?? null;
+              : null;
             if (next) {
               requestReplay(next, deviceIdRef.current);
             }
@@ -765,6 +776,16 @@ export default function App() {
     });
   }
 
+  function handleKillSession(sid: string): void {
+    sendMessage({
+      type: "session.kill",
+      reqId: createReqId("kill"),
+      deviceId,
+      sid,
+    });
+    showNotice("info", "已发送关闭会话请求。");
+  }
+
   function revealWorkspace(): void {
     if (!workspaceRef.current || typeof window === "undefined") {
       return;
@@ -784,30 +805,20 @@ export default function App() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
       <header className="rounded-3xl border border-slate-800/80 bg-slate-900/70 p-5 shadow-2xl shadow-slate-950/40 backdrop-blur">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-300">TermPilot</p>
-            <h1 className="mt-2 text-3xl font-semibold text-white">手机查看和控制 tmux 会话</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-400">
-              浏览器直接打开可用，安卓和 iPhone 都走同一套 PWA 页面。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <StatusBadge
-              active={connected}
-              label={
-                connectionPhase === "reconnecting"
-                  ? "正在重连"
-                  : connected
-                    ? "已连接 Relay"
-                    : connectionPhase === "connecting"
-                      ? "连接中"
-                      : "Relay 未连接"
-              }
-            />
-            <StatusBadge active={deviceOnline} label={deviceOnline ? "设备在线" : "设备离线"} />
-          </div>
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-300">TermPilot</p>
+        <h1 className="mt-2 text-3xl font-semibold text-white">
+          {isPaired ? "会话列表" : "先绑定你的电脑"}
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm text-slate-400">
+          {isPaired
+            ? "先选一个会话，再进入查看输出和补命令。"
+            : "在电脑上执行 termpilot pair，手机输入一次性配对码后就能开始用。"}
+        </p>
+        {isPaired ? (
+          <p className="mt-3 text-xs text-slate-500">
+            {deviceId} · {deviceOnline ? "设备在线" : "设备离线"} · {connected ? "已连上 relay" : connectionPhase === "reconnecting" ? "正在重连 relay" : "relay 未连接"}
+          </p>
+        ) : null}
       </header>
 
       {notice ? (
@@ -824,90 +835,216 @@ export default function App() {
         />
       ) : null}
 
-      <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="space-y-5">
-          <ConnectionPanel
-            wsUrl={wsUrl}
-            wsUrlValid={parsedWsUrl !== null}
-            clientToken={clientToken}
-            deviceId={deviceId}
-            deviceIdEditable={!deviceIdLocked}
-            pairingCode={pairingCode}
-            pairingMessage={pairingMessage}
-            pairingPending={pairingPending}
-            connectionPhase={connectionPhase}
-            notificationsEnabled={notificationsEnabled}
-            onWsUrlChange={setWsUrl}
-            onClientTokenChange={setClientToken}
-            onDeviceIdChange={setDeviceId}
-            onPairingCodeChange={setPairingCode}
-            onRedeemPairingCode={() => {
-              void handleRedeemPairingCode();
-            }}
-            onConnect={() => connect(true)}
-            onRefresh={() => requestSessions(deviceIdRef.current)}
-            onDisconnect={disconnect}
-            onClearBinding={clearBinding}
-            onToggleNotifications={() => {
-              void toggleNotifications();
-            }}
-          />
+      {!isPaired ? (
+        <section className="mx-auto flex w-full max-w-md flex-col gap-4">
+          <Panel title="输入配对码">
+            <p className="text-sm text-slate-400">
+              电脑上执行 `termpilot pair --relay 你的 relay 地址`，然后把配对码填到这里。
+            </p>
+            <div className="mt-4 flex gap-3">
+              <input
+                className="flex-1 rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-base uppercase outline-none placeholder:text-slate-500 md:text-sm"
+                value={pairingCode}
+                onChange={(event) => setPairingCode(event.target.value)}
+                placeholder="ABC-234"
+              />
+              <button
+                className="rounded-full bg-emerald-400 px-5 py-3 text-sm font-medium text-slate-950 disabled:opacity-60"
+                type="button"
+                disabled={pairingPending || parsedWsUrl === null}
+                onClick={() => {
+                  void handleRedeemPairingCode();
+                }}
+              >
+                {pairingPending ? "配对中" : "配对"}
+              </button>
+            </div>
+            {pairingMessage ? <p className="mt-3 text-sm text-slate-400">{pairingMessage}</p> : null}
+          </Panel>
 
-          <CreateSessionPanel
-            canControl={canControlDevice}
-            createName={createName}
-            createCwd={createCwd}
-            createShell={createShell}
-            onCreateNameChange={setCreateName}
-            onCreateCwdChange={setCreateCwd}
-            onCreateShellChange={setCreateShell}
-            onSubmit={handleCreateSession}
-          />
+          <details className="rounded-3xl border border-slate-800/80 bg-slate-900/72 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur">
+            <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">高级设置</summary>
+            <div className="mt-4">
+              <ConnectionPanel
+                title="连接与设备设置"
+                wsUrl={wsUrl}
+                wsUrlValid={parsedWsUrl !== null}
+                clientToken={clientToken}
+                deviceId={deviceId}
+                deviceIdEditable={!deviceIdLocked}
+                pairingCode={pairingCode}
+                pairingMessage={pairingMessage}
+                pairingPending={pairingPending}
+                connectionPhase={connectionPhase}
+                notificationsEnabled={notificationsEnabled}
+                onWsUrlChange={setWsUrl}
+                onClientTokenChange={setClientToken}
+                onDeviceIdChange={setDeviceId}
+                onPairingCodeChange={setPairingCode}
+                onRedeemPairingCode={() => {
+                  void handleRedeemPairingCode();
+                }}
+                onConnect={() => connect(true)}
+                onRefresh={() => requestSessions(deviceIdRef.current)}
+                onDisconnect={disconnect}
+                onClearBinding={clearBinding}
+                onToggleNotifications={() => {
+                  void toggleNotifications();
+                }}
+                showPairingSection={false}
+              />
+            </div>
+          </details>
+        </section>
+      ) : (
+        <>
+          <section className="space-y-4 lg:hidden">
+            {activeSession ? (
+              <div ref={workspaceRef} data-testid="terminal-workspace">
+                <TerminalWorkspace
+                  activeSession={activeSession}
+                  activeSid={activeSid}
+                  canControl={canControlDevice}
+                  command={command}
+                  pasteBuffer={pasteBuffer}
+                  shortcutKeys={SHORTCUT_KEYS}
+                  terminalRef={terminalRef}
+                  onBack={() => setActiveSid(null)}
+                  onCommandChange={setCommand}
+                  onSubmitCommand={handleSendCommand}
+                  onPasteBufferChange={setPasteBuffer}
+                  onSendPaste={handleSendPaste}
+                  onSendKey={sendKey}
+                />
+              </div>
+            ) : (
+              <>
+                <SessionListPanel
+                  canControl={canControlDevice}
+                  sessions={sessions}
+                  filteredSessions={filteredSessions}
+                  activeSid={activeSid}
+                  pinnedSids={pinnedSids}
+                  sessionQuery={sessionQuery}
+                  statusFilter={statusFilter}
+                  onSessionQueryChange={setSessionQuery}
+                  onStatusFilterChange={setStatusFilter}
+                  onTogglePinnedSession={togglePinnedSession}
+                  onSelectSession={(sid) => {
+                    setActiveSid(sid);
+                    requestReplay(sid, deviceIdRef.current);
+                    revealWorkspace();
+                  }}
+                  onKillSession={handleKillSession}
+                />
 
-          <SessionListPanel
-            canControl={canControlDevice}
-            sessions={sessions}
-            filteredSessions={filteredSessions}
-            activeSid={activeSid}
-            pinnedSids={pinnedSids}
-            sessionQuery={sessionQuery}
-            statusFilter={statusFilter}
-            onSessionQueryChange={setSessionQuery}
-            onStatusFilterChange={setStatusFilter}
-            onTogglePinnedSession={togglePinnedSession}
-            onSelectSession={(sid) => {
-              setActiveSid(sid);
-              requestReplay(sid, deviceIdRef.current);
-              revealWorkspace();
-            }}
-            onKillSession={(sid) => {
-              sendMessage({
-                type: "session.kill",
-                reqId: createReqId("kill"),
-                deviceId,
-                sid,
-              });
-            }}
-          />
-        </div>
+                <details className="rounded-3xl border border-slate-800/80 bg-slate-900/72 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur">
+                  <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">新建会话</summary>
+                  <div className="mt-4">
+                    <CreateSessionPanel
+                      canControl={canControlDevice}
+                      createName={createName}
+                      createCwd={createCwd}
+                      createShell={createShell}
+                      onCreateNameChange={setCreateName}
+                      onCreateCwdChange={setCreateCwd}
+                      onCreateShellChange={setCreateShell}
+                      onSubmit={handleCreateSession}
+                    />
+                  </div>
+                </details>
+              </>
+            )}
+          </section>
 
-        <div ref={workspaceRef} data-testid="terminal-workspace">
-          <TerminalWorkspace
-            activeSession={activeSession}
-            activeSid={activeSid}
-            canControl={canControlDevice}
-            command={command}
-            pasteBuffer={pasteBuffer}
-            shortcutKeys={SHORTCUT_KEYS}
-            terminalRef={terminalRef}
-            onCommandChange={setCommand}
-            onSubmitCommand={handleSendCommand}
-            onPasteBufferChange={setPasteBuffer}
-            onSendPaste={handleSendPaste}
-            onSendKey={sendKey}
-          />
-        </div>
-      </section>
+          <section className="hidden gap-5 lg:grid lg:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="space-y-5">
+              <CreateSessionPanel
+                canControl={canControlDevice}
+                createName={createName}
+                createCwd={createCwd}
+                createShell={createShell}
+                onCreateNameChange={setCreateName}
+                onCreateCwdChange={setCreateCwd}
+                onCreateShellChange={setCreateShell}
+                onSubmit={handleCreateSession}
+              />
+
+              <SessionListPanel
+                canControl={canControlDevice}
+                sessions={sessions}
+                filteredSessions={filteredSessions}
+                activeSid={activeSid}
+                pinnedSids={pinnedSids}
+                sessionQuery={sessionQuery}
+                statusFilter={statusFilter}
+                onSessionQueryChange={setSessionQuery}
+                onStatusFilterChange={setStatusFilter}
+                onTogglePinnedSession={togglePinnedSession}
+                onSelectSession={(sid) => {
+                  setActiveSid(sid);
+                  requestReplay(sid, deviceIdRef.current);
+                }}
+                onKillSession={handleKillSession}
+              />
+            </div>
+
+            <div data-testid="desktop-terminal-workspace">
+              <TerminalWorkspace
+                activeSession={activeSession}
+                activeSid={activeSid}
+                canControl={canControlDevice}
+                command={command}
+                pasteBuffer={pasteBuffer}
+                shortcutKeys={SHORTCUT_KEYS}
+                terminalRef={terminalRef}
+                onCommandChange={setCommand}
+                onSubmitCommand={handleSendCommand}
+                onPasteBufferChange={setPasteBuffer}
+                onSendPaste={handleSendPaste}
+                onSendKey={sendKey}
+              />
+            </div>
+          </section>
+
+          <details className="rounded-3xl border border-slate-800/80 bg-slate-900/72 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur">
+            <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">连接与设备设置</summary>
+            <p className="mt-3 text-xs text-slate-500">
+              这里放不常用的信息和管理项。日常使用时，你主要只需要看会话列表和终端输出。
+            </p>
+            <div className="mt-4">
+              <ConnectionPanel
+                title="连接与设备设置"
+                wsUrl={wsUrl}
+                wsUrlValid={parsedWsUrl !== null}
+                clientToken={clientToken}
+                deviceId={deviceId}
+                deviceIdEditable={!deviceIdLocked}
+                pairingCode={pairingCode}
+                pairingMessage={pairingMessage}
+                pairingPending={pairingPending}
+                connectionPhase={connectionPhase}
+                notificationsEnabled={notificationsEnabled}
+                onWsUrlChange={setWsUrl}
+                onClientTokenChange={setClientToken}
+                onDeviceIdChange={setDeviceId}
+                onPairingCodeChange={setPairingCode}
+                onRedeemPairingCode={() => {
+                  void handleRedeemPairingCode();
+                }}
+                onConnect={() => connect(true)}
+                onRefresh={() => requestSessions(deviceIdRef.current)}
+                onDisconnect={disconnect}
+                onClearBinding={clearBinding}
+                onToggleNotifications={() => {
+                  void toggleNotifications();
+                }}
+                showPairingSection={false}
+              />
+            </div>
+          </details>
+        </>
+      )}
     </main>
   );
 }

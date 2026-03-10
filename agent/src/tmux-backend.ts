@@ -65,7 +65,7 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
   const name = input.name?.trim() || `session-${sid.slice(0, 6)}`;
   const shell = input.shell?.trim() || process.env.SHELL || "/bin/zsh";
   const workingDirectory = input.cwd?.trim() || processCwd();
-  const deviceId = input.deviceId || DEFAULT_DEVICE_ID;
+  const deviceId = input.deviceId?.trim() || process.env.TERMPILOT_DEVICE_ID || DEFAULT_DEVICE_ID;
   const startedAt = now();
   const tmuxSessionName = buildTmuxSessionName(sid, name);
 

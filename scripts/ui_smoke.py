@@ -76,6 +76,20 @@ def wait_for_workspace_in_viewport(page, timeout_seconds: float = 3) -> None:
     raise RuntimeError("移动端查看会话后，终端区域没有滚动进入可视区")
 
 
+def visible_session(page, name: str):
+    return page.locator(f'[data-session-name="{name}"]:visible')
+
+
+def wait_for_session_text(page, name: str, text: str, timeout_seconds: float = 15) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        content = visible_session(page, name).text_content() or ""
+        if text in content:
+            return
+        time.sleep(0.2)
+    raise RuntimeError(f"等待会话 {name} 出现文本失败: {text}")
+
+
 def main() -> None:
     session_one = f"ui-one-{subprocess.getoutput('date +%s')}"
     session_two = f"ui-two-{subprocess.getoutput('date +%s')}"
@@ -118,15 +132,18 @@ def main() -> None:
             else:
                 raise RuntimeError("配对后访问令牌没有写回页面")
 
-            page.locator(f'[data-session-name="{session_one}"]').get_by_role("button", name="查看").click()
+            visible_session(page, session_one).get_by_role("button", name="查看").click()
             page.get_by_text(session_one, exact=False).first.wait_for(timeout=15000)
             wait_for_workspace_in_viewport(page)
-            page.locator(f'[data-session-name="{session_two}"]').get_by_role("button", name="查看").click()
+            page.get_by_role("button", name="返回会话列表").click()
+            visible_session(page, session_two).get_by_role("button", name="查看").click()
             page.get_by_text(session_two, exact=False).first.wait_for(timeout=15000)
+            page.get_by_role("button", name="返回会话列表").click()
 
-            page.locator(f'[data-session-name="{session_one}"]').get_by_role("button", name="关闭").click()
-            page.locator(f'[data-session-name="{session_one}"]').get_by_text("已退出").wait_for(timeout=15000)
+            visible_session(page, session_one).get_by_role("button", name="关闭").click()
+            page.get_by_text("已发送关闭会话请求。", exact=False).wait_for(timeout=10000)
 
+            page.locator("summary", has_text="连接与设备设置").click()
             page.get_by_role("button", name="清除本机绑定").click()
             page.get_by_text("已清除本机保存的访问令牌", exact=False).wait_for(timeout=10000)
             if token_input.input_value() != "":

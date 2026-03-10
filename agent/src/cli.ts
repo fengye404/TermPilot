@@ -10,12 +10,15 @@ import {
   getSessionBySid,
   hasSession,
   killSession,
+  sendInput,
 } from "./tmux-backend";
 
 function printHelp(): void {
   console.log(`TermPilot agent 用法：
 
   termpilot agent
+  termpilot claude code
+  termpilot run -- claude code
   termpilot create --name claude-main --cwd /path/to/project
   termpilot list
   termpilot kill --sid <sid>
@@ -126,6 +129,29 @@ async function runDoctor(): Promise<void> {
 function getDeviceId(argv: string[]): string {
   const args = parseArgs(argv);
   return resolveDeviceId(typeof args.deviceId === "string" ? args.deviceId : undefined);
+}
+
+function buildQuickSessionName(commandArgs: string[]): string {
+  const raw = commandArgs.join("-").trim().toLowerCase();
+  const normalized = raw.replace(/[^a-z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return normalized.slice(0, 32) || "task";
+}
+
+async function runManagedCommand(argv: string[]): Promise<void> {
+  const commandArgs = argv[0] === "--" ? argv.slice(1) : argv;
+  if (commandArgs.length === 0) {
+    throw new Error("请在 termpilot 后面提供要运行的命令，例如：termpilot claude code");
+  }
+
+  const session = await createSession({
+    name: buildQuickSessionName(commandArgs),
+    cwd: processCwd(),
+    deviceId: resolveDeviceId(),
+  });
+
+  console.log(`已创建会话 ${session.sid} (${session.name})`);
+  await sendInput(session, `${commandArgs.join(" ")}\n`);
+  await attachSession(session);
 }
 
 async function runPair(argv: string[]): Promise<void> {
@@ -241,8 +267,12 @@ export async function runAgentCli(argv = process.argv.slice(2)): Promise<void> {
     case "revoke":
       await runRevoke(rest);
       return;
+    case "run":
+      await ensureTmuxAvailable();
+      await runManagedCommand(rest);
+      return;
     default:
-      printHelp();
-      process.exitCode = 1;
+      await ensureTmuxAvailable();
+      await runManagedCommand(argv);
   }
 }

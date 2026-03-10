@@ -31,6 +31,8 @@ function printHelp(): void {
 
   termpilot relay [--host 0.0.0.0] [--port 8787]
   termpilot agent [--relay ws://127.0.0.1:8787/ws] [--device-id pc-main]
+  termpilot claude code
+  termpilot run -- claude code
 
   termpilot pair [--device-id pc-main]
   termpilot create --name claude-main [--cwd /path/to/project]
@@ -108,8 +110,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     }
     default:
-      printHelp();
-      process.exitCode = 1;
+      await runAgentCli([command, ...rest]);
   }
 }
 

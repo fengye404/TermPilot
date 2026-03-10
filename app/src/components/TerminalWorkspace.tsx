@@ -11,6 +11,7 @@ interface TerminalWorkspaceProps {
   pasteBuffer: string;
   shortcutKeys: Array<{ key: InputKey; label: string }>;
   terminalRef: RefObject<HTMLDivElement | null>;
+  onBack?: () => void;
   onCommandChange: (value: string) => void;
   onSubmitCommand: (event: FormEvent<HTMLFormElement>) => void;
   onPasteBufferChange: (value: string) => void;
@@ -30,6 +31,15 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         </div>
       ) : (
         <div className="flex h-full min-h-[68vh] flex-col gap-4">
+          {props.onBack ? (
+            <button
+              className="inline-flex min-h-11 w-fit items-center rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200"
+              type="button"
+              onClick={props.onBack}
+            >
+              返回会话列表
+            </button>
+          ) : null}
           <div className="flex flex-wrap gap-2 md:sticky md:top-0 md:z-10 md:bg-slate-900/72 md:pb-2">
             {props.shortcutKeys.map(({ key, label }) => (
               <button
@@ -49,7 +59,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
 
           <form className="flex flex-col gap-3 md:flex-row" onSubmit={props.onSubmitCommand}>
             <input
-              className="flex-1 rounded-full border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
+              className="flex-1 rounded-full border border-slate-700 bg-slate-950/60 px-4 py-3 text-base outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50 md:text-sm"
               value={props.command}
               onChange={(event) => props.onCommandChange(event.target.value)}
               placeholder="输入命令，发送时会自动追加回车"
@@ -65,7 +75,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <span className="text-xs text-slate-500">适合脚本、多行命令和长 prompt</span>
             </div>
             <textarea
-              className="mt-3 min-h-32 w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm outline-none placeholder:text-slate-500 disabled:opacity-50"
+              className="mt-3 min-h-32 w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-base outline-none placeholder:text-slate-500 disabled:opacity-50 md:text-sm"
               value={props.pasteBuffer}
               onChange={(event) => props.onPasteBufferChange(event.target.value)}
               placeholder="在这里粘贴多行内容。原样发送不会自动补回车；发送并回车会在末尾补一个回车。"
