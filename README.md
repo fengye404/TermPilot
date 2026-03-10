@@ -56,6 +56,18 @@ termpilot agent --relay ws://your-domain.com/ws
 termpilot agent --relay ws://your-domain.com/ws --foreground
 ```
 
+查看后台状态：
+
+```bash
+termpilot agent status
+```
+
+停止后台 agent：
+
+```bash
+termpilot agent stop
+```
+
 本地测试：
 
 ```bash
@@ -130,6 +142,8 @@ open code
 ```bash
 termpilot relay
 termpilot agent --relay ws://127.0.0.1:8787/ws
+termpilot agent status
+termpilot agent stop
 termpilot pair
 termpilot create --name claude-main
 termpilot list

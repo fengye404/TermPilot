@@ -29,6 +29,8 @@ function printHelp(): void {
 
   termpilot agent
   termpilot agent --foreground
+  termpilot agent status
+  termpilot agent stop
   termpilot claude code
   termpilot run -- claude code
   termpilot create --name claude-main --cwd /path/to/project
@@ -156,6 +158,19 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+function readRuntimeStatus() {
+  const runtime = loadAgentRuntime();
+  if (!runtime) {
+    return { runtime: null, alive: false };
+  }
+  const alive = isProcessAlive(runtime.pid);
+  if (!alive) {
+    clearAgentRuntime(runtime.pid);
+    return { runtime: null, alive: false };
+  }
+  return { runtime, alive };
+}
+
 async function waitForPairingCode(deviceId: string): Promise<Awaited<ReturnType<typeof createPairingCode>> | null> {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -181,12 +196,12 @@ async function runStart(argv: string[]): Promise<void> {
 
   const deviceId = getDeviceId(argv);
   const relayUrl = getRelayUrl();
-  const existingRuntime = loadAgentRuntime();
+  const existing = readRuntimeStatus();
 
-  if (existingRuntime && isProcessAlive(existingRuntime.pid)) {
-    console.log(`后台 agent 已在运行，PID: ${existingRuntime.pid}`);
-    console.log(`设备: ${existingRuntime.deviceId}`);
-    console.log(`relay: ${existingRuntime.relayUrl}`);
+  if (existing.runtime && existing.alive) {
+    console.log(`后台 agent 已在运行，PID: ${existing.runtime.pid}`);
+    console.log(`设备: ${existing.runtime.deviceId}`);
+    console.log(`relay: ${existing.runtime.relayUrl}`);
     const pairing = await waitForPairingCode(deviceId);
     if (pairing) {
       console.log(`配对码: ${pairing.pairingCode}`);
@@ -229,6 +244,49 @@ async function runStart(argv: string[]): Promise<void> {
     console.log(`有效期至: ${pairing.expiresAt}`);
     console.log("手机端直接打开 relay 页面并输入这个配对码即可。");
   }
+}
+
+function runStatus(): void {
+  const { runtime, alive } = readRuntimeStatus();
+  if (!runtime || !alive) {
+    console.log("后台 agent 当前未运行。");
+    console.log(`状态目录: ${getAgentHome()}`);
+    console.log(`日志: ${getAgentLogFilePath()}`);
+    return;
+  }
+
+  const sessions = loadState().sessions.filter((session) => session.deviceId === runtime.deviceId);
+  const runningSessions = sessions.filter((session) => session.status === "running").length;
+  console.log("后台 agent 正在运行。");
+  console.log(`PID: ${runtime.pid}`);
+  console.log(`设备: ${runtime.deviceId}`);
+  console.log(`relay: ${runtime.relayUrl}`);
+  console.log(`启动时间: ${runtime.startedAt}`);
+  console.log(`日志: ${getAgentLogFilePath()}`);
+  console.log(`会话: ${runningSessions} 个运行中 / ${sessions.length} 个总计`);
+}
+
+async function runStop(): Promise<void> {
+  const { runtime, alive } = readRuntimeStatus();
+  if (!runtime || !alive) {
+    console.log("后台 agent 当前未运行。");
+    clearAgentRuntime();
+    return;
+  }
+
+  process.kill(runtime.pid, "SIGTERM");
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (!isProcessAlive(runtime.pid)) {
+      clearAgentRuntime(runtime.pid);
+      console.log(`后台 agent 已停止，PID: ${runtime.pid}`);
+      return;
+    }
+    await delay(100);
+  }
+
+  process.kill(runtime.pid, "SIGKILL");
+  clearAgentRuntime(runtime.pid);
+  console.log(`后台 agent 已强制停止，PID: ${runtime.pid}`);
 }
 
 function buildQuickSessionName(commandArgs: string[]): string {
@@ -352,6 +410,12 @@ export async function runAgentCli(argv = process.argv.slice(2)): Promise<void> {
   switch (command) {
     case "start":
       await runStart(rest);
+      return;
+    case "status":
+      runStatus();
+      return;
+    case "stop":
+      await runStop();
       return;
     case "daemon": {
       await runDaemon();

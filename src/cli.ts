@@ -31,6 +31,8 @@ function printHelp(): void {
 
   termpilot relay [--host 0.0.0.0] [--port 8787]
   termpilot agent [--relay ws://127.0.0.1:8787/ws] [--device-id pc-main]
+  termpilot agent status
+  termpilot agent stop
   termpilot claude code
   termpilot run -- claude code
 
@@ -93,7 +95,11 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     }
     case "agent": {
       const agentArgs = applyEnvFlags(rest, AGENT_ENV_FLAGS);
-      await runAgentCli(["start", ...agentArgs]);
+      if (agentArgs[0] === "status" || agentArgs[0] === "stop" || agentArgs[0] === "daemon") {
+        await runAgentCli(agentArgs);
+      } else {
+        await runAgentCli(["start", ...agentArgs]);
+      }
       return;
     }
     case "agent-daemon": {
