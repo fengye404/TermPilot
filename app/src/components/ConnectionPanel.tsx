@@ -5,6 +5,7 @@ interface ConnectionPanelProps {
   wsUrlValid: boolean;
   clientToken: string;
   deviceId: string;
+  deviceIdEditable: boolean;
   pairingCode: string;
   pairingMessage: string;
   pairingPending: boolean;
@@ -30,7 +31,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
       <div className="space-y-3">
         <Field label="WebSocket 地址" value={props.wsUrl} onChange={props.onWsUrlChange} />
         <Field label="访问令牌" value={props.clientToken} onChange={props.onClientTokenChange} />
-        <Field label="设备 ID" value={props.deviceId} onChange={props.onDeviceIdChange} />
+        <Field label="设备 ID" value={props.deviceId} onChange={props.onDeviceIdChange} disabled={!props.deviceIdEditable} />
         <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
           <p className="text-sm font-medium text-white">设备配对</p>
           <p className="mt-1 text-xs text-slate-500">

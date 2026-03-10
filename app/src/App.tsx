@@ -92,6 +92,7 @@ export default function App() {
   const [wsUrl, setWsUrl] = useState(getDefaultWsUrl);
   const [clientToken, setClientToken] = useState(DEFAULT_CLIENT_TOKEN);
   const [deviceId, setDeviceId] = useState(DEFAULT_DEVICE_ID);
+  const [deviceIdLocked, setDeviceIdLocked] = useState(false);
   const [connectionPhase, setConnectionPhase] = useState<ConnectionPhase>("idle");
   const [deviceOnline, setDeviceOnline] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -425,6 +426,7 @@ export default function App() {
     disconnect();
     setClientToken("");
     setDeviceId(DEFAULT_DEVICE_ID);
+    setDeviceIdLocked(false);
     setActiveSid(null);
     setSessions([]);
     setBuffers({});
@@ -521,6 +523,7 @@ export default function App() {
             const nextDeviceId = message.payload.deviceId ?? (deviceIdRef.current.trim() || DEFAULT_DEVICE_ID);
             const previousDeviceId = deviceIdRef.current;
             const shouldHydrateDeviceId = Boolean(message.payload.deviceId) || !previousDeviceId.trim();
+            setDeviceIdLocked(Boolean(message.payload.deviceId));
             deviceIdRef.current = nextDeviceId;
             if (nextDeviceId !== previousDeviceId) {
               setSessions([]);
@@ -761,6 +764,7 @@ export default function App() {
             wsUrlValid={parsedWsUrl !== null}
             clientToken={clientToken}
             deviceId={deviceId}
+            deviceIdEditable={!deviceIdLocked}
             pairingCode={pairingCode}
             pairingMessage={pairingMessage}
             pairingPending={pairingPending}
