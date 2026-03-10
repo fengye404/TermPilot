@@ -96,7 +96,13 @@ def main() -> None:
             goto_with_retry(page, APP_URL)
             page.get_by_placeholder("ABC-234").fill(pairing_code)
             page.get_by_role("button", name="配对").click()
-            page.get_by_text("已绑定设备", exact=False).wait_for(timeout=15000)
+            token_input = page.get_by_label("访问令牌")
+            for _ in range(30):
+                if token_input.input_value() != "":
+                    break
+                time.sleep(0.5)
+            else:
+                raise RuntimeError("配对后访问令牌没有写回页面")
 
             page.locator(f'[data-session-name="{session_one}"]').get_by_role("button", name="查看").click()
             page.get_by_text(session_one, exact=False).first.wait_for(timeout=15000)
@@ -106,7 +112,6 @@ def main() -> None:
             page.locator(f'[data-session-name="{session_one}"]').get_by_role("button", name="关闭").click()
             page.locator(f'[data-session-name="{session_one}"]').get_by_text("已退出").wait_for(timeout=15000)
 
-            token_input = page.get_by_label("访问令牌")
             page.get_by_role("button", name="清除本机绑定").click()
             page.get_by_text("已清除本机保存的访问令牌", exact=False).wait_for(timeout=10000)
             if token_input.input_value() != "":

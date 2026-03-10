@@ -13,7 +13,7 @@ import { createReqId } from "@termpilot/protocol";
 import { ConnectionPanel } from "./components/ConnectionPanel";
 import { CreateSessionPanel } from "./components/CreateSessionPanel";
 import { SessionListPanel } from "./components/SessionListPanel";
-import { StatusBadge } from "./components/chrome";
+import { NoticeBanner, StatusBadge } from "./components/chrome";
 import { TerminalWorkspace } from "./components/TerminalWorkspace";
 
 type SessionMap = Record<string, string>;
@@ -43,6 +43,11 @@ interface StoredState {
   activeSid: string | null;
   pinnedSids?: string[];
   notificationsEnabled?: boolean;
+}
+
+interface NoticeState {
+  kind: "info" | "success" | "error";
+  text: string;
 }
 
 function getDefaultWsUrl(): string {
@@ -85,6 +90,7 @@ export default function App() {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
@@ -109,6 +115,7 @@ export default function App() {
   const [pairingMessage, setPairingMessage] = useState("");
   const [pairingPending, setPairingPending] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notice, setNotice] = useState<NoticeState | null>(null);
   const [command, setCommand] = useState("");
   const [pasteBuffer, setPasteBuffer] = useState("");
   const [createName, setCreateName] = useState("");
@@ -307,6 +314,9 @@ export default function App() {
       if (reconnectTimerRef.current !== null) {
         window.clearTimeout(reconnectTimerRef.current);
       }
+      if (noticeTimerRef.current !== null) {
+        window.clearTimeout(noticeTimerRef.current);
+      }
       socketRef.current?.close();
     };
   }, []);
@@ -365,6 +375,17 @@ export default function App() {
     } catch {
       return false;
     }
+  }
+
+  function showNotice(kind: NoticeState["kind"], text: string): void {
+    setNotice({ kind, text });
+    if (noticeTimerRef.current !== null) {
+      window.clearTimeout(noticeTimerRef.current);
+    }
+    noticeTimerRef.current = window.setTimeout(() => {
+      setNotice(null);
+      noticeTimerRef.current = null;
+    }, 4000);
   }
 
   function sendMessage(message: unknown): void {
@@ -435,6 +456,7 @@ export default function App() {
     setSessions([]);
     setBuffers({});
     setPairingMessage("已清除本机保存的访问令牌，请重新配对。");
+    showNotice("info", "已清除本机绑定。");
     previousDeviceOnlineRef.current = false;
     previousSessionStatusRef.current = {};
     bootstrappedNotificationsRef.current = false;
@@ -447,24 +469,24 @@ export default function App() {
   async function toggleNotifications(): Promise<void> {
     if (notificationsEnabled) {
       setNotificationsEnabled(false);
-      setPairingMessage("已关闭浏览器提醒。");
+      showNotice("info", "已关闭浏览器提醒。");
       return;
     }
 
     if (typeof window === "undefined" || !("Notification" in window)) {
-      setPairingMessage("当前浏览器不支持通知。");
+      showNotice("error", "当前浏览器不支持通知。");
       return;
     }
 
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       setNotificationsEnabled(true);
-      setPairingMessage("已开启浏览器提醒。页面在后台时，会在会话退出或设备离线时提醒。");
+      showNotice("success", "已开启浏览器提醒。页面在后台时，会在会话退出或设备离线时提醒。");
       return;
     }
 
     setNotificationsEnabled(false);
-    setPairingMessage("通知权限未开启。");
+    showNotice("error", "通知权限未开启。");
   }
 
   function connect(resetManual = true, tokenOverride?: string): void {
@@ -610,10 +632,11 @@ export default function App() {
               setClientToken("");
             }
             setPairingMessage(message.message);
+            showNotice("error", message.message);
             socket.close();
             return;
           }
-          window.alert(message.message);
+          showNotice("error", message.message);
       }
     });
   }
@@ -652,11 +675,13 @@ export default function App() {
       setDeviceId(payload.deviceId);
       setClientToken(payload.accessToken);
       setPairingCode("");
-      setPairingMessage(`已绑定设备 ${payload.deviceId}，现在可以直接连接。`);
+      setPairingMessage("");
+      showNotice("success", `已绑定设备 ${payload.deviceId}。`);
       connect(true, payload.accessToken);
     } catch (error) {
       const message = error instanceof Error ? error.message : "配对失败";
       setPairingMessage(message);
+      showNotice("error", message);
     } finally {
       setPairingPending(false);
     }
@@ -665,7 +690,10 @@ export default function App() {
   function handleCreateSession(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (!canControlDevice) {
-      setPairingMessage(deviceOnline ? "当前未连接 relay，无法创建会话。" : `设备 ${deviceId || DEFAULT_DEVICE_ID} 当前离线，无法创建会话。`);
+      showNotice(
+        "error",
+        deviceOnline ? "当前未连接 relay，无法创建会话。" : `设备 ${deviceId || DEFAULT_DEVICE_ID} 当前离线，无法创建会话。`,
+      );
       return;
     }
     sendMessage({
@@ -679,6 +707,7 @@ export default function App() {
       },
     });
     setCreateName("");
+    showNotice("success", "已发送创建会话请求。");
   }
 
   function handleSendCommand(event: React.FormEvent<HTMLFormElement>): void {
@@ -714,6 +743,7 @@ export default function App() {
       },
     });
     setPasteBuffer("");
+    showNotice("success", mode === "line" ? "已发送多行内容并追加回车。" : "已原样发送多行内容。");
   }
 
   function sendKey(key: InputKey): void {
@@ -760,6 +790,20 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {notice ? (
+        <NoticeBanner
+          kind={notice.kind}
+          text={notice.text}
+          onDismiss={() => {
+            setNotice(null);
+            if (noticeTimerRef.current !== null) {
+              window.clearTimeout(noticeTimerRef.current);
+              noticeTimerRef.current = null;
+            }
+          }}
+        />
+      ) : null}
 
       <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-5">

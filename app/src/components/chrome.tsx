@@ -45,3 +45,28 @@ export function StatusBadge(props: { active: boolean; label: string }) {
     </span>
   );
 }
+
+export function NoticeBanner(props: {
+  kind: "info" | "success" | "error";
+  text: string;
+  onDismiss: () => void;
+}) {
+  const tone = props.kind === "error"
+    ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+    : props.kind === "success"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+      : "border-sky-500/40 bg-sky-500/10 text-sky-100";
+
+  return (
+    <div className={`flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${tone}`}>
+      <p>{props.text}</p>
+      <button
+        className="rounded-full border border-current/30 px-3 py-1 text-xs"
+        type="button"
+        onClick={props.onDismiss}
+      >
+        关闭
+      </button>
+    </div>
+  );
+}
