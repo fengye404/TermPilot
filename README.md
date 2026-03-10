@@ -114,6 +114,7 @@ termpilot doctor
 
 更多实现说明：
 
+- [文档索引](/Users/fengye/workspace/TermPilot/docs/README.md)
 - [开发文档](/Users/fengye/workspace/TermPilot/docs/development.md)
 - [当前架构](/Users/fengye/workspace/TermPilot/docs/architecture.md)
 - [当前协议](/Users/fengye/workspace/TermPilot/docs/protocol.md)
