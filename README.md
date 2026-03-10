@@ -17,7 +17,7 @@ TermPilot 是一个终端优先的远程控制工具。电脑上跑 `tmux` 会�
 发布后：
 
 ```bash
-npm install -g termpilot
+npm install -g @fengye404/termpilot
 termpilot relay
 ```
 
@@ -40,7 +40,7 @@ DATABASE_URL=postgresql://user:pass@127.0.0.1:5432/termpilot termpilot relay
 ### 电脑
 
 ```bash
-npm install -g termpilot
+npm install -g @fengye404/termpilot
 termpilot agent --relay ws://your-domain.com/ws
 ```
 

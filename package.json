@@ -1,5 +1,5 @@
 {
-  "name": "termpilot",
+  "name": "@fengye404/termpilot",
   "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@10.31.0",
@@ -16,6 +16,9 @@
   ],
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "pnpm -r typecheck && tsc --noEmit -p tsconfig.json && pnpm --filter @termpilot/app build && tsup",
