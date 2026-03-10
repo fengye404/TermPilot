@@ -30,7 +30,12 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
     <Panel title="连接">
       <div className="space-y-3">
         <Field label="WebSocket 地址" value={props.wsUrl} onChange={props.onWsUrlChange} />
-        <Field label="访问令牌" value={props.clientToken} onChange={props.onClientTokenChange} />
+        <Field
+          label="访问令牌"
+          value={props.clientToken}
+          onChange={props.onClientTokenChange}
+          placeholder="首次配对后会自动写入"
+        />
         <Field label="设备 ID" value={props.deviceId} onChange={props.onDeviceIdChange} disabled={!props.deviceIdEditable} />
         <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
           <p className="text-sm font-medium text-white">设备配对</p>
@@ -55,23 +60,23 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
           </div>
           {props.pairingMessage ? <p className="mt-2 text-xs text-slate-400">{props.pairingMessage}</p> : null}
         </div>
-        <div className="flex gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
           <button
-            className="flex-1 rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:opacity-60"
+            className="w-full rounded-full bg-sky-500 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:opacity-60"
             disabled={props.connectionPhase === "connecting" || !props.wsUrlValid}
             onClick={props.onConnect}
           >
             {connected ? "重新连接" : props.connectionPhase === "connecting" ? "连接中" : "连接"}
           </button>
           <button
-            className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200 disabled:opacity-40"
+            className="w-full rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200 disabled:opacity-40"
             disabled={!connected}
             onClick={props.onRefresh}
           >
             刷新
           </button>
           <button
-            className="rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200 disabled:opacity-40"
+            className="w-full rounded-full border border-slate-700 px-4 py-2.5 text-sm text-slate-200 disabled:opacity-40"
             disabled={props.connectionPhase === "idle"}
             onClick={props.onDisconnect}
           >

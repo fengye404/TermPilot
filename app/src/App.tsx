@@ -32,7 +32,7 @@ const SHORTCUT_KEYS: Array<{ key: InputKey; label: string }> = [
 ];
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:8787/ws";
-const DEFAULT_CLIENT_TOKEN = "demo-client-token";
+const DEFAULT_CLIENT_TOKEN = "";
 const DEFAULT_DEVICE_ID = "pc-main";
 const STORAGE_KEY = "termpilot-app-state";
 
@@ -86,6 +86,7 @@ function tryParseUrl(value: string): URL | null {
 
 export default function App() {
   const terminalRef = useRef<HTMLDivElement | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
   const terminal = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -507,6 +508,7 @@ export default function App() {
 
     socketRef.current?.close();
     setConnectionPhase(resetManual ? "connecting" : "reconnecting");
+    setPairingMessage("");
 
     const url = new URL(parsedWsUrl.toString());
     url.searchParams.set("role", "client");
@@ -549,6 +551,7 @@ export default function App() {
             const nextDeviceId = message.payload.deviceId ?? (deviceIdRef.current.trim() || DEFAULT_DEVICE_ID);
             const previousDeviceId = deviceIdRef.current;
             const shouldHydrateDeviceId = Boolean(message.payload.deviceId) || !previousDeviceId.trim();
+            setPairingMessage("");
             setDeviceIdLocked(Boolean(message.payload.deviceId));
             deviceIdRef.current = nextDeviceId;
             if (nextDeviceId !== previousDeviceId) {
@@ -762,6 +765,22 @@ export default function App() {
     });
   }
 
+  function revealWorkspace(): void {
+    if (!workspaceRef.current || typeof window === "undefined") {
+      return;
+    }
+    if (window.innerWidth >= 1024) {
+      return;
+    }
+    const target = workspaceRef.current;
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({
+        block: "start",
+        inline: "nearest",
+      });
+    });
+  }
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
       <header className="rounded-3xl border border-slate-800/80 bg-slate-900/70 p-5 shadow-2xl shadow-slate-950/40 backdrop-blur">
@@ -859,6 +878,7 @@ export default function App() {
             onSelectSession={(sid) => {
               setActiveSid(sid);
               requestReplay(sid, deviceIdRef.current);
+              revealWorkspace();
             }}
             onKillSession={(sid) => {
               sendMessage({
@@ -871,20 +891,22 @@ export default function App() {
           />
         </div>
 
-        <TerminalWorkspace
-          activeSession={activeSession}
-          activeSid={activeSid}
-          canControl={canControlDevice}
-          command={command}
-          pasteBuffer={pasteBuffer}
-          shortcutKeys={SHORTCUT_KEYS}
-          terminalRef={terminalRef}
-          onCommandChange={setCommand}
-          onSubmitCommand={handleSendCommand}
-          onPasteBufferChange={setPasteBuffer}
-          onSendPaste={handleSendPaste}
-          onSendKey={sendKey}
-        />
+        <div ref={workspaceRef} data-testid="terminal-workspace">
+          <TerminalWorkspace
+            activeSession={activeSession}
+            activeSid={activeSid}
+            canControl={canControlDevice}
+            command={command}
+            pasteBuffer={pasteBuffer}
+            shortcutKeys={SHORTCUT_KEYS}
+            terminalRef={terminalRef}
+            onCommandChange={setCommand}
+            onSubmitCommand={handleSendCommand}
+            onPasteBufferChange={setPasteBuffer}
+            onSendPaste={handleSendPaste}
+            onSendKey={sendKey}
+          />
+        </div>
       </section>
     </main>
   );

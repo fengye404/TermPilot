@@ -65,6 +65,17 @@ def goto_with_retry(page, url: str, attempts: int = 6) -> None:
     raise RuntimeError(f"页面打开失败: {last_error}")
 
 
+def wait_for_workspace_in_viewport(page, timeout_seconds: float = 3) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        workspace_box = page.get_by_test_id("terminal-workspace").bounding_box()
+        viewport = page.viewport_size
+        if workspace_box and viewport and workspace_box["y"] < viewport["height"]:
+            return
+        time.sleep(0.1)
+    raise RuntimeError("移动端查看会话后，终端区域没有滚动进入可视区")
+
+
 def main() -> None:
     session_one = f"ui-one-{subprocess.getoutput('date +%s')}"
     session_two = f"ui-two-{subprocess.getoutput('date +%s')}"
@@ -89,7 +100,10 @@ def main() -> None:
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page()
+            page = browser.new_page(
+                viewport={"width": 390, "height": 844},
+                is_mobile=True,
+            )
             errors: list[str] = []
             page.on("pageerror", lambda error: errors.append(f"pageerror: {error}"))
 
@@ -106,6 +120,7 @@ def main() -> None:
 
             page.locator(f'[data-session-name="{session_one}"]').get_by_role("button", name="查看").click()
             page.get_by_text(session_one, exact=False).first.wait_for(timeout=15000)
+            wait_for_workspace_in_viewport(page)
             page.locator(f'[data-session-name="{session_two}"]').get_by_role("button", name="查看").click()
             page.get_by_text(session_two, exact=False).first.wait_for(timeout=15000)
 
