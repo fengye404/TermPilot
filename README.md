@@ -44,6 +44,18 @@ npm install -g @fengye404/termpilot
 termpilot agent --relay ws://your-domain.com/ws
 ```
 
+这条命令现在会：
+
+- 在后台启动 agent
+- 判断这台电脑是否已经有本地 agent 在运行
+- 直接输出一次性配对码
+
+如果你只是想看调试日志，可以显式前台运行：
+
+```bash
+termpilot agent --relay ws://your-domain.com/ws --foreground
+```
+
 本地测试：
 
 ```bash
@@ -56,13 +68,7 @@ termpilot agent --relay ws://127.0.0.1:8787/ws
 
 - `https://your-domain.com`
 
-首次使用时，在电脑上申请一次性配对码：
-
-```bash
-termpilot pair --relay ws://your-domain.com/ws
-```
-
-然后在手机页面输入配对码。
+首次使用时，直接执行上面的 `termpilot agent --relay ...` 就会拿到配对码；`termpilot pair` 现在只是补充入口，用于你已经有后台 agent、但想重新生成一次配对码的场景。
 
 配对成功后：
 
@@ -73,19 +79,13 @@ termpilot pair --relay ws://your-domain.com/ws
 
 ## 最短使用路径
 
-电脑上先挂着 agent：
+电脑上直接启动后台 agent：
 
 ```bash
 termpilot agent --relay ws://your-domain.com/ws
 ```
 
-然后同一台电脑另开一个终端申请配对码：
-
-```bash
-termpilot pair --relay ws://your-domain.com/ws
-```
-
-配对完成后，你日常最简单的启动方式就是：
+拿到配对码以后，在手机上完成配对。然后你日常最简单的启动方式就是：
 
 ```bash
 termpilot claude code

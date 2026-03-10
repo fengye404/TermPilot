@@ -10,6 +10,13 @@ export interface AgentState {
   sessions: SessionRecord[];
 }
 
+export interface AgentRuntimeInfo {
+  pid: number;
+  relayUrl: string;
+  deviceId: string;
+  startedAt: string;
+}
+
 const INITIAL_STATE: AgentState = {
   version: 1,
   sessions: [],
@@ -28,6 +35,14 @@ export function getAgentHome(): string {
 
 export function getStateFilePath(): string {
   return path.join(getAgentHome(), "state.json");
+}
+
+export function getAgentRuntimeFilePath(): string {
+  return path.join(getAgentHome(), "agent-runtime.json");
+}
+
+export function getAgentLogFilePath(): string {
+  return path.join(getAgentHome(), "agent.log");
 }
 
 function getStateLockPath(): string {
@@ -143,4 +158,41 @@ export function updateSession(
 export function removeStateFile(): void {
   rmSync(getStateFilePath(), { force: true });
   rmSync(getStateLockPath(), { force: true });
+}
+
+export function loadAgentRuntime(): AgentRuntimeInfo | null {
+  ensureAgentHome();
+  try {
+    const raw = readFileSync(getAgentRuntimeFilePath(), "utf8");
+    const parsed = JSON.parse(raw) as Partial<AgentRuntimeInfo>;
+    if (
+      typeof parsed.pid !== "number" ||
+      typeof parsed.relayUrl !== "string" ||
+      typeof parsed.deviceId !== "string" ||
+      typeof parsed.startedAt !== "string"
+    ) {
+      return null;
+    }
+    return {
+      pid: parsed.pid,
+      relayUrl: parsed.relayUrl,
+      deviceId: parsed.deviceId,
+      startedAt: parsed.startedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveAgentRuntime(runtime: AgentRuntimeInfo): void {
+  ensureAgentHome();
+  writeFileSync(getAgentRuntimeFilePath(), `${JSON.stringify(runtime, null, 2)}\n`, "utf8");
+}
+
+export function clearAgentRuntime(expectedPid?: number): void {
+  const current = loadAgentRuntime();
+  if (expectedPid !== undefined && current?.pid !== expectedPid) {
+    return;
+  }
+  rmSync(getAgentRuntimeFilePath(), { force: true });
 }

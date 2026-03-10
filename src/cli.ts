@@ -93,7 +93,11 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     }
     case "agent": {
       const agentArgs = applyEnvFlags(rest, AGENT_ENV_FLAGS);
-      await runAgentCli(agentArgs.length > 0 ? agentArgs : ["daemon"]);
+      await runAgentCli(["start", ...agentArgs]);
+      return;
+    }
+    case "agent-daemon": {
+      await runAgentCli(["daemon", ...rest]);
       return;
     }
     case "pair":

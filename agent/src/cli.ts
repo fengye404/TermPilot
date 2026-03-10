@@ -1,8 +1,19 @@
+import { spawn } from "node:child_process";
+import { openSync } from "node:fs";
 import { cwd as processCwd } from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { createDaemonFromEnv } from "./daemon";
 import { createPairingCode, listAuditEvents, listDeviceGrants, resolveDeviceId, revokeDeviceGrant } from "./relay-admin";
-import { getAgentHome, getStateFilePath, loadState } from "./state-store";
+import {
+  clearAgentRuntime,
+  getAgentHome,
+  getAgentLogFilePath,
+  getStateFilePath,
+  loadAgentRuntime,
+  loadState,
+  saveAgentRuntime,
+} from "./state-store";
 import {
   attachSession,
   createSession,
@@ -17,6 +28,7 @@ function printHelp(): void {
   console.log(`TermPilot agent 用法：
 
   termpilot agent
+  termpilot agent --foreground
   termpilot claude code
   termpilot run -- claude code
   termpilot create --name claude-main --cwd /path/to/project
@@ -131,6 +143,94 @@ function getDeviceId(argv: string[]): string {
   return resolveDeviceId(typeof args.deviceId === "string" ? args.deviceId : undefined);
 }
 
+function getRelayUrl(): string {
+  return process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws";
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForPairingCode(deviceId: string): Promise<Awaited<ReturnType<typeof createPairingCode>> | null> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    try {
+      return await createPairingCode(deviceId);
+    } catch (error) {
+      lastError = error;
+      await delay(500);
+    }
+  }
+  if (lastError instanceof Error) {
+    console.warn(`后台 agent 已启动，但暂时还没拿到配对码：${lastError.message}`);
+  }
+  return null;
+}
+
+async function runStart(argv: string[]): Promise<void> {
+  const args = parseArgs(argv);
+  if (args.foreground) {
+    await runDaemon();
+    return;
+  }
+
+  const deviceId = getDeviceId(argv);
+  const relayUrl = getRelayUrl();
+  const existingRuntime = loadAgentRuntime();
+
+  if (existingRuntime && isProcessAlive(existingRuntime.pid)) {
+    console.log(`后台 agent 已在运行，PID: ${existingRuntime.pid}`);
+    console.log(`设备: ${existingRuntime.deviceId}`);
+    console.log(`relay: ${existingRuntime.relayUrl}`);
+    const pairing = await waitForPairingCode(deviceId);
+    if (pairing) {
+      console.log(`配对码: ${pairing.pairingCode}`);
+      console.log(`有效期至: ${pairing.expiresAt}`);
+    }
+    return;
+  }
+
+  clearAgentRuntime();
+
+  const logFilePath = getAgentLogFilePath();
+  const logFd = openSync(logFilePath, "a");
+  const child = spawn(process.execPath, [process.argv[1]!, "agent-daemon"], {
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: process.env,
+  });
+
+  child.unref();
+
+  if (!child.pid) {
+    throw new Error("后台 agent 启动失败，未获取到子进程 PID。");
+  }
+
+  saveAgentRuntime({
+    pid: child.pid,
+    relayUrl,
+    deviceId,
+    startedAt: new Date().toISOString(),
+  });
+
+  console.log(`后台 agent 已启动，PID: ${child.pid}`);
+  console.log(`设备: ${deviceId}`);
+  console.log(`relay: ${relayUrl}`);
+  console.log(`日志: ${logFilePath}`);
+
+  const pairing = await waitForPairingCode(deviceId);
+  if (pairing) {
+    console.log(`配对码: ${pairing.pairingCode}`);
+    console.log(`有效期至: ${pairing.expiresAt}`);
+    console.log("手机端直接打开 relay 页面并输入这个配对码即可。");
+  }
+}
+
 function buildQuickSessionName(commandArgs: string[]): string {
   const raw = commandArgs.join("-").trim().toLowerCase();
   const normalized = raw.replace(/[^a-z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
@@ -152,6 +252,31 @@ async function runManagedCommand(argv: string[]): Promise<void> {
   console.log(`已创建会话 ${session.sid} (${session.name})`);
   await sendInput(session, `${commandArgs.join(" ")}\n`);
   await attachSession(session);
+}
+
+async function runDaemon(): Promise<void> {
+  await ensureTmuxAvailable();
+  const relayUrl = getRelayUrl();
+  const deviceId = resolveDeviceId();
+  saveAgentRuntime({
+    pid: process.pid,
+    relayUrl,
+    deviceId,
+    startedAt: new Date().toISOString(),
+  });
+  const daemon = createDaemonFromEnv();
+  const stop = () => {
+    void daemon.stop().finally(() => {
+      clearAgentRuntime(process.pid);
+      process.exit(0);
+    });
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+  process.on("exit", () => {
+    clearAgentRuntime(process.pid);
+  });
+  await daemon.start();
 }
 
 async function runPair(argv: string[]): Promise<void> {
@@ -225,16 +350,11 @@ export async function runAgentCli(argv = process.argv.slice(2)): Promise<void> {
   }
 
   switch (command) {
+    case "start":
+      await runStart(rest);
+      return;
     case "daemon": {
-      await ensureTmuxAvailable();
-      const daemon = createDaemonFromEnv();
-      process.on("SIGINT", () => {
-        void daemon.stop().finally(() => process.exit(0));
-      });
-      process.on("SIGTERM", () => {
-        void daemon.stop().finally(() => process.exit(0));
-      });
-      await daemon.start();
+      await runDaemon();
       return;
     }
     case "create":
