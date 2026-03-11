@@ -12,6 +12,8 @@ export default defineConfig({
   cleanUrls: true,
   head: [
     ["meta", { name: "theme-color", content: "#1f7a53" }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
+    ["link", { rel: "shortcut icon", href: "/favicon.svg" }],
   ],
   themeConfig: {
     siteTitle: "TermPilot",
