@@ -4,7 +4,7 @@ import { cwd as processCwd } from "node:process";
 
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 import { DEFAULT_DEVICE_ID } from "@termpilot/protocol";
-import { loadState, upsertSession, updateSession } from "./state-store";
+import { getOrCreateGeneratedDeviceId, loadState, upsertSession, updateSession } from "./state-store";
 
 export interface CreateSessionInput {
   deviceId?: string;
@@ -65,7 +65,10 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
   const name = input.name?.trim() || `session-${sid.slice(0, 6)}`;
   const shell = input.shell?.trim() || process.env.SHELL || "/bin/zsh";
   const workingDirectory = input.cwd?.trim() || processCwd();
-  const deviceId = input.deviceId?.trim() || process.env.TERMPILOT_DEVICE_ID || DEFAULT_DEVICE_ID;
+  const requestedDeviceId = input.deviceId?.trim() || process.env.TERMPILOT_DEVICE_ID?.trim();
+  const deviceId = requestedDeviceId && requestedDeviceId !== DEFAULT_DEVICE_ID
+    ? requestedDeviceId
+    : getOrCreateGeneratedDeviceId();
   const startedAt = now();
   const tmuxSessionName = buildTmuxSessionName(sid, name);
 

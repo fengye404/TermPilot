@@ -1,5 +1,6 @@
 import type { AuditEventRecord, ClientGrantRecord, PairingCodeResponse } from "@termpilot/protocol";
 import { DEFAULT_AGENT_TOKEN, DEFAULT_DEVICE_ID } from "@termpilot/protocol";
+import { getOrCreateGeneratedDeviceId } from "./state-store.js";
 
 function isLocalRelayHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || /^10\./.test(hostname) || /^192\.168\./.test(hostname) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
@@ -85,7 +86,11 @@ function getAgentToken(): string {
 }
 
 export function resolveDeviceId(value?: string): string {
-  return value?.trim() || process.env.TERMPILOT_DEVICE_ID || DEFAULT_DEVICE_ID;
+  const normalized = value?.trim() || process.env.TERMPILOT_DEVICE_ID?.trim();
+  if (normalized && normalized !== DEFAULT_DEVICE_ID) {
+    return normalized;
+  }
+  return getOrCreateGeneratedDeviceId();
 }
 
 async function readJsonOrThrow<T>(response: Response, message: string): Promise<T> {

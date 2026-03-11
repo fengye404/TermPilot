@@ -44,6 +44,7 @@ termpilot agent
 2. 端口，默认 `8787`
 
 然后它会自动保存配置、后台启动 agent，并打印一次性配对码。
+第一次配置时还会为这台电脑生成一个唯一设备名，避免多台电脑在同一个 relay 上都挤到 `pc-main`。
 
 ### 3. 手机完成配对
 
@@ -101,6 +102,8 @@ termpilot kill --sid <sid>
 2. `termpilot agent` 适合作为长期后台入口。第一次配置完之后，日常只需要记住这一条命令。
 3. relay 长期使用时，优先挂到 HTTPS/WSS 域名后面；本地演示再用裸 IP 和 `8787`。
 4. 手机更适合看输出、发短命令和轻控制；电脑前的重输入仍然建议在本地终端完成。
+5. 不要手动给多台电脑复用同一个 `deviceId`。新版会自动生成唯一设备名，除非你明确知道自己在做什么，不要覆盖它。
+6. `TERMPILOT_CLIENT_TOKEN` 现在默认不启用。只有你明确需要“管理端查看所有设备”时，才单独配置它。
 
 ## 本地开发
 
@@ -110,9 +113,8 @@ pnpm build
 pnpm docs:dev
 pnpm test:ui-smoke
 pnpm check:stability
+pnpm test:isolation
 ```
-10. 想排查控制历史时先看 `termpilot audit --limit 30`。
-11. 服务器上日常用 `termpilot relay` 后台运行；只有排查问题时才用 `termpilot relay run`。
 
 ## 常见坑
 
@@ -121,8 +123,10 @@ pnpm check:stability
 - 手机上看不到任务时，先确认这个任务是不是通过 `termpilot ...` 或 `termpilot create` 启动的。
 - 首次配对优先用 `termpilot agent` 拿配对码；重新给手机配对时用 `termpilot agent --pair`。
 - 外网正式使用时，不要长期直接裸奔 `ws://IP:8787/ws`，最好上域名和反代。
+- 旧版本如果还保留着 `pc-main`，新版 `termpilot agent` 会自动迁移成唯一设备名，并提示你重新配对手机。
+- 想排查控制历史时先看 `termpilot audit --limit 30`。
 
-## 本地开发
+## 更多文档
 
 更多实现说明：
 

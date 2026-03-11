@@ -1,6 +1,6 @@
 {
   "name": "@fengye404/termpilot",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "packageManager": "pnpm@10.31.0",
   "description": "一个基于 tmux 的终端会话跨端查看与控制原型。",
@@ -41,6 +41,7 @@
     "agent:revoke": "pnpm --filter @termpilot/agent run revoke",
     "agent:doctor": "pnpm --filter @termpilot/agent run doctor",
     "check:stability": "pnpm build && node scripts/check-relay-agent-stability.mjs",
+    "test:isolation": "pnpm build && node scripts/check-device-isolation.mjs",
     "test:ui-smoke": "pnpm build && TERMPILOT_APP_URL=http://127.0.0.1:18787 TERMPILOT_RELAY_URL=ws://127.0.0.1:18787/ws python3 /Users/fengye/.agents/skills/webapp-testing/scripts/with_server.py --server \"PORT=18787 node dist/cli.js relay\" --port 18787 -- python3 scripts/ui_smoke.py",
     "prepack": "pnpm build"
   },

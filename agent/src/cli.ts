@@ -4,6 +4,8 @@ import { cwd as processCwd } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { DEFAULT_DEVICE_ID } from "@termpilot/protocol";
+
 import { createDaemonFromEnv } from "./daemon";
 import { createPairingCode, listAuditEvents, listDeviceGrants, resolveDeviceId, resolvePreferredRelayUrl, revokeDeviceGrant } from "./relay-admin";
 import {
@@ -12,10 +14,12 @@ import {
   getAgentConfigFilePath,
   getAgentHome,
   getAgentLogFilePath,
+  getOrCreateGeneratedDeviceId,
   getStateFilePath,
   loadAgentConfig,
   loadAgentRuntime,
   loadState,
+  rewriteSessionsDeviceId,
   saveAgentConfig,
   saveAgentRuntime,
 } from "./state-store";
@@ -156,6 +160,29 @@ function getDeviceId(argv: string[]): string {
   return resolveDeviceId(saved?.deviceId);
 }
 
+function maybeMigrateLegacyDeviceId(config: AgentConfig, source: "cli" | "env" | "saved" | "prompt"): { config: AgentConfig; migratedFrom?: string } {
+  if (source === "cli" || source === "env") {
+    return { config };
+  }
+  if (config.deviceId !== DEFAULT_DEVICE_ID) {
+    return { config };
+  }
+
+  const nextDeviceId = getOrCreateGeneratedDeviceId();
+  if (nextDeviceId === config.deviceId) {
+    return { config };
+  }
+
+  rewriteSessionsDeviceId(config.deviceId, nextDeviceId);
+  return {
+    config: {
+      ...config,
+      deviceId: nextDeviceId,
+    },
+    migratedFrom: config.deviceId,
+  };
+}
+
 function isLocalRelayHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || /^10\./.test(hostname) || /^192\.168\./.test(hostname) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
 }
@@ -266,7 +293,11 @@ function getResolvedConfig(argv: string[]): { config: AgentConfig; source: "cli"
 async function ensureConfigured(argv: string[]): Promise<{ config: AgentConfig; source: "cli" | "env" | "saved" | "prompt" }> {
   const resolved = getResolvedConfig(argv);
   if (resolved) {
-    return resolved;
+    const migrated = maybeMigrateLegacyDeviceId(resolved.config, resolved.source);
+    if (migrated.migratedFrom) {
+      saveAgentConfig(migrated.config);
+    }
+    return { config: migrated.config, source: resolved.source };
   }
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -379,6 +410,10 @@ async function runStart(argv: string[]): Promise<void> {
   const resolved = await ensureConfigured(argv);
   let { config } = resolved;
   const { source } = resolved;
+  const previousConfig = loadAgentConfig();
+  const migratedDeviceId = previousConfig?.deviceId === DEFAULT_DEVICE_ID && config.deviceId !== previousConfig.deviceId
+    ? previousConfig.deviceId
+    : undefined;
   const preferredRelayUrl = await resolvePreferredRelayUrl(config.relayUrl);
   if (preferredRelayUrl !== config.relayUrl) {
     config = {
@@ -391,6 +426,11 @@ async function runStart(argv: string[]): Promise<void> {
 
   if (source === "cli" || source === "prompt" || source === "saved") {
     saveAgentConfig(config);
+  }
+
+  if (migratedDeviceId) {
+    console.log(`检测到旧的共享设备名 ${migratedDeviceId}，已自动迁移为唯一设备名 ${config.deviceId}。`);
+    console.log("这是一次安全修复：共享 relay 上不同电脑不能继续共用 pc-main。请重新给手机配对。");
   }
 
   if (args.foreground) {

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import path from "node:path";
 
+import { DEFAULT_DEVICE_ID } from "@termpilot/protocol";
 import type { SessionRecord } from "@termpilot/protocol";
 
 export interface AgentState {
@@ -52,6 +53,10 @@ export function getAgentLogFilePath(): string {
 
 export function getAgentConfigFilePath(): string {
   return path.join(getAgentHome(), "config.json");
+}
+
+export function getGeneratedDeviceIdFilePath(): string {
+  return path.join(getAgentHome(), "device-id");
 }
 
 function getStateLockPath(): string {
@@ -130,6 +135,56 @@ function withStateLock<T>(action: (filePath: string) => T): T {
 export function saveState(state: AgentState): void {
   withStateLock((filePath) => {
     saveStateToDisk(filePath, state);
+  });
+}
+
+function sanitizeDeviceLabel(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function generateDeviceId(): string {
+  const base = sanitizeDeviceLabel(hostname().split(".")[0] ?? "") || "pc";
+  return `${base}-${randomUUID().slice(0, 8)}`;
+}
+
+export function getOrCreateGeneratedDeviceId(): string {
+  ensureAgentHome();
+  const filePath = getGeneratedDeviceIdFilePath();
+
+  try {
+    const existing = readFileSync(filePath, "utf8").trim();
+    if (existing && existing !== DEFAULT_DEVICE_ID) {
+      return existing;
+    }
+  } catch {
+    // ignore missing file and generate one below
+  }
+
+  const deviceId = generateDeviceId();
+  writeFileSync(filePath, `${deviceId}\n`, "utf8");
+  return deviceId;
+}
+
+export function rewriteSessionsDeviceId(previousDeviceId: string, nextDeviceId: string): AgentState {
+  return withStateLock((filePath) => {
+    const state = loadStateFromDisk(filePath);
+    const nextState: AgentState = {
+      version: 1,
+      sessions: state.sessions.map((session) =>
+        session.deviceId === previousDeviceId
+          ? {
+              ...session,
+              deviceId: nextDeviceId,
+            }
+          : session),
+    };
+    saveStateToDisk(filePath, nextState);
+    return nextState;
   });
 }
 

@@ -22,7 +22,7 @@ import type {
   SessionOutputMessage,
   SessionRecord,
 } from "@termpilot/protocol";
-import { parseJsonMessage } from "@termpilot/protocol";
+import { DEFAULT_CLIENT_TOKEN, parseJsonMessage } from "@termpilot/protocol";
 
 import { MemoryAuthStore, PostgresAuthStore, type AuthStore } from "./auth-store.js";
 import { MemoryAuditStore, PostgresAuditStore, type AuditStore } from "./audit-store.js";
@@ -116,6 +116,10 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   const sessionCache = new Map<string, Map<string, SessionRecord>>();
   const outputBuffers = new Map<string, OutputBuffer>();
   const webDir = options.webDir ?? resolveDefaultWebDir(import.meta.url);
+
+  if ((process.env.TERMPILOT_CLIENT_TOKEN ?? "").trim() === DEFAULT_CLIENT_TOKEN) {
+    app.log.warn("检测到 TERMPILOT_CLIENT_TOKEN 仍为默认 demo-client-token。出于隔离安全考虑，relay 已自动禁用全局客户端访问令牌。");
+  }
 
   const storesPromise: Promise<{ sessionStore: SessionStore; authStore: AuthStore; auditStore: AuditStore }> = (async () => {
     if (!config.databaseUrl) {
@@ -395,6 +399,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
       agentsOnline: agents.size,
       clientsOnline: clients.size,
       webUiReady: existsSync(webDir),
+      adminClientTokenEnabled: Boolean(config.clientToken),
     };
   });
 
@@ -562,7 +567,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     if (role === "client") {
       void (async () => {
         let client: ClientConnection | null = null;
-        if (token === config.clientToken) {
+        if (config.clientToken && token === config.clientToken) {
           client = {
             socket,
             deviceScope: "*",
