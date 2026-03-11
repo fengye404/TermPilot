@@ -1,6 +1,6 @@
 {
   "name": "@fengye404/termpilot",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "packageManager": "pnpm@10.31.0",
   "description": "一个基于 tmux 的终端会话跨端查看与控制原型。",

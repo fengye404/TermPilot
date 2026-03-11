@@ -29,7 +29,7 @@ const RELAY_ENV_FLAGS: EnvFlag[] = [
 function printHelp(): void {
   console.log(`TermPilot 用法：
 
-  termpilot relay [--host 0.0.0.0] [--port 8787]
+  termpilot relay
   termpilot agent [--relay ws://127.0.0.1:8787/ws] [--device-id pc-main]
   termpilot agent status
   termpilot agent stop
