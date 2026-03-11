@@ -5,7 +5,7 @@
 这次技术选型只保留已经拍板的方案，不再保留多余备选。
 
 - 语言：TypeScript
-- 运行时：Node.js 24 LTS
+- 运行时：Node.js 22+（推荐 24 LTS）
 - 包管理：pnpm workspace
 
 手机端 `app/`：
@@ -74,4 +74,4 @@ TermPilot 现在要的不是“技术看起来完整”，而是：
 
 ## 一句话总结
 
-**TermPilot 当前最合理、最 AI 友好的全栈方案，就是 `TypeScript + Node.js 24 LTS + pnpm workspace`，在此基础上，手机端用 `React + Vite + Tailwind CSS + xterm.js`，中继服务用 `Fastify + WebSocket + PostgreSQL`，PC 端围绕 `tmux`。**
+**TermPilot 当前最合理、最 AI 友好的全栈方案，就是 `TypeScript + Node.js 22+ + pnpm workspace`，在此基础上，手机端用 `React + Vite + Tailwind CSS + xterm.js`，中继服务用 `Fastify + WebSocket + PostgreSQL`，PC 端围绕 `tmux`。推荐运行在 Node.js 24 LTS 上，但不强制要求。**
