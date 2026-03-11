@@ -162,11 +162,7 @@ function isLocalRelayHost(hostname: string): boolean {
 
 function normalizeRelayUrl(rawHost: string, rawPort: string): string {
   const hostInput = rawHost.trim();
-  const portInput = rawPort.trim() || "8787";
-  const normalizedPort = Number(portInput);
-  if (!Number.isFinite(normalizedPort) || normalizedPort <= 0 || normalizedPort > 65535) {
-    throw new Error("端口无效，请输入 1 到 65535 之间的数字。");
-  }
+  const portInput = rawPort.trim();
 
   if (hostInput.includes("://")) {
     const parsed = new URL(hostInput);
@@ -175,8 +171,14 @@ function normalizeRelayUrl(rawHost: string, rawPort: string): string {
     } else if (parsed.protocol === "https:") {
       parsed.protocol = "wss:";
     }
-    if (!parsed.port) {
+    if (portInput) {
+      const normalizedPort = Number(portInput);
+      if (!Number.isFinite(normalizedPort) || normalizedPort <= 0 || normalizedPort > 65535) {
+        throw new Error("端口无效，请输入 1 到 65535 之间的数字。");
+      }
       parsed.port = String(normalizedPort);
+    } else if (!parsed.port && parsed.protocol === "ws:" && isLocalRelayHost(parsed.hostname)) {
+      parsed.port = "8787";
     }
     if (!parsed.pathname || parsed.pathname === "/") {
       parsed.pathname = "/ws";
@@ -187,6 +189,17 @@ function normalizeRelayUrl(rawHost: string, rawPort: string): string {
   }
 
   const protocol = isLocalRelayHost(hostInput) ? "ws:" : "wss:";
+  if (!portInput) {
+    if (protocol === "ws:") {
+      return `${protocol}//${hostInput}:8787/ws`;
+    }
+    return `${protocol}//${hostInput}/ws`;
+  }
+
+  const normalizedPort = Number(portInput);
+  if (!Number.isFinite(normalizedPort) || normalizedPort <= 0 || normalizedPort > 65535) {
+    throw new Error("端口无效，请输入 1 到 65535 之间的数字。");
+  }
   return `${protocol}//${hostInput}:${normalizedPort}/ws`;
 }
 
@@ -202,7 +215,7 @@ async function promptForAgentConfig(deviceId: string): Promise<AgentConfig> {
     if (!host) {
       throw new Error("未输入 relay 域名或 IP，已取消。");
     }
-    const port = await rl.question("请输入 relay 端口（直接回车默认 8787）: ");
+    const port = await rl.question("请输入 relay 端口（反代域名可直接回车；本地 IP 默认 8787）: ");
     const relayUrl = normalizeRelayUrl(host, port);
     console.log(`将使用 relay: ${relayUrl}`);
     return { relayUrl, deviceId };
