@@ -29,20 +29,35 @@ termpilot relay
 
 ```bash
 npm install -g @fengye404/termpilot
-termpilot agent --relay ws://your-domain.com:8787/ws
+termpilot agent
 ```
 
-这条命令会直接：
+如果这是第一次运行，`termpilot agent` 会直接在终端里引导你：
 
-- 后台启动 agent
-- 复用已有本地 agent（如果已经在跑）
-- 输出一次性配对码
+1. 输入 relay 域名或 IP
+2. 输入端口，直接回车默认 `8787`
+3. 自动保存本机配置
+4. 后台启动 agent
+5. 输出一次性配对码
+
+以后日常只需要继续执行：
+
+```bash
+termpilot agent
+```
+
+这条命令会根据当前状态自动处理：
+
+- 没有后台 agent：按本机已保存配置启动
+- 已经有后台 agent：直接显示当前状态
+- 想重新给手机配对：执行 `termpilot agent --pair`
 
 常用管理命令：
 
 ```bash
 termpilot agent status
 termpilot agent stop
+termpilot agent --pair
 ```
 
 ### 3. 手机完成配对
@@ -117,13 +132,13 @@ DATABASE_URL=postgresql://user:pass@127.0.0.1:5432/termpilot termpilot relay
 
 ```bash
 npm install -g @fengye404/termpilot
-termpilot agent --relay ws://your-domain.com/ws
+termpilot agent
 ```
 
 如果你只是想看调试日志，可以显式前台运行：
 
 ```bash
-termpilot agent --relay ws://your-domain.com/ws --foreground
+termpilot agent --foreground
 ```
 
 查看后台状态：
@@ -141,7 +156,7 @@ termpilot agent stop
 本地测试：
 
 ```bash
-termpilot agent --relay ws://127.0.0.1:8787/ws
+termpilot agent
 ```
 
 ### 手机
@@ -150,7 +165,7 @@ termpilot agent --relay ws://127.0.0.1:8787/ws
 
 - `https://your-domain.com`
 
-首次使用时，直接执行上面的 `termpilot agent --relay ...` 就会拿到配对码；`termpilot pair` 现在只是补充入口，用于你已经有后台 agent、但想重新生成一次配对码的场景。
+首次使用时，直接执行上面的 `termpilot agent` 就会进入配置引导并拿到配对码；如果你已经跑着后台 agent、只是想重新给手机配对，用 `termpilot agent --pair`。
 
 配对成功后：
 
@@ -164,6 +179,7 @@ termpilot agent --relay ws://127.0.0.1:8787/ws
 ### 直接把命令交给 TermPilot
 
 ```bash
+termpilot agent
 termpilot claude code
 termpilot open code
 ```
@@ -199,7 +215,8 @@ open code
 
 ```bash
 termpilot relay
-termpilot agent --relay ws://127.0.0.1:8787/ws
+termpilot agent
+termpilot agent --pair
 termpilot agent status
 termpilot agent stop
 termpilot pair
@@ -216,20 +233,21 @@ termpilot doctor
 ## 最佳实践
 
 1. 需要跨端同步的任务，一开始就用 `termpilot create` 创建，不要先在普通终端里跑再想着接管。
-2. 如果只是想“开一个会话然后立刻跑起来”，优先用 `termpilot claude code` 这类直达命令，不必手动 `create + attach`。
-3. 一个长期任务用一个独立会话，名称直接写任务语义，比如 `claude-main`、`deploy-watch`、`batch-fix`。
-4. 电脑前重操作优先 `termpilot attach`；手机更适合看进度、发短命令、补快捷键和关闭会话。
-5. 普通 iTerm / Terminal 标签页不是 TermPilot 管理对象，不要指望后面“无缝接管”进来。
-6. 手机优先走一次性配对码，不要长期传播访问令牌。
-7. 要长期使用 relay，优先放到 HTTPS/WSS 域名后面，并接 PostgreSQL；本地演示可以先用内存模式。
-8. 换手机或访问权变更时，先 `termpilot grants`，再 `termpilot revoke --token ...`。
-9. 想排查控制历史时先看 `termpilot audit --limit 30`。
+2. 第一次先跑一次 `termpilot agent` 完成本机配置，之后日常就只需要记住这一条命令。
+3. 如果只是想“开一个会话然后立刻跑起来”，优先用 `termpilot claude code` 这类直达命令，不必手动 `create + attach`。
+4. 一个长期任务用一个独立会话，名称直接写任务语义，比如 `claude-main`、`deploy-watch`、`batch-fix`。
+5. 电脑前重操作优先 `termpilot attach`；手机更适合看进度、发短命令、补快捷键和关闭会话。
+6. 普通 iTerm / Terminal 标签页不是 TermPilot 管理对象，不要指望后面“无缝接管”进来。
+7. 手机优先走一次性配对码，不要长期传播访问令牌。
+8. 要长期使用 relay，优先放到 HTTPS/WSS 域名后面，并接 PostgreSQL；本地演示可以先用内存模式。
+9. 换手机或访问权变更时，先 `termpilot grants`，再 `termpilot revoke --token ...`。
+10. 想排查控制历史时先看 `termpilot audit --limit 30`。
 
 ## 常见坑
 
-- `termpilot agent --relay ...` 不会停在前台，这是正常的；它默认就是后台守护进程。
+- `termpilot agent` 不会停在前台，这是正常的；它默认就是后台守护进程。
 - 手机上看不到任务时，先确认这个任务是不是通过 `termpilot ...` 或 `termpilot create` 启动的。
-- 首次配对优先用 `termpilot agent --relay ...` 拿配对码；`termpilot pair` 只是补充命令。
+- 首次配对优先用 `termpilot agent` 拿配对码；重新给手机配对时用 `termpilot agent --pair`。
 - 外网正式使用时，不要长期直接裸奔 `ws://IP:8787/ws`，最好上域名和反代。
 
 ## 本地开发

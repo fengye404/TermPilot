@@ -1,17 +1,22 @@
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
 import { cwd as processCwd } from "node:process";
+import { createInterface } from "node:readline/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { createDaemonFromEnv } from "./daemon";
 import { createPairingCode, listAuditEvents, listDeviceGrants, resolveDeviceId, revokeDeviceGrant } from "./relay-admin";
 import {
+  type AgentConfig,
   clearAgentRuntime,
+  getAgentConfigFilePath,
   getAgentHome,
   getAgentLogFilePath,
   getStateFilePath,
+  loadAgentConfig,
   loadAgentRuntime,
   loadState,
+  saveAgentConfig,
   saveAgentRuntime,
 } from "./state-store";
 import {
@@ -28,6 +33,7 @@ function printHelp(): void {
   console.log(`TermPilot agent 用法：
 
   termpilot agent
+  termpilot agent --pair
   termpilot agent --foreground
   termpilot agent status
   termpilot agent stop
@@ -142,11 +148,146 @@ async function runDoctor(): Promise<void> {
 
 function getDeviceId(argv: string[]): string {
   const args = parseArgs(argv);
-  return resolveDeviceId(typeof args.deviceId === "string" ? args.deviceId : undefined);
+  const explicitDeviceId = typeof args.deviceId === "string" ? args.deviceId : undefined;
+  if (explicitDeviceId) {
+    return resolveDeviceId(explicitDeviceId);
+  }
+  const saved = loadAgentConfig();
+  return resolveDeviceId(saved?.deviceId);
 }
 
-function getRelayUrl(): string {
-  return process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws";
+function isLocalRelayHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || /^10\./.test(hostname) || /^192\.168\./.test(hostname) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+}
+
+function normalizeRelayUrl(rawHost: string, rawPort: string): string {
+  const hostInput = rawHost.trim();
+  const portInput = rawPort.trim() || "8787";
+  const normalizedPort = Number(portInput);
+  if (!Number.isFinite(normalizedPort) || normalizedPort <= 0 || normalizedPort > 65535) {
+    throw new Error("端口无效，请输入 1 到 65535 之间的数字。");
+  }
+
+  if (hostInput.includes("://")) {
+    const parsed = new URL(hostInput);
+    if (parsed.protocol === "http:") {
+      parsed.protocol = "ws:";
+    } else if (parsed.protocol === "https:") {
+      parsed.protocol = "wss:";
+    }
+    if (!parsed.port) {
+      parsed.port = String(normalizedPort);
+    }
+    if (!parsed.pathname || parsed.pathname === "/") {
+      parsed.pathname = "/ws";
+    }
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  }
+
+  const protocol = isLocalRelayHost(hostInput) ? "ws:" : "wss:";
+  return `${protocol}//${hostInput}:${normalizedPort}/ws`;
+}
+
+async function promptForAgentConfig(deviceId: string): Promise<AgentConfig> {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    console.log("还没有找到本机的 relay 配置，先做一次初始化。");
+    const host = (await rl.question("请输入 relay 域名或 IP: ")).trim();
+    if (!host) {
+      throw new Error("未输入 relay 域名或 IP，已取消。");
+    }
+    const port = await rl.question("请输入 relay 端口（直接回车默认 8787）: ");
+    const relayUrl = normalizeRelayUrl(host, port);
+    console.log(`将使用 relay: ${relayUrl}`);
+    return { relayUrl, deviceId };
+  } finally {
+    rl.close();
+  }
+}
+
+function getResolvedConfig(argv: string[]): { config: AgentConfig; source: "cli" | "env" | "saved" } | null {
+  const args = parseArgs(argv);
+  const deviceId = getDeviceId(argv);
+  const cliRelayUrl = typeof args.relay === "string" ? args.relay.trim() : "";
+  if (cliRelayUrl) {
+    return {
+      source: "cli",
+      config: {
+        relayUrl: cliRelayUrl,
+        deviceId,
+      },
+    };
+  }
+
+  const envRelayUrl = process.env.TERMPILOT_RELAY_URL?.trim();
+  if (envRelayUrl) {
+    return {
+      source: "env",
+      config: {
+        relayUrl: envRelayUrl,
+        deviceId,
+      },
+    };
+  }
+
+  const saved = loadAgentConfig();
+  if (saved) {
+    return {
+      source: "saved",
+      config: {
+        relayUrl: saved.relayUrl,
+        deviceId,
+      },
+    };
+  }
+
+  return null;
+}
+
+async function ensureConfigured(argv: string[]): Promise<{ config: AgentConfig; source: "cli" | "env" | "saved" | "prompt" }> {
+  const resolved = getResolvedConfig(argv);
+  if (resolved) {
+    return resolved;
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(`还没有配置 relay，请先执行：termpilot agent --relay wss://你的域名/ws，或在交互终端里直接运行 termpilot agent。`);
+  }
+
+  const config = await promptForAgentConfig(getDeviceId(argv));
+  saveAgentConfig(config);
+  return { config, source: "prompt" };
+}
+
+function applyAgentConfig(config: AgentConfig): void {
+  process.env.TERMPILOT_RELAY_URL = config.relayUrl;
+  process.env.TERMPILOT_DEVICE_ID = config.deviceId;
+}
+
+function printRuntimeStatus(runtime = readRuntimeStatus().runtime): void {
+  if (!runtime) {
+    console.log("后台 agent 当前未运行。");
+    console.log(`状态目录: ${getAgentHome()}`);
+    console.log(`配置文件: ${getAgentConfigFilePath()}`);
+    console.log(`日志: ${getAgentLogFilePath()}`);
+    return;
+  }
+
+  const sessions = loadState().sessions.filter((session) => session.deviceId === runtime.deviceId);
+  const runningSessions = sessions.filter((session) => session.status === "running").length;
+  console.log("后台 agent 正在运行。");
+  console.log(`PID: ${runtime.pid}`);
+  console.log(`设备: ${runtime.deviceId}`);
+  console.log(`relay: ${runtime.relayUrl}`);
+  console.log(`启动时间: ${runtime.startedAt}`);
+  console.log(`日志: ${getAgentLogFilePath()}`);
+  console.log(`会话: ${runningSessions} 个运行中 / ${sessions.length} 个总计`);
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -189,25 +330,41 @@ async function waitForPairingCode(deviceId: string): Promise<Awaited<ReturnType<
 
 async function runStart(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
+  const shouldPair = Boolean(args.pair);
+  const { config, source } = await ensureConfigured(argv);
+  applyAgentConfig(config);
+
+  if (source === "cli" || source === "prompt") {
+    saveAgentConfig(config);
+  }
+
   if (args.foreground) {
     await runDaemon();
     return;
   }
 
-  const deviceId = getDeviceId(argv);
-  const relayUrl = getRelayUrl();
+  const deviceId = config.deviceId;
+  const relayUrl = config.relayUrl;
   const existing = readRuntimeStatus();
 
   if (existing.runtime && existing.alive) {
-    console.log(`后台 agent 已在运行，PID: ${existing.runtime.pid}`);
-    console.log(`设备: ${existing.runtime.deviceId}`);
-    console.log(`relay: ${existing.runtime.relayUrl}`);
-    const pairing = await waitForPairingCode(deviceId);
-    if (pairing) {
-      console.log(`配对码: ${pairing.pairingCode}`);
-      console.log(`有效期至: ${pairing.expiresAt}`);
+    const sameRuntime = existing.runtime.relayUrl === relayUrl && existing.runtime.deviceId === deviceId;
+    if (!sameRuntime) {
+      console.log("检测到后台 agent 已在运行，但配置和当前命令不一致，正在重启。");
+      await runStop();
+    } else {
+      printRuntimeStatus(existing.runtime);
+      if (shouldPair) {
+        const pairing = await waitForPairingCode(deviceId);
+        if (pairing) {
+          console.log(`配对码: ${pairing.pairingCode}`);
+          console.log(`有效期至: ${pairing.expiresAt}`);
+        }
+      } else {
+        console.log("如需重新给手机配对，请执行：termpilot agent --pair");
+      }
+      return;
     }
-    return;
   }
 
   clearAgentRuntime();
@@ -238,11 +395,19 @@ async function runStart(argv: string[]): Promise<void> {
   console.log(`relay: ${relayUrl}`);
   console.log(`日志: ${logFilePath}`);
 
-  const pairing = await waitForPairingCode(deviceId);
-  if (pairing) {
-    console.log(`配对码: ${pairing.pairingCode}`);
-    console.log(`有效期至: ${pairing.expiresAt}`);
-    console.log("手机端直接打开 relay 页面并输入这个配对码即可。");
+  if (source === "prompt") {
+    console.log("本次 relay 配置已保存。以后直接运行 termpilot agent 即可。");
+  }
+
+  if (shouldPair || source !== "saved") {
+    const pairing = await waitForPairingCode(deviceId);
+    if (pairing) {
+      console.log(`配对码: ${pairing.pairingCode}`);
+      console.log(`有效期至: ${pairing.expiresAt}`);
+      console.log("手机端直接打开 relay 页面并输入这个配对码即可。");
+    }
+  } else {
+    console.log("如需重新给手机配对，请执行：termpilot agent --pair");
   }
 }
 
@@ -251,19 +416,21 @@ function runStatus(): void {
   if (!runtime || !alive) {
     console.log("后台 agent 当前未运行。");
     console.log(`状态目录: ${getAgentHome()}`);
+    console.log(`配置文件: ${getAgentConfigFilePath()}`);
     console.log(`日志: ${getAgentLogFilePath()}`);
+    const config = loadAgentConfig();
+    if (config) {
+      console.log(`已保存 relay: ${config.relayUrl}`);
+      console.log(`已保存设备: ${config.deviceId}`);
+    }
     return;
   }
-
-  const sessions = loadState().sessions.filter((session) => session.deviceId === runtime.deviceId);
-  const runningSessions = sessions.filter((session) => session.status === "running").length;
-  console.log("后台 agent 正在运行。");
-  console.log(`PID: ${runtime.pid}`);
-  console.log(`设备: ${runtime.deviceId}`);
-  console.log(`relay: ${runtime.relayUrl}`);
-  console.log(`启动时间: ${runtime.startedAt}`);
-  console.log(`日志: ${getAgentLogFilePath()}`);
-  console.log(`会话: ${runningSessions} 个运行中 / ${sessions.length} 个总计`);
+  printRuntimeStatus(runtime);
+  const config = loadAgentConfig();
+  if (config && (config.relayUrl !== runtime.relayUrl || config.deviceId !== runtime.deviceId)) {
+    console.log(`已保存 relay: ${config.relayUrl}`);
+    console.log(`已保存设备: ${config.deviceId}`);
+  }
 }
 
 async function runStop(): Promise<void> {
@@ -314,8 +481,10 @@ async function runManagedCommand(argv: string[]): Promise<void> {
 
 async function runDaemon(): Promise<void> {
   await ensureTmuxAvailable();
-  const relayUrl = getRelayUrl();
-  const deviceId = resolveDeviceId();
+  const config = await ensureConfigured([]);
+  applyAgentConfig(config.config);
+  const relayUrl = config.config.relayUrl;
+  const deviceId = config.config.deviceId;
   saveAgentRuntime({
     pid: process.pid,
     relayUrl,
@@ -338,6 +507,8 @@ async function runDaemon(): Promise<void> {
 }
 
 async function runPair(argv: string[]): Promise<void> {
+  const config = await ensureConfigured(argv);
+  applyAgentConfig(config.config);
   const deviceId = getDeviceId(argv);
   const payload = await createPairingCode(deviceId);
   console.log(`设备: ${payload.deviceId}`);
@@ -347,6 +518,8 @@ async function runPair(argv: string[]): Promise<void> {
 }
 
 async function runGrants(argv: string[]): Promise<void> {
+  const config = await ensureConfigured(argv);
+  applyAgentConfig(config.config);
   const deviceId = getDeviceId(argv);
   const payload = await listDeviceGrants(deviceId);
   if (payload.grants.length === 0) {
@@ -370,6 +543,8 @@ async function runRevoke(argv: string[]): Promise<void> {
     throw new Error("请通过 --token 指定要撤销的访问令牌。");
   }
 
+  const config = await ensureConfigured(argv);
+  applyAgentConfig(config.config);
   const deviceId = getDeviceId(argv);
   await revokeDeviceGrant(deviceId, accessToken);
   console.log(`已撤销设备 ${deviceId} 的访问令牌 ${accessToken}`);
@@ -377,6 +552,8 @@ async function runRevoke(argv: string[]): Promise<void> {
 
 async function runAudit(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
+  const config = await ensureConfigured(argv);
+  applyAgentConfig(config.config);
   const deviceId = getDeviceId(argv);
   const parsedLimit = typeof args.limit === "string" ? Number(args.limit) : 20;
   if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {

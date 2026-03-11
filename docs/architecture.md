@@ -91,8 +91,10 @@ PC 端常驻进程和本地命令实现：
 
 1. 服务器执行 `termpilot relay`
 2. relay 监听 HTTP/WebSocket，并托管 `app/dist`
-3. 电脑执行 `termpilot agent --relay ...`
-4. 手机上直接打开 relay 域名
+3. 电脑第一次执行 `termpilot agent`，在终端里输入 relay 域名和端口
+4. agent 保存本地配置，并在后台启动常驻进程
+5. 以后电脑直接执行 `termpilot agent`，自动按已保存配置启动或显示状态
+6. 手机上直接打开 relay 域名
 
 ### 会话创建
 
@@ -112,11 +114,12 @@ PC 端常驻进程和本地命令实现：
 
 ### 配对与访问控制
 
-1. 电脑端执行 `termpilot agent --relay ws://你的 relay 地址`
-2. relay 创建一次性配对码
-3. 手机端输入配对码，兑换设备访问令牌
-4. client WebSocket 以后携带设备令牌
-5. relay 只向该 client 暴露允许访问的设备和会话
+1. 电脑端执行 `termpilot agent`
+2. 如果本机还没有配置 relay，agent 会提示输入域名和端口，并保存到本地配置文件
+3. relay 创建一次性配对码
+4. 手机端输入配对码，兑换设备访问令牌
+5. client WebSocket 以后携带设备令牌
+6. relay 只向该 client 暴露允许访问的设备和会话
 
 ## 4. 当前实现边界
 

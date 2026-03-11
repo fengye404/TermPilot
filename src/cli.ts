@@ -30,7 +30,7 @@ function printHelp(): void {
   console.log(`TermPilot 用法：
 
   termpilot relay
-  termpilot agent [--relay ws://127.0.0.1:8787/ws] [--device-id pc-main]
+  termpilot agent [--pair] [--relay ws://127.0.0.1:8787/ws] [--device-id pc-main]
   termpilot agent status
   termpilot agent stop
   termpilot claude code

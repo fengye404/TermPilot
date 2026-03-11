@@ -17,6 +17,11 @@ export interface AgentRuntimeInfo {
   startedAt: string;
 }
 
+export interface AgentConfig {
+  relayUrl: string;
+  deviceId: string;
+}
+
 const INITIAL_STATE: AgentState = {
   version: 1,
   sessions: [],
@@ -43,6 +48,10 @@ export function getAgentRuntimeFilePath(): string {
 
 export function getAgentLogFilePath(): string {
   return path.join(getAgentHome(), "agent.log");
+}
+
+export function getAgentConfigFilePath(): string {
+  return path.join(getAgentHome(), "config.json");
 }
 
 function getStateLockPath(): string {
@@ -195,4 +204,28 @@ export function clearAgentRuntime(expectedPid?: number): void {
     return;
   }
   rmSync(getAgentRuntimeFilePath(), { force: true });
+}
+
+export function loadAgentConfig(): AgentConfig | null {
+  ensureAgentHome();
+  try {
+    const raw = readFileSync(getAgentConfigFilePath(), "utf8");
+    const parsed = JSON.parse(raw) as Partial<AgentConfig>;
+    if (typeof parsed.relayUrl !== "string" || typeof parsed.deviceId !== "string") {
+      return null;
+    }
+    const relayUrl = parsed.relayUrl.trim();
+    const deviceId = parsed.deviceId.trim();
+    if (!relayUrl || !deviceId) {
+      return null;
+    }
+    return { relayUrl, deviceId };
+  } catch {
+    return null;
+  }
+}
+
+export function saveAgentConfig(config: AgentConfig): void {
+  ensureAgentHome();
+  writeFileSync(getAgentConfigFilePath(), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
