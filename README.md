@@ -2,6 +2,10 @@
 
 TermPilot 是一个终端优先的远程控制工具。电脑上跑 `tmux` 会话，手机直接打开 relay 域名查看和控制同一批会话。
 
+如果你已经准备长期部署，直接看完整运维文档：
+
+- [部署与运维指南](/Users/fengye/workspace/TermPilot/docs/operations-guide.md)
+
 ## 产品形态
 
 - 一个 npm 包：`@fengye404/termpilot`
@@ -237,7 +241,6 @@ termpilot agent
 termpilot agent --pair
 termpilot agent status
 termpilot agent stop
-termpilot pair
 termpilot create --name claude-main
 termpilot list
 termpilot attach --sid <sid>
