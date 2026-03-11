@@ -157,6 +157,10 @@ def main() -> None:
             workspace.get_by_placeholder("例如：claude code / git status / npm test").fill(f"printf '{terminal_text}'")
             workspace.get_by_role("button", name="发送", exact=True).click()
             wait_for_terminal_text(page, terminal_text)
+            keyboard_text = f"kb-smoke-{int(time.time())}"
+            workspace.get_by_placeholder("点这里唤起键盘，直接往当前光标输入").fill(f"printf '{keyboard_text}'")
+            page.keyboard.press("Enter")
+            wait_for_terminal_text(page, keyboard_text)
             page.get_by_role("button", name="返回会话列表").click()
             wait_for_session_text(page, session_two, "查看")
             visible_session(page, session_two).get_by_role("button", name="查看").click()

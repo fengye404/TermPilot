@@ -15,12 +15,18 @@ interface TerminalWorkspaceProps {
   activeSession: SessionRecord | null;
   activeSid: string | null;
   canControl: boolean;
+  focusMode?: boolean;
   command: string;
+  keyboardBridge: string;
   pasteBuffer: string;
   shortcutKeys: ShortcutKeyMeta[];
   terminalHostRef: Ref<HTMLDivElement>;
   onBack?: () => void;
+  onToggleFocusMode?: () => void;
   onCommandChange: (value: string) => void;
+  onKeyboardBridgeChange: (value: string) => void;
+  onKeyboardBridgeKey: (key: "enter" | "backspace" | "tab") => void;
+  onSendCommandNow: () => void;
   onSubmitCommand: (event: FormEvent<HTMLFormElement>) => void;
   onPasteBufferChange: (value: string) => void;
   onSendPaste: (mode: "raw" | "line") => void;
@@ -86,13 +92,66 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                     <p className="text-sm font-medium text-white">终端输出</p>
                     <p className="text-xs text-slate-500">和电脑看的是同一个 tmux 会话。</p>
                   </div>
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200">
-                    {props.activeSession.status === "running" ? "实时同步" : "已结束"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {props.onToggleFocusMode ? (
+                      <button
+                        className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-[11px] font-medium text-slate-200"
+                        type="button"
+                        onClick={props.onToggleFocusMode}
+                      >
+                        {props.focusMode ? "退出全屏" : "横屏全屏"}
+                      </button>
+                    ) : null}
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200">
+                      {props.activeSession.status === "running" ? "实时同步" : "已结束"}
+                    </span>
+                  </div>
                 </div>
-                <div className="h-[56svh] min-h-[460px] overflow-hidden rounded-[22px] border border-slate-800 bg-[#020617] p-3">
+                <div className={`${props.focusMode ? "h-[72svh] min-h-[540px]" : "h-[56svh] min-h-[460px]"} overflow-hidden rounded-[22px] border border-slate-800 bg-[#020617] p-3`}>
                   <div ref={props.terminalHostRef} className="h-full min-h-full w-full overflow-hidden" />
                 </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-800 bg-slate-900/80 p-4 shadow-xl shadow-slate-950/25">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-white">终端键盘</p>
+                    <p className="mt-1 text-xs text-slate-500">手机软键盘输入会直接写进当前光标位置，回车立即发送。</p>
+                  </div>
+                  <button
+                    className="min-h-9 rounded-full border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 disabled:opacity-50"
+                    type="button"
+                    disabled={!props.activeSid || !props.canControl}
+                    onClick={() => props.onKeyboardBridgeKey("enter")}
+                  >
+                    回车
+                  </button>
+                </div>
+                <input
+                  className="min-h-11 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-[16px] outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
+                  value={props.keyboardBridge}
+                  onChange={(event) => props.onKeyboardBridgeChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      props.onKeyboardBridgeKey("enter");
+                      return;
+                    }
+                    if (event.key === "Backspace" && props.keyboardBridge.length === 0) {
+                      props.onKeyboardBridgeKey("backspace");
+                      return;
+                    }
+                    if (event.key === "Tab") {
+                      event.preventDefault();
+                      props.onKeyboardBridgeKey("tab");
+                    }
+                  }}
+                  placeholder="点这里唤起键盘，直接往当前光标输入"
+                  enterKeyHint="send"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  disabled={!props.activeSid || !props.canControl}
+                />
               </div>
 
               <form className="rounded-[28px] border border-slate-800 bg-slate-900/80 p-4 shadow-xl shadow-slate-950/25" onSubmit={props.onSubmitCommand}>
@@ -102,7 +161,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                     <p className="mt-1 text-xs text-slate-500">补一条命令最方便，发送时会自动回车。</p>
                   </div>
                   <button
-                    className="min-h-10 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
+                    className="min-h-9 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
                     type="submit"
                     disabled={!props.activeSid || !props.canControl}
                   >
@@ -113,7 +172,14 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                   className="mt-4 min-h-14 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-[16px] outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
                   value={props.command}
                   onChange={(event) => props.onCommandChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      props.onSendCommandNow();
+                    }
+                  }}
                   placeholder="例如：claude code / git status / npm test"
+                  enterKeyHint="send"
                   disabled={!props.activeSid || !props.canControl}
                 />
               </form>
@@ -121,14 +187,14 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <div className="rounded-[28px] border border-slate-800 bg-slate-900/72 p-4">
                 <div className="mb-3">
                   <p className="text-sm font-medium text-white">快捷操作</p>
-                  <p className="mt-1 text-xs text-slate-500">常用控制优先平铺，方向键做成更像终端遥控器的布局。</p>
+                  <p className="mt-1 text-xs text-slate-500">全部收成紧凑按钮，减少对终端区域的挤压。</p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   {executionKeys.map((shortcut) => (
                     <button
                       key={shortcut.key}
-                      className={`min-h-14 rounded-2xl border px-3 py-3 text-center text-sm font-medium disabled:opacity-40 ${
+                      className={`min-h-11 rounded-2xl border px-2 py-2 text-center text-xs font-medium disabled:opacity-40 ${
                         shortcut.tone === "primary"
                           ? "border-sky-400/40 bg-sky-500/10 text-sky-100"
                           : shortcut.tone === "danger"
@@ -138,16 +204,16 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                       disabled={!props.activeSid || !props.canControl}
                       onClick={() => props.onSendKey(shortcut.key)}
                     >
-                      <span className="block font-mono text-[13px] opacity-80">{shortcut.chip}</span>
-                      <span className="mt-1 block">{shortcut.label}</span>
+                      <span className="block font-mono text-[12px] opacity-80">{shortcut.chip}</span>
+                      <span className="mt-0.5 block">{shortcut.label}</span>
                     </button>
                   ))}
                 </div>
 
-                <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                   <div className="flex justify-end">
                     <button
-                      className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-xl text-slate-100 disabled:opacity-40"
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-lg text-slate-100 disabled:opacity-40"
                       type="button"
                       disabled={!props.activeSid || !props.canControl}
                       onClick={() => props.onSendKey("arrow_left")}
@@ -155,9 +221,9 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                       ←
                     </button>
                   </div>
-                  <div className="grid gap-3">
+                  <div className="grid gap-2">
                     <button
-                      className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-xl text-slate-100 disabled:opacity-40"
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-lg text-slate-100 disabled:opacity-40"
                       type="button"
                       disabled={!props.activeSid || !props.canControl}
                       onClick={() => props.onSendKey("arrow_up")}
@@ -165,7 +231,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                       ↑
                     </button>
                     <button
-                      className="flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-400/30 bg-amber-500/10 text-sm font-medium text-amber-100 disabled:opacity-40"
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-400/30 bg-amber-500/10 text-[11px] font-medium text-amber-100 disabled:opacity-40"
                       type="button"
                       disabled={!props.activeSid || !props.canControl}
                       onClick={() => props.onSendKey("escape")}
@@ -173,7 +239,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                       Esc
                     </button>
                     <button
-                      className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-xl text-slate-100 disabled:opacity-40"
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-lg text-slate-100 disabled:opacity-40"
                       type="button"
                       disabled={!props.activeSid || !props.canControl}
                       onClick={() => props.onSendKey("arrow_down")}
@@ -183,7 +249,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                   </div>
                   <div className="flex justify-start">
                     <button
-                      className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-xl text-slate-100 disabled:opacity-40"
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-lg text-slate-100 disabled:opacity-40"
                       type="button"
                       disabled={!props.activeSid || !props.canControl}
                       onClick={() => props.onSendKey("arrow_right")}
@@ -193,17 +259,17 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-3 grid grid-cols-2 gap-2">
                   {helperKeys.map((shortcut) => (
                     <button
                       key={shortcut.key}
-                      className="min-h-12 rounded-2xl border border-slate-700 bg-slate-950/60 px-3 py-3 text-sm text-slate-100 disabled:opacity-40"
+                      className="min-h-10 rounded-2xl border border-slate-700 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 disabled:opacity-40"
                       type="button"
                       disabled={!props.activeSid || !props.canControl}
                       onClick={() => props.onSendKey(shortcut.key)}
                     >
-                      <span className="block font-mono text-[13px] opacity-80">{shortcut.chip}</span>
-                      <span className="mt-1 block">{shortcut.label}</span>
+                      <span className="block font-mono text-[12px] opacity-80">{shortcut.chip}</span>
+                      <span className="mt-0.5 block">{shortcut.label}</span>
                     </button>
                   ))}
                 </div>
@@ -274,7 +340,14 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                       className="min-h-14 flex-1 rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-[16px] outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
                       value={props.command}
                       onChange={(event) => props.onCommandChange(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                          event.preventDefault();
+                          props.onSendCommandNow();
+                        }
+                      }}
                       placeholder="例如：claude code / git status / npm test"
+                      enterKeyHint="send"
                       disabled={!props.activeSid || !props.canControl}
                     />
                     <button

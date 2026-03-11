@@ -50,6 +50,11 @@ interface NoticeState {
   text: string;
 }
 
+type LockableScreenOrientation = ScreenOrientation & {
+  lock?: (orientation: "landscape" | "portrait") => Promise<void>;
+  unlock?: () => void;
+};
+
 function getDefaultWsUrl(): string {
   const envUrl = import.meta.env.VITE_RELAY_WS_URL;
   if (envUrl) {
@@ -94,6 +99,8 @@ export default function App() {
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
+  const activeSidRef = useRef<string | null>(null);
+  const canControlRef = useRef(false);
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
   const previousSessionStatusRef = useRef<Record<string, SessionRecord["status"]>>({});
@@ -117,12 +124,14 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [command, setCommand] = useState("");
+  const [keyboardBridge, setKeyboardBridge] = useState("");
   const [pasteBuffer, setPasteBuffer] = useState("");
   const [createName, setCreateName] = useState("");
   const [createCwd, setCreateCwd] = useState("");
   const [createShell, setCreateShell] = useState("");
   const [terminalHost, setTerminalHost] = useState<HTMLDivElement | null>(null);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+  const [mobileTerminalFocusMode, setMobileTerminalFocusMode] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.sid === activeSid) ?? null,
@@ -161,6 +170,14 @@ export default function App() {
   useEffect(() => {
     deviceIdRef.current = deviceId;
   }, [deviceId]);
+
+  useEffect(() => {
+    activeSidRef.current = activeSid;
+  }, [activeSid]);
+
+  useEffect(() => {
+    canControlRef.current = canControlDevice;
+  }, [canControlDevice]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -273,6 +290,25 @@ export default function App() {
 
     instance.loadAddon(fitAddon);
     instance.open(terminalHost);
+    instance.onData((data) => {
+      const sid = activeSidRef.current;
+      if (!sid || !canControlRef.current) {
+        return;
+      }
+      sendMessage({
+        type: "session.input",
+        reqId: createReqId("tty"),
+        deviceId: deviceIdRef.current,
+        sid,
+        payload: {
+          text: data,
+        },
+      });
+    });
+    const focusTerminal = () => {
+      instance.focus();
+    };
+    terminalHost.addEventListener("pointerdown", focusTerminal);
     terminal.current = instance;
     fitAddonRef.current = fitAddon;
     fitFrameId = window.requestAnimationFrame(() => {
@@ -286,11 +322,59 @@ export default function App() {
     return () => {
       disposed = true;
       window.cancelAnimationFrame(fitFrameId);
+      terminalHost.removeEventListener("pointerdown", focusTerminal);
       terminal.current = null;
       fitAddonRef.current = null;
       instance.dispose();
     };
   }, [terminalHost]);
+
+  useEffect(() => {
+    if (!activeSid || !terminal.current) {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      terminal.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeSid, mobileTerminalFocusMode]);
+
+  useEffect(() => {
+    setKeyboardBridge("");
+    if (activeSid) {
+      return;
+    }
+    setMobileTerminalFocusMode(false);
+  }, [activeSid]);
+
+  useEffect(() => {
+    if (mobileTerminalFocusMode || typeof document === "undefined") {
+      return;
+    }
+    if (document.fullscreenElement && document.exitFullscreen) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+    const orientation = ("orientation" in screen ? screen.orientation : undefined) as LockableScreenOrientation | undefined;
+    if (orientation?.unlock) {
+      try {
+        orientation.unlock();
+      } catch {
+        // ignore unsupported unlock
+      }
+    }
+  }, [mobileTerminalFocusMode]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setMobileTerminalFocusMode(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!terminalHost || !fitAddonRef.current) {
@@ -748,7 +832,11 @@ export default function App() {
 
   function handleSendCommand(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (!activeSid || !command.trim() || !canControlDevice) {
+    sendCommandNow();
+  }
+
+  function sendRawTerminalText(text: string): void {
+    if (!activeSid || !text || !canControlDevice) {
       return;
     }
 
@@ -758,10 +846,75 @@ export default function App() {
       deviceId,
       sid: activeSid,
       payload: {
-        text: `${command}\n`,
+        text,
       },
     });
+  }
+
+  function sendCommandNow(): void {
+    if (!activeSid || !command.trim() || !canControlDevice) {
+      return;
+    }
+
+    sendRawTerminalText(`${command}\n`);
     setCommand("");
+  }
+
+  function handleKeyboardBridgeChange(next: string): void {
+    if (!activeSid || !canControlDevice) {
+      setKeyboardBridge(next);
+      return;
+    }
+
+    if (next === keyboardBridge) {
+      return;
+    }
+
+    if (next.startsWith(keyboardBridge)) {
+      const appended = next.slice(keyboardBridge.length);
+      if (appended) {
+        sendRawTerminalText(appended);
+      }
+      setKeyboardBridge(next);
+      return;
+    }
+
+    if (keyboardBridge.startsWith(next)) {
+      const removedCount = keyboardBridge.length - next.length;
+      if (removedCount > 0) {
+        sendRawTerminalText("\u007f".repeat(removedCount));
+      }
+      setKeyboardBridge(next);
+      return;
+    }
+
+    if (keyboardBridge.length > 0) {
+      sendRawTerminalText("\u007f".repeat(keyboardBridge.length));
+    }
+    if (next) {
+      sendRawTerminalText(next);
+    }
+    setKeyboardBridge(next);
+  }
+
+  function handleKeyboardBridgeKey(key: "enter" | "backspace" | "tab"): void {
+    if (!activeSid || !canControlDevice) {
+      return;
+    }
+
+    if (key === "enter") {
+      sendRawTerminalText("\n");
+      setKeyboardBridge("");
+      return;
+    }
+
+    if (key === "backspace") {
+      sendRawTerminalText("\u007f");
+      setKeyboardBridge((current) => current.slice(0, -1));
+      return;
+    }
+
+    sendKey("tab");
   }
 
   function handleSendPaste(mode: "raw" | "line"): void {
@@ -822,6 +975,53 @@ export default function App() {
         inline: "nearest",
       });
     });
+  }
+
+  async function toggleMobileTerminalFocusMode(): Promise<void> {
+    const next = !mobileTerminalFocusMode;
+    setMobileTerminalFocusMode(next);
+
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (next) {
+      const target = document.documentElement;
+      if (target.requestFullscreen) {
+        try {
+          await target.requestFullscreen();
+        } catch {
+          // ignore unsupported fullscreen requests
+        }
+      }
+      const orientation = ("orientation" in screen ? screen.orientation : undefined) as LockableScreenOrientation | undefined;
+      if (orientation?.lock) {
+        try {
+          await orientation.lock("landscape");
+        } catch {
+          showNotice("info", "已进入终端聚焦模式。若浏览器不支持自动横屏，请手动旋转手机。");
+        }
+      } else {
+        showNotice("info", "已进入终端聚焦模式。若想获得更宽终端，请手动旋转手机。");
+      }
+      return;
+    }
+
+    if (document.fullscreenElement && document.exitFullscreen) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        // ignore exit errors
+      }
+    }
+    const orientation = ("orientation" in screen ? screen.orientation : undefined) as LockableScreenOrientation | undefined;
+    if (orientation?.unlock) {
+      try {
+        orientation.unlock();
+      } catch {
+        // ignore unsupported unlock
+      }
+    }
   }
 
   return (
@@ -959,10 +1159,14 @@ export default function App() {
                   activeSid={activeSid}
                   canControl={canControlDevice}
                   command={command}
+                  keyboardBridge={keyboardBridge}
                   pasteBuffer={pasteBuffer}
                   shortcutKeys={SHORTCUT_KEYS}
                   terminalHostRef={setTerminalHost}
                   onCommandChange={setCommand}
+                  onKeyboardBridgeChange={handleKeyboardBridgeChange}
+                  onKeyboardBridgeKey={handleKeyboardBridgeKey}
+                  onSendCommandNow={sendCommandNow}
                   onSubmitCommand={handleSendCommand}
                   onPasteBufferChange={setPasteBuffer}
                   onSendPaste={handleSendPaste}
@@ -973,17 +1177,33 @@ export default function App() {
           ) : (
             <section className="space-y-4">
               {activeSession ? (
-                <div ref={workspaceRef} data-testid="terminal-workspace">
+                <div
+                  ref={workspaceRef}
+                  data-testid="terminal-workspace"
+                  className={mobileTerminalFocusMode ? "fixed inset-0 z-50 overflow-y-auto bg-[#020617]/98 px-3 py-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]" : undefined}
+                >
                   <TerminalWorkspace
                     activeSession={activeSession}
                     activeSid={activeSid}
                     canControl={canControlDevice}
+                    focusMode={mobileTerminalFocusMode}
                     command={command}
+                    keyboardBridge={keyboardBridge}
                     pasteBuffer={pasteBuffer}
                     shortcutKeys={SHORTCUT_KEYS}
                     terminalHostRef={setTerminalHost}
-                    onBack={() => setActiveSid(null)}
+                    onBack={() => {
+                      setKeyboardBridge("");
+                      setMobileTerminalFocusMode(false);
+                      setActiveSid(null);
+                    }}
+                    onToggleFocusMode={() => {
+                      void toggleMobileTerminalFocusMode();
+                    }}
                     onCommandChange={setCommand}
+                    onKeyboardBridgeChange={handleKeyboardBridgeChange}
+                    onKeyboardBridgeKey={handleKeyboardBridgeKey}
+                    onSendCommandNow={sendCommandNow}
                     onSubmitCommand={handleSendCommand}
                     onPasteBufferChange={setPasteBuffer}
                     onSendPaste={handleSendPaste}
