@@ -10,8 +10,7 @@ interface RelayBaseCandidate {
   relayUrl: string;
 }
 
-function getRelayBaseCandidates(): RelayBaseCandidate[] {
-  const relayUrl = process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws";
+function getRelayBaseCandidates(relayUrl = process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws"): RelayBaseCandidate[] {
   let url: URL;
   try {
     url = new URL(relayUrl);
@@ -48,6 +47,37 @@ function getRelayBaseCandidates(): RelayBaseCandidate[] {
   }
 
   return candidates;
+}
+
+async function isRelayReachable(baseUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(new URL("/health", baseUrl), {
+      signal: AbortSignal.timeout(2_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function resolvePreferredRelayUrl(relayUrl: string): Promise<string> {
+  const candidates = getRelayBaseCandidates(relayUrl);
+  if (candidates.length === 1) {
+    return candidates[0]!.relayUrl;
+  }
+
+  const primary = candidates[0]!;
+  if (await isRelayReachable(primary.baseUrl)) {
+    return primary.relayUrl;
+  }
+
+  for (const candidate of candidates.slice(1)) {
+    if (await isRelayReachable(candidate.baseUrl)) {
+      return candidate.relayUrl;
+    }
+  }
+
+  return primary.relayUrl;
 }
 
 function getAgentToken(): string {

@@ -5,7 +5,7 @@ import { createInterface } from "node:readline/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { createDaemonFromEnv } from "./daemon";
-import { createPairingCode, listAuditEvents, listDeviceGrants, resolveDeviceId, revokeDeviceGrant } from "./relay-admin";
+import { createPairingCode, listAuditEvents, listDeviceGrants, resolveDeviceId, resolvePreferredRelayUrl, revokeDeviceGrant } from "./relay-admin";
 import {
   type AgentConfig,
   clearAgentRuntime,
@@ -376,10 +376,20 @@ async function waitForPairingCode(deviceId: string): Promise<Awaited<ReturnType<
 async function runStart(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   const shouldPair = Boolean(args.pair);
-  const { config, source } = await ensureConfigured(argv);
+  const resolved = await ensureConfigured(argv);
+  let { config } = resolved;
+  const { source } = resolved;
+  const preferredRelayUrl = await resolvePreferredRelayUrl(config.relayUrl);
+  if (preferredRelayUrl !== config.relayUrl) {
+    config = {
+      ...config,
+      relayUrl: preferredRelayUrl,
+    };
+    console.log(`已自动修正 relay 地址为: ${preferredRelayUrl}`);
+  }
   applyAgentConfig(config);
 
-  if (source === "cli" || source === "prompt") {
+  if (source === "cli" || source === "prompt" || source === "saved") {
     saveAgentConfig(config);
   }
 
