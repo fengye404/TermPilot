@@ -89,7 +89,20 @@ function createStaticPath(webDir: string, urlPath: string): string {
 }
 
 export function resolveDefaultWebDir(moduleUrl = import.meta.url): string {
-  return fileURLToPath(new URL("../../app/dist", moduleUrl));
+  const candidates = [
+    "../../app/dist",
+    "../app/dist",
+    "./app/dist",
+  ];
+
+  for (const candidate of candidates) {
+    const resolvedDir = fileURLToPath(new URL(candidate, moduleUrl));
+    if (existsSync(path.join(resolvedDir, "index.html"))) {
+      return resolvedDir;
+    }
+  }
+
+  return fileURLToPath(new URL("../app/dist", moduleUrl));
 }
 
 export async function startRelayServer(options: RelayServerOptions = {}) {
