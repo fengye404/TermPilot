@@ -283,6 +283,30 @@ function applyAgentConfig(config: AgentConfig): void {
   process.env.TERMPILOT_DEVICE_ID = config.deviceId;
 }
 
+function persistMigratedRelayUrl(deviceId: string): void {
+  const migratedRelayUrl = process.env.TERMPILOT_RELAY_URL?.trim();
+  if (!migratedRelayUrl) {
+    return;
+  }
+
+  const saved = loadAgentConfig();
+  if (saved && saved.deviceId === deviceId && saved.relayUrl !== migratedRelayUrl) {
+    saveAgentConfig({
+      relayUrl: migratedRelayUrl,
+      deviceId,
+    });
+    console.log(`已自动更新 relay 地址为: ${migratedRelayUrl}`);
+  }
+
+  const runtime = loadAgentRuntime();
+  if (runtime && runtime.deviceId === deviceId && runtime.relayUrl !== migratedRelayUrl) {
+    saveAgentRuntime({
+      ...runtime,
+      relayUrl: migratedRelayUrl,
+    });
+  }
+}
+
 function printRuntimeStatus(runtime = readRuntimeStatus().runtime): void {
   if (!runtime) {
     console.log("后台 agent 当前未运行。");
@@ -329,7 +353,9 @@ async function waitForPairingCode(deviceId: string): Promise<Awaited<ReturnType<
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 12; attempt += 1) {
     try {
-      return await createPairingCode(deviceId);
+      const payload = await createPairingCode(deviceId);
+      persistMigratedRelayUrl(deviceId);
+      return payload;
     } catch (error) {
       lastError = error;
       await delay(500);
@@ -524,6 +550,7 @@ async function runPair(argv: string[]): Promise<void> {
   applyAgentConfig(config.config);
   const deviceId = getDeviceId(argv);
   const payload = await createPairingCode(deviceId);
+  persistMigratedRelayUrl(deviceId);
   console.log(`设备: ${payload.deviceId}`);
   console.log(`配对码: ${payload.pairingCode}`);
   console.log(`有效期至: ${payload.expiresAt}`);
@@ -535,6 +562,7 @@ async function runGrants(argv: string[]): Promise<void> {
   applyAgentConfig(config.config);
   const deviceId = getDeviceId(argv);
   const payload = await listDeviceGrants(deviceId);
+  persistMigratedRelayUrl(deviceId);
   if (payload.grants.length === 0) {
     console.log(`设备 ${payload.deviceId} 当前没有任何已绑定访问令牌。`);
     return;
@@ -560,6 +588,7 @@ async function runRevoke(argv: string[]): Promise<void> {
   applyAgentConfig(config.config);
   const deviceId = getDeviceId(argv);
   await revokeDeviceGrant(deviceId, accessToken);
+  persistMigratedRelayUrl(deviceId);
   console.log(`已撤销设备 ${deviceId} 的访问令牌 ${accessToken}`);
 }
 
@@ -574,6 +603,7 @@ async function runAudit(argv: string[]): Promise<void> {
   }
   const limit = Math.floor(parsedLimit);
   const payload = await listAuditEvents(deviceId, limit);
+  persistMigratedRelayUrl(deviceId);
   if (payload.events.length === 0) {
     console.log(`设备 ${payload.deviceId} 当前没有审计日志。`);
     return;
