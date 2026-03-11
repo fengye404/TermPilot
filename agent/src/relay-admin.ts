@@ -81,11 +81,10 @@ async function fetchJson<T>(input: URL, init: RequestInit, message: string): Pro
       continue;
     }
 
-    const payload = await readJsonOrThrow<T>(response, message);
     if (process.env.TERMPILOT_RELAY_URL !== candidate.relayUrl) {
       process.env.TERMPILOT_RELAY_URL = candidate.relayUrl;
     }
-    return payload;
+    return readJsonOrThrow<T>(response, message);
   }
 
   const detail = lastError instanceof Error ? lastError.message : "未知网络错误";

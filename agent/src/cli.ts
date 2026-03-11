@@ -283,12 +283,13 @@ function applyAgentConfig(config: AgentConfig): void {
   process.env.TERMPILOT_DEVICE_ID = config.deviceId;
 }
 
-function persistMigratedRelayUrl(deviceId: string): void {
+function persistMigratedRelayUrl(deviceId: string): boolean {
   const migratedRelayUrl = process.env.TERMPILOT_RELAY_URL?.trim();
   if (!migratedRelayUrl) {
-    return;
+    return false;
   }
 
+  let changed = false;
   const saved = loadAgentConfig();
   if (saved && saved.deviceId === deviceId && saved.relayUrl !== migratedRelayUrl) {
     saveAgentConfig({
@@ -296,6 +297,7 @@ function persistMigratedRelayUrl(deviceId: string): void {
       deviceId,
     });
     console.log(`已自动更新 relay 地址为: ${migratedRelayUrl}`);
+    changed = true;
   }
 
   const runtime = loadAgentRuntime();
@@ -304,7 +306,10 @@ function persistMigratedRelayUrl(deviceId: string): void {
       ...runtime,
       relayUrl: migratedRelayUrl,
     });
+    changed = true;
   }
+
+  return changed;
 }
 
 function printRuntimeStatus(runtime = readRuntimeStatus().runtime): void {
@@ -358,6 +363,7 @@ async function waitForPairingCode(deviceId: string): Promise<Awaited<ReturnType<
       return payload;
     } catch (error) {
       lastError = error;
+      persistMigratedRelayUrl(deviceId);
       await delay(500);
     }
   }
@@ -398,6 +404,14 @@ async function runStart(argv: string[]): Promise<void> {
         if (pairing) {
           console.log(`配对码: ${pairing.pairingCode}`);
           console.log(`有效期至: ${pairing.expiresAt}`);
+        } else {
+          const migrated = loadAgentConfig();
+          if (migrated && migrated.deviceId === deviceId && migrated.relayUrl !== existing.runtime.relayUrl) {
+            console.log("检测到后台 agent 仍在使用旧 relay 地址，正在自动重启后重试。");
+            await runStop();
+            await runStart(argv);
+            return;
+          }
         }
       } else {
         console.log("如需重新给手机配对，请执行：termpilot agent --pair");
