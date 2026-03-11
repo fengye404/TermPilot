@@ -40,6 +40,9 @@ function printRuntime(runtime = readRuntimeStatus().runtime): void {
   console.log(`PID: ${runtime.pid}`);
   console.log(`监听: http://${runtime.host}:${runtime.port}`);
   console.log(`启动时间: ${runtime.startedAt}`);
+  if (runtime.cliPath) {
+    console.log(`入口: ${runtime.cliPath}`);
+  }
   console.log(`日志: ${getRelayLogFilePath()}`);
 }
 
@@ -50,6 +53,7 @@ async function runForeground(): Promise<void> {
     host: config.host,
     port: config.port,
     startedAt: new Date().toISOString(),
+    cliPath: process.argv[1],
   });
   process.on("exit", () => {
     clearRelayRuntime(process.pid);
@@ -64,12 +68,17 @@ async function runStart(): Promise<void> {
 
   if (existing.runtime && existing.alive) {
     const sameConfig = existing.runtime.host === config.host && existing.runtime.port === config.port;
-    if (sameConfig) {
+    const sameCliPath = existing.runtime.cliPath === process.argv[1];
+    if (sameConfig && sameCliPath) {
       printRuntime(existing.runtime);
       return;
     }
 
-    console.log("检测到后台 relay 已在运行，但监听配置和当前命令不一致，正在重启。");
+    if (!sameCliPath) {
+      console.log("检测到后台 relay 正在运行，但安装版本或入口已变化，正在重启到当前版本。");
+    } else {
+      console.log("检测到后台 relay 已在运行，但监听配置和当前命令不一致，正在重启。");
+    }
     await runStop();
   }
 
@@ -94,6 +103,7 @@ async function runStart(): Promise<void> {
     host: config.host,
     port: config.port,
     startedAt: new Date().toISOString(),
+    cliPath: process.argv[1],
   });
 
   console.log(`后台 relay 已启动，PID: ${child.pid}`);

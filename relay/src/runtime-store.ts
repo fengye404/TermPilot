@@ -7,6 +7,7 @@ export interface RelayRuntimeInfo {
   host: string;
   port: number;
   startedAt: string;
+  cliPath?: string;
 }
 
 function getRelayHome(): string {
@@ -45,6 +46,7 @@ export function loadRelayRuntime(): RelayRuntimeInfo | null {
       host: parsed.host,
       port: parsed.port,
       startedAt: parsed.startedAt,
+      cliPath: typeof parsed.cliPath === "string" ? parsed.cliPath : undefined,
     };
   } catch {
     return null;
