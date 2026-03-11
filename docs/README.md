@@ -1,8 +1,11 @@
-# 文档索引
+# docs 目录
 
-- [README.md](/Users/fengye/workspace/TermPilot/README.md)：用户安装、启动和日常使用
-- [operations-guide.md](/Users/fengye/workspace/TermPilot/docs/operations-guide.md)：部署、反代、运维和排障手册
-- [development.md](/Users/fengye/workspace/TermPilot/docs/development.md)：仓库开发、测试和发布流程
-- [architecture.md](/Users/fengye/workspace/TermPilot/docs/architecture.md)：当前代码架构和运行时数据流
-- [protocol.md](/Users/fengye/workspace/TermPilot/docs/protocol.md)：三端协议和 HTTP 接口
-- [tech-selection-2026.md](/Users/fengye/workspace/TermPilot/docs/tech-selection-2026.md)：技术选型背景
+如果你在 GitHub 仓库里浏览源码，推荐从下面几个入口开始：
+
+- [文档首页](./index.md)
+- [快速开始](./getting-started.md)
+- [部署与运维指南](./operations-guide.md)
+- [代码架构](./architecture.md)
+- [开发文档](./development.md)
+
+如果 GitHub Pages 已经启用，优先看站点版本，它会带导航、目录和搜索。

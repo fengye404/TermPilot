@@ -9,3 +9,5 @@ dist/
 coverage/
 *.log
 *.tgz
+docs/.vitepress/cache/
+docs/.vitepress/dist/

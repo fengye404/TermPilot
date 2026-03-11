@@ -9,9 +9,9 @@
 建议你已经完成过下面这件事中的至少一件：
 
 - 在本地把 `termpilot relay`、`termpilot agent` 跑通过一次
-- 已经看过 [README.md](/Users/fengye/workspace/TermPilot/README.md) 里的快速上手
+- 已经看过 [快速开始](./getting-started.md)
 
-如果你还没有跑通过最小链路，请先回到 [README.md](/Users/fengye/workspace/TermPilot/README.md)。
+如果你还没有跑通过最小链路，请先回到 [快速开始](./getting-started.md)。
 
 ## 1. 适用场景
 
@@ -26,7 +26,7 @@
 - 第一次体验产品
 - 只想在局域网里临时试一下
 
-第一次使用请先看 [README.md](/Users/fengye/workspace/TermPilot/README.md)。
+第一次使用请先看 [快速开始](./getting-started.md)。
 
 ## 2. 部署清单
 
@@ -439,7 +439,7 @@ termpilot agent
 
 ## 12. 建议的文档阅读顺序
 
-1. [README.md](/Users/fengye/workspace/TermPilot/README.md)
-2. [architecture.md](/Users/fengye/workspace/TermPilot/docs/architecture.md)
-3. [protocol.md](/Users/fengye/workspace/TermPilot/docs/protocol.md)
+1. [快速开始](./getting-started.md)
+2. [代码架构](./architecture.md)
+3. [协议说明](./protocol.md)
 4. 本文档
