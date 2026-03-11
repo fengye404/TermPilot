@@ -18,6 +18,7 @@ export default defineConfig({
     logo: "/favicon.svg",
     nav: [
       { text: "首页", link: "/" },
+      { text: "Why TermPilot", link: "/why-termpilot" },
       { text: "快速开始", link: "/getting-started" },
       { text: "部署与运维", link: "/operations-guide" },
       { text: "架构", link: "/architecture" },
@@ -28,6 +29,7 @@ export default defineConfig({
         text: "开始",
         items: [
           { text: "文档首页", link: "/" },
+          { text: "Why TermPilot", link: "/why-termpilot" },
           { text: "快速开始", link: "/getting-started" },
           { text: "部署与运维指南", link: "/operations-guide" },
         ],

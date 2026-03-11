@@ -1,5 +1,7 @@
 # TermPilot 当前代码架构
 
+在看代码结构之前，最好先知道这个项目的设计前提：TermPilot 解决的是“共享同一条长期终端会话”，而不是泛化的远程桌面或远程机器管理。背景说明见 [Why TermPilot](./why-termpilot.md)。
+
 ## 1. 当前产品形态
 
 - 一个 npm 包：`termpilot`

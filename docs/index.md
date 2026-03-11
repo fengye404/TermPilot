@@ -6,6 +6,9 @@ hero:
   text: "手机和电脑共享同一个 tmux 会话"
   tagline: "为 Claude Code、OpenCode 和长期命令行任务设计的跨端终端控制工具。"
   actions:
+    - theme: alt
+      text: Why TermPilot
+      link: /why-termpilot
     - theme: brand
       text: 快速开始
       link: /getting-started
@@ -40,6 +43,10 @@ features:
 TermPilot 的解法很直接：
 
 **把电脑上的 tmux 会话变成手机和电脑都能接上的共享终端。**
+
+如果你想先看这个判断背后的完整分析，而不是直接看安装步骤，先读：
+
+- [Why TermPilot](/why-termpilot)
 
 ## 你会怎么用它
 
@@ -106,6 +113,7 @@ TermPilot 目前专注于一个明确问题：
 
 ## 文档地图
 
+- [Why TermPilot](/why-termpilot)
 - [快速开始](/getting-started)
 - [部署与运维指南](/operations-guide)
 - [代码架构](/architecture)
