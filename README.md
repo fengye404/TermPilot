@@ -21,6 +21,20 @@ npm install -g @fengye404/termpilot
 termpilot relay
 ```
 
+默认情况下，`termpilot relay` 会直接在后台启动 relay，不占当前窗口。
+
+常用 relay 管理命令：
+
+```bash
+termpilot relay
+termpilot relay stop
+termpilot relay run
+```
+
+- `termpilot relay` 或 `termpilot relay start`：后台启动
+- `termpilot relay stop`：停止后台 relay
+- `termpilot relay run`：前台运行，适合看日志和排查问题
+
 如果你只是先本地体验，也可以直接在自己电脑上跑 relay，然后让手机走局域网访问。
 
 ### 2. 启动电脑 agent
@@ -125,6 +139,8 @@ termpilot relay
 
 ```bash
 termpilot relay
+termpilot relay run
+termpilot relay stop
 DATABASE_URL=postgresql://user:pass@127.0.0.1:5432/termpilot termpilot relay
 ```
 
@@ -215,6 +231,8 @@ open code
 
 ```bash
 termpilot relay
+termpilot relay stop
+termpilot relay run
 termpilot agent
 termpilot agent --pair
 termpilot agent status
@@ -242,10 +260,12 @@ termpilot doctor
 8. 要长期使用 relay，优先放到 HTTPS/WSS 域名后面，并接 PostgreSQL；本地演示可以先用内存模式。
 9. 换手机或访问权变更时，先 `termpilot grants`，再 `termpilot revoke --token ...`。
 10. 想排查控制历史时先看 `termpilot audit --limit 30`。
+11. 服务器上日常用 `termpilot relay` 后台运行；只有排查问题时才用 `termpilot relay run`。
 
 ## 常见坑
 
 - `termpilot agent` 不会停在前台，这是正常的；它默认就是后台守护进程。
+- `termpilot relay` 默认也不会停在前台；想看日志请用 `termpilot relay run`。
 - 手机上看不到任务时，先确认这个任务是不是通过 `termpilot ...` 或 `termpilot create` 启动的。
 - 首次配对优先用 `termpilot agent` 拿配对码；重新给手机配对时用 `termpilot agent --pair`。
 - 外网正式使用时，不要长期直接裸奔 `ws://IP:8787/ws`，最好上域名和反代。

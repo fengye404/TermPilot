@@ -1,8 +1,5 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { runAgentCli } from "../agent/src/cli";
-import { startRelayServer } from "../relay/src/server";
+import { runRelayCli } from "../relay/src/cli";
 
 interface EnvFlag {
   flag: string;
@@ -30,6 +27,9 @@ function printHelp(): void {
   console.log(`TermPilot 用法：
 
   termpilot relay
+  termpilot relay start
+  termpilot relay stop
+  termpilot relay run
   termpilot agent [--pair] [--relay ws://127.0.0.1:8787/ws] [--device-id pc-main]
   termpilot agent status
   termpilot agent stop
@@ -70,10 +70,6 @@ function applyEnvFlags(argv: string[], mappings: EnvFlag[]): string[] {
   return rest;
 }
 
-function resolveBundledWebDir(): string {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../app/dist");
-}
-
 async function main(argv = process.argv.slice(2)): Promise<void> {
   const normalizedArgv = argv[0] === "--" ? argv.slice(1) : argv;
   const [command, ...rest] = normalizedArgv;
@@ -90,7 +86,10 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         printHelp();
         return;
       }
-      await startRelayServer({ webDir: resolveBundledWebDir() });
+      if (relayArgs[0] === "status") {
+        throw new Error("未知 relay 子命令: status");
+      }
+      await runRelayCli(relayArgs);
       return;
     }
     case "agent": {
@@ -104,6 +103,10 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     }
     case "agent-daemon": {
       await runAgentCli(["daemon", ...rest]);
+      return;
+    }
+    case "relay-daemon": {
+      await runRelayCli(["daemon", ...rest]);
       return;
     }
     case "pair":
