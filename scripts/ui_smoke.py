@@ -2,6 +2,8 @@ import re
 import subprocess
 import time
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -9,6 +11,15 @@ from playwright.sync_api import sync_playwright
 ROOT = Path("/Users/fengye/workspace/TermPilot")
 APP_URL = os.environ.get("TERMPILOT_APP_URL", "http://127.0.0.1:8787")
 RELAY_URL = os.environ.get("TERMPILOT_RELAY_URL", "ws://127.0.0.1:8787/ws")
+SMOKE_HOME = Path(tempfile.mkdtemp(prefix="termpilot-ui-smoke-"))
+
+
+def cli_env() -> dict[str, str]:
+    return {
+        **os.environ,
+        "TERMPILOT_RELAY_URL": RELAY_URL,
+        "TERMPILOT_HOME": str(SMOKE_HOME),
+    }
 
 
 def run_pnpm(args: list[str]) -> str:
@@ -17,6 +28,7 @@ def run_pnpm(args: list[str]) -> str:
         cwd=ROOT,
         text=True,
         capture_output=True,
+        env=cli_env(),
         check=True,
     )
     return result.stdout
@@ -35,7 +47,7 @@ def kill_session(sid: str) -> None:
 
 
 def get_pairing_code() -> str:
-    output = run_pnpm(["cli", "--", "pair"])
+    output = run_pnpm(["cli", "--", "agent"])
     match = re.search(r"配对码:\s*(\S+)", output)
     if not match:
         raise RuntimeError(f"无法解析配对码:\n{output}")
@@ -76,6 +88,17 @@ def wait_for_workspace_in_viewport(page, timeout_seconds: float = 3) -> None:
     raise RuntimeError("移动端查看会话后，终端区域没有滚动进入可视区")
 
 
+def wait_for_terminal_text(page, text: str, timeout_seconds: float = 15) -> None:
+    deadline = time.time() + timeout_seconds
+    rows = page.locator(".xterm-rows").first
+    while time.time() < deadline:
+        content = rows.inner_text()
+        if text in content:
+            return
+        time.sleep(0.2)
+    raise RuntimeError(f"终端区域没有出现预期输出: {text}")
+
+
 def visible_session(page, name: str):
     return page.locator(f'[data-session-name="{name}"]:visible')
 
@@ -83,7 +106,11 @@ def visible_session(page, name: str):
 def wait_for_session_text(page, name: str, text: str, timeout_seconds: float = 15) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        content = visible_session(page, name).text_content() or ""
+        locator = visible_session(page, name)
+        if locator.count() == 0:
+            time.sleep(0.2)
+            continue
+        content = locator.first.text_content() or ""
         if text in content:
             return
         time.sleep(0.2)
@@ -95,22 +122,11 @@ def main() -> None:
     session_two = f"ui-two-{subprocess.getoutput('date +%s')}"
     sid_one = ""
     sid_two = ""
-    agent = subprocess.Popen(
-        ["node", "dist/cli.js", "agent"],
-        cwd=ROOT,
-        env={
-            **os.environ,
-            "TERMPILOT_RELAY_URL": RELAY_URL,
-        },
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
 
     try:
+        pairing_code = wait_for_pairing_code()
         sid_one = create_session(session_one)
         sid_two = create_session(session_two)
-        pairing_code = wait_for_pairing_code()
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
@@ -132,10 +148,17 @@ def main() -> None:
             else:
                 raise RuntimeError("配对后访问令牌没有写回页面")
 
+            wait_for_session_text(page, session_one, "查看")
             visible_session(page, session_one).get_by_role("button", name="查看").click()
             page.get_by_text(session_one, exact=False).first.wait_for(timeout=15000)
             wait_for_workspace_in_viewport(page)
+            terminal_text = f"ui-smoke-{int(time.time())}"
+            workspace = page.get_by_test_id("terminal-workspace")
+            workspace.get_by_placeholder("例如：claude code / git status / npm test").fill(f"printf '{terminal_text}'")
+            workspace.get_by_role("button", name="发送", exact=True).click()
+            wait_for_terminal_text(page, terminal_text)
             page.get_by_role("button", name="返回会话列表").click()
+            wait_for_session_text(page, session_two, "查看")
             visible_session(page, session_two).get_by_role("button", name="查看").click()
             page.get_by_text(session_two, exact=False).first.wait_for(timeout=15000)
             page.get_by_role("button", name="返回会话列表").click()
@@ -161,11 +184,11 @@ def main() -> None:
                     kill_session(sid)
                 except Exception:  # noqa: BLE001
                     pass
-        agent.terminate()
         try:
-            agent.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            agent.kill()
+            run_pnpm(["cli", "--", "agent", "stop"])
+        except Exception:  # noqa: BLE001
+            pass
+        shutil.rmtree(SMOKE_HOME, ignore_errors=True)
 
     print("ui smoke ok")
 

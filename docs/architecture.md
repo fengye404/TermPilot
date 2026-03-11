@@ -42,7 +42,7 @@ docs/
 
 - `termpilot relay`
 - `termpilot agent`
-- `termpilot pair/create/list/attach/kill/...`
+- `termpilot agent/claude code/open code/pair/create/list/attach/kill/...`
 
 ### `agent/`
 
@@ -112,7 +112,7 @@ PC 端常驻进程和本地命令实现：
 
 ### 配对与访问控制
 
-1. 电脑端执行 `termpilot pair`
+1. 电脑端执行 `termpilot agent --relay ws://你的 relay 地址`
 2. relay 创建一次性配对码
 3. 手机端输入配对码，兑换设备访问令牌
 4. client WebSocket 以后携带设备令牌

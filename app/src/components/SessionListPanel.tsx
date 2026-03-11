@@ -30,7 +30,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
     <Panel title="会话列表">
       <div className="space-y-3">
         <input
-          className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-base outline-none placeholder:text-slate-500 md:text-sm"
+          className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-[16px] outline-none placeholder:text-slate-500"
           value={props.sessionQuery}
           onChange={(event) => props.onSessionQueryChange(event.target.value)}
           placeholder="搜索会话名称或目录"

@@ -52,11 +52,11 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
           <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-sm font-medium text-white">设备配对</p>
             <p className="mt-1 text-xs text-slate-500">
-              电脑上执行 `termpilot pair` 获取一次性配对码，手机输入后会自动换取设备访问令牌。
+              电脑上执行 `termpilot agent --relay 你的 relay 地址`。命令会直接启动后台 agent 并打印一次性配对码。
             </p>
             <div className="mt-3 flex gap-3">
               <input
-                className="flex-1 rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-base uppercase outline-none placeholder:text-slate-500 md:text-sm"
+                className="flex-1 rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-[16px] uppercase outline-none placeholder:text-slate-500"
                 value={props.pairingCode}
                 onChange={(event) => props.onPairingCodeChange(event.target.value)}
                 placeholder="ABC-234"

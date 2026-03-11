@@ -18,3 +18,10 @@ body {
 #root {
   min-height: 100vh;
 }
+
+input,
+textarea,
+select {
+  font: inherit;
+  font-size: 16px;
+}

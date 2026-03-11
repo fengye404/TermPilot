@@ -19,16 +19,16 @@ import { TerminalWorkspace } from "./components/TerminalWorkspace";
 type SessionMap = Record<string, string>;
 type ConnectionPhase = "idle" | "connecting" | "connected" | "reconnecting";
 type SessionStatusFilter = "all" | "running" | "exited";
-const SHORTCUT_KEYS: Array<{ key: InputKey; label: string }> = [
-  { key: "enter", label: "Enter" },
-  { key: "tab", label: "Tab" },
-  { key: "ctrl_c", label: "Ctrl+C" },
-  { key: "ctrl_d", label: "Ctrl+D" },
-  { key: "escape", label: "Esc" },
-  { key: "arrow_up", label: "↑" },
-  { key: "arrow_down", label: "↓" },
-  { key: "arrow_left", label: "←" },
-  { key: "arrow_right", label: "→" },
+const SHORTCUT_KEYS: Array<{ key: InputKey; label: string; chip: string; description: string; tone?: "neutral" | "danger" | "primary" }> = [
+  { key: "enter", label: "发送回车", chip: "↵", description: "执行当前命令", tone: "primary" },
+  { key: "ctrl_c", label: "中断", chip: "^C", description: "停止当前任务", tone: "danger" },
+  { key: "ctrl_d", label: "结束输入", chip: "^D", description: "发送 EOF", tone: "neutral" },
+  { key: "tab", label: "补全", chip: "⇥", description: "触发 shell 补全", tone: "neutral" },
+  { key: "escape", label: "返回", chip: "Esc", description: "退出当前模式", tone: "neutral" },
+  { key: "arrow_up", label: "上一条", chip: "↑", description: "查看历史命令", tone: "neutral" },
+  { key: "arrow_down", label: "下一条", chip: "↓", description: "回到较新的命令", tone: "neutral" },
+  { key: "arrow_left", label: "左移", chip: "←", description: "移动光标到左侧", tone: "neutral" },
+  { key: "arrow_right", label: "右移", chip: "→", description: "移动光标到右侧", tone: "neutral" },
 ];
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:8787/ws";
@@ -85,7 +85,6 @@ function tryParseUrl(value: string): URL | null {
 }
 
 export default function App() {
-  const terminalRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const terminal = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -122,6 +121,8 @@ export default function App() {
   const [createName, setCreateName] = useState("");
   const [createCwd, setCreateCwd] = useState("");
   const [createShell, setCreateShell] = useState("");
+  const [terminalHost, setTerminalHost] = useState<HTMLDivElement | null>(null);
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.sid === activeSid) ?? null,
@@ -160,6 +161,19 @@ export default function App() {
   useEffect(() => {
     deviceIdRef.current = deviceId;
   }, [deviceId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
 
   useEffect(() => {
     const normalizedDeviceId = deviceId.trim() || DEFAULT_DEVICE_ID;
@@ -218,55 +232,68 @@ export default function App() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [activeSid, clientToken, deviceId, notificationsEnabled, pinnedSids, wsUrl]);
 
-  useEffect(() => {
-    if (!terminalRef.current || terminal.current) {
+  function renderTerminalSnapshot(target: Terminal | null = terminal.current): void {
+    if (!target) {
       return;
     }
 
-    let instance: Terminal | null = null;
-    let frameId = 0;
-    let fitFrameId = 0;
+    if (!activeSid) {
+      return;
+    }
 
-    frameId = window.requestAnimationFrame(() => {
-      if (!terminalRef.current) {
+    const snapshot = buffers[activeSid] ?? "";
+    target.clear();
+    if (!snapshot) {
+      return;
+    }
+    target.write(snapshot.replace(/\n/g, "\r\n"));
+  }
+
+  useEffect(() => {
+    if (!terminalHost) {
+      return;
+    }
+
+    const instance = new Terminal({
+      convertEol: true,
+      cursorBlink: true,
+      fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
+      fontSize: 13,
+      theme: {
+        background: "#020617",
+        foreground: "#e2e8f0",
+        cursor: "#38bdf8",
+        black: "#0f172a",
+        brightBlack: "#334155",
+      },
+    });
+    const fitAddon = new FitAddon();
+    let fitFrameId = 0;
+    let disposed = false;
+
+    instance.loadAddon(fitAddon);
+    instance.open(terminalHost);
+    terminal.current = instance;
+    fitAddonRef.current = fitAddon;
+    fitFrameId = window.requestAnimationFrame(() => {
+      if (disposed) {
         return;
       }
-
-      instance = new Terminal({
-        convertEol: true,
-        cursorBlink: true,
-        fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
-        fontSize: 13,
-        theme: {
-          background: "#020617",
-          foreground: "#e2e8f0",
-          cursor: "#38bdf8",
-          black: "#0f172a",
-          brightBlack: "#334155",
-        },
-      });
-      const fitAddon = new FitAddon();
-
-      instance.loadAddon(fitAddon);
-      instance.open(terminalRef.current);
-      terminal.current = instance;
-      fitAddonRef.current = fitAddon;
-      fitFrameId = window.requestAnimationFrame(() => {
-        fitTerminal();
-      });
+      fitTerminal();
+      renderTerminalSnapshot(instance);
     });
 
     return () => {
-      window.cancelAnimationFrame(frameId);
+      disposed = true;
       window.cancelAnimationFrame(fitFrameId);
-      instance?.dispose();
       terminal.current = null;
       fitAddonRef.current = null;
+      instance.dispose();
     };
-  }, []);
+  }, [terminalHost]);
 
   useEffect(() => {
-    if (!terminalRef.current || !fitAddonRef.current) {
+    if (!terminalHost || !fitAddonRef.current) {
       return;
     }
 
@@ -294,22 +321,17 @@ export default function App() {
     };
 
     const observer = new ResizeObserver(() => resize());
-    observer.observe(terminalRef.current);
+    observer.observe(terminalHost);
     resize();
 
     return () => {
       observer.disconnect();
     };
-  }, [activeSid, canControlDevice, deviceId]);
+  }, [activeSid, canControlDevice, deviceId, terminalHost]);
 
   useEffect(() => {
-    if (!terminal.current) {
-      return;
-    }
-
-    terminal.current.clear();
-    terminal.current.write((buffers[activeSid ?? ""] ?? "").replace(/\n/g, "\r\n"));
-  }, [activeSid, buffers]);
+    renderTerminalSnapshot();
+  }, [activeSid, buffers, terminalHost]);
 
   useEffect(() => {
     return () => {
@@ -374,10 +396,10 @@ export default function App() {
   }, [deviceId, deviceOnline, notificationsEnabled, sessions]);
 
   function fitTerminal(): boolean {
-    if (!fitAddonRef.current || !terminal.current || !terminalRef.current) {
+    if (!fitAddonRef.current || !terminal.current || !terminalHost) {
       return false;
     }
-    if (terminalRef.current.clientWidth === 0 || terminalRef.current.clientHeight === 0) {
+    if (terminalHost.clientWidth === 0 || terminalHost.clientHeight === 0) {
       return false;
     }
 
@@ -812,7 +834,7 @@ export default function App() {
         <p className="mt-2 max-w-2xl text-sm text-slate-400">
           {isPaired
             ? "先选一个会话，再进入查看输出和补命令。"
-            : "在电脑上执行 termpilot pair，手机输入一次性配对码后就能开始用。"}
+            : "在电脑上执行 termpilot agent --relay 你的 relay 地址。命令会直接启动后台 agent 并打印一次性配对码。"}
         </p>
         {isPaired ? (
           <p className="mt-3 text-xs text-slate-500">
@@ -839,7 +861,7 @@ export default function App() {
         <section className="mx-auto flex w-full max-w-md flex-col gap-4">
           <Panel title="输入配对码">
             <p className="text-sm text-slate-400">
-              电脑上执行 `termpilot pair --relay 你的 relay 地址`，然后把配对码填到这里。
+              电脑上执行 `termpilot agent --relay 你的 relay 地址`，然后把命令输出的配对码填到这里。
             </p>
             <div className="mt-4 flex gap-3">
               <input
@@ -898,27 +920,20 @@ export default function App() {
         </section>
       ) : (
         <>
-          <section className="space-y-4 lg:hidden">
-            {activeSession ? (
-              <div ref={workspaceRef} data-testid="terminal-workspace">
-                <TerminalWorkspace
-                  activeSession={activeSession}
-                  activeSid={activeSid}
+          {isDesktop ? (
+            <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+              <div className="space-y-5">
+                <CreateSessionPanel
                   canControl={canControlDevice}
-                  command={command}
-                  pasteBuffer={pasteBuffer}
-                  shortcutKeys={SHORTCUT_KEYS}
-                  terminalRef={terminalRef}
-                  onBack={() => setActiveSid(null)}
-                  onCommandChange={setCommand}
-                  onSubmitCommand={handleSendCommand}
-                  onPasteBufferChange={setPasteBuffer}
-                  onSendPaste={handleSendPaste}
-                  onSendKey={sendKey}
+                  createName={createName}
+                  createCwd={createCwd}
+                  createShell={createShell}
+                  onCreateNameChange={setCreateName}
+                  onCreateCwdChange={setCreateCwd}
+                  onCreateShellChange={setCreateShell}
+                  onSubmit={handleCreateSession}
                 />
-              </div>
-            ) : (
-              <>
+
                 <SessionListPanel
                   canControl={canControlDevice}
                   sessions={sessions}
@@ -933,79 +948,88 @@ export default function App() {
                   onSelectSession={(sid) => {
                     setActiveSid(sid);
                     requestReplay(sid, deviceIdRef.current);
-                    revealWorkspace();
                   }}
                   onKillSession={handleKillSession}
                 />
+              </div>
 
-                <details className="rounded-3xl border border-slate-800/80 bg-slate-900/72 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur">
-                  <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">新建会话</summary>
-                  <div className="mt-4">
-                    <CreateSessionPanel
-                      canControl={canControlDevice}
-                      createName={createName}
-                      createCwd={createCwd}
-                      createShell={createShell}
-                      onCreateNameChange={setCreateName}
-                      onCreateCwdChange={setCreateCwd}
-                      onCreateShellChange={setCreateShell}
-                      onSubmit={handleCreateSession}
-                    />
-                  </div>
-                </details>
-              </>
-            )}
-          </section>
+              <div data-testid="desktop-terminal-workspace">
+                <TerminalWorkspace
+                  activeSession={activeSession}
+                  activeSid={activeSid}
+                  canControl={canControlDevice}
+                  command={command}
+                  pasteBuffer={pasteBuffer}
+                  shortcutKeys={SHORTCUT_KEYS}
+                  terminalHostRef={setTerminalHost}
+                  onCommandChange={setCommand}
+                  onSubmitCommand={handleSendCommand}
+                  onPasteBufferChange={setPasteBuffer}
+                  onSendPaste={handleSendPaste}
+                  onSendKey={sendKey}
+                />
+              </div>
+            </section>
+          ) : (
+            <section className="space-y-4">
+              {activeSession ? (
+                <div ref={workspaceRef} data-testid="terminal-workspace">
+                  <TerminalWorkspace
+                    activeSession={activeSession}
+                    activeSid={activeSid}
+                    canControl={canControlDevice}
+                    command={command}
+                    pasteBuffer={pasteBuffer}
+                    shortcutKeys={SHORTCUT_KEYS}
+                    terminalHostRef={setTerminalHost}
+                    onBack={() => setActiveSid(null)}
+                    onCommandChange={setCommand}
+                    onSubmitCommand={handleSendCommand}
+                    onPasteBufferChange={setPasteBuffer}
+                    onSendPaste={handleSendPaste}
+                    onSendKey={sendKey}
+                  />
+                </div>
+              ) : (
+                <>
+                  <SessionListPanel
+                    canControl={canControlDevice}
+                    sessions={sessions}
+                    filteredSessions={filteredSessions}
+                    activeSid={activeSid}
+                    pinnedSids={pinnedSids}
+                    sessionQuery={sessionQuery}
+                    statusFilter={statusFilter}
+                    onSessionQueryChange={setSessionQuery}
+                    onStatusFilterChange={setStatusFilter}
+                    onTogglePinnedSession={togglePinnedSession}
+                    onSelectSession={(sid) => {
+                      setActiveSid(sid);
+                      requestReplay(sid, deviceIdRef.current);
+                      revealWorkspace();
+                    }}
+                    onKillSession={handleKillSession}
+                  />
 
-          <section className="hidden gap-5 lg:grid lg:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="space-y-5">
-              <CreateSessionPanel
-                canControl={canControlDevice}
-                createName={createName}
-                createCwd={createCwd}
-                createShell={createShell}
-                onCreateNameChange={setCreateName}
-                onCreateCwdChange={setCreateCwd}
-                onCreateShellChange={setCreateShell}
-                onSubmit={handleCreateSession}
-              />
-
-              <SessionListPanel
-                canControl={canControlDevice}
-                sessions={sessions}
-                filteredSessions={filteredSessions}
-                activeSid={activeSid}
-                pinnedSids={pinnedSids}
-                sessionQuery={sessionQuery}
-                statusFilter={statusFilter}
-                onSessionQueryChange={setSessionQuery}
-                onStatusFilterChange={setStatusFilter}
-                onTogglePinnedSession={togglePinnedSession}
-                onSelectSession={(sid) => {
-                  setActiveSid(sid);
-                  requestReplay(sid, deviceIdRef.current);
-                }}
-                onKillSession={handleKillSession}
-              />
-            </div>
-
-            <div data-testid="desktop-terminal-workspace">
-              <TerminalWorkspace
-                activeSession={activeSession}
-                activeSid={activeSid}
-                canControl={canControlDevice}
-                command={command}
-                pasteBuffer={pasteBuffer}
-                shortcutKeys={SHORTCUT_KEYS}
-                terminalRef={terminalRef}
-                onCommandChange={setCommand}
-                onSubmitCommand={handleSendCommand}
-                onPasteBufferChange={setPasteBuffer}
-                onSendPaste={handleSendPaste}
-                onSendKey={sendKey}
-              />
-            </div>
-          </section>
+                  <details className="rounded-3xl border border-slate-800/80 bg-slate-900/72 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur">
+                    <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">新建会话</summary>
+                    <div className="mt-4">
+                      <CreateSessionPanel
+                        canControl={canControlDevice}
+                        createName={createName}
+                        createCwd={createCwd}
+                        createShell={createShell}
+                        onCreateNameChange={setCreateName}
+                        onCreateCwdChange={setCreateCwd}
+                        onCreateShellChange={setCreateShell}
+                        onSubmit={handleCreateSession}
+                      />
+                    </div>
+                  </details>
+                </>
+              )}
+            </section>
+          )}
 
           <details className="rounded-3xl border border-slate-800/80 bg-slate-900/72 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur">
             <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">连接与设备设置</summary>
