@@ -70,11 +70,8 @@ async function runStart(): Promise<void> {
     const sameConfig = existing.runtime.host === config.host && existing.runtime.port === config.port;
     const sameCliPath = existing.runtime.cliPath === process.argv[1];
     if (sameConfig && sameCliPath) {
-      printRuntime(existing.runtime);
-      return;
-    }
-
-    if (!sameCliPath) {
+      console.log("检测到后台 relay 已在运行，正在重启到当前配置。");
+    } else if (!sameCliPath) {
       console.log("检测到后台 relay 正在运行，但安装版本或入口已变化，正在重启到当前版本。");
     } else {
       console.log("检测到后台 relay 已在运行，但监听配置和当前命令不一致，正在重启。");
