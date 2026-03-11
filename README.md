@@ -4,13 +4,13 @@
 [![npm downloads](https://img.shields.io/npm/dm/%40fengye404%2Ftermpilot)](https://www.npmjs.com/package/@fengye404/termpilot)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/fengye404/TermPilot/docs.yml?branch=main&label=docs)](https://github.com/fengye404/TermPilot/actions)
 
-TermPilot 把电脑上的 `tmux` 会话带到手机浏览器里。你在电脑上继续跑 `Claude Code`、`OpenCode`、脚本任务，出门以后用手机打开一个网页，就能继续看输出、补命令、关会话。
+TermPilot 把电脑上的终端任务带到手机浏览器里。你在电脑上继续跑 `Claude Code`、`OpenCode`、脚本任务，出门以后用手机打开一个网页，就能继续看输出、补命令、关会话。
 
 它不是“远程桌面”，也不是“手机新开一个独立终端”。
 
 它的核心模型只有一句话：
 
-**电脑和手机共享同一个 tmux 会话。**
+**电脑和手机共享同一条终端上下文。**
 
 如果你想先看这个项目的核心优势、适合什么工作流，再看：
 
@@ -56,7 +56,7 @@ npm install -g @fengye404/termpilot
 
 电脑还需要提前安装：
 
-- `tmux`
+- `tmux`（TermPilot 当前用它来承载长期会话）
 - `Node.js 22+`
 
 ### 2. 启动 relay
@@ -136,17 +136,17 @@ termpilot open code
 
 这两条命令都会：
 
-- 创建一个受 TermPilot 管理的 `tmux` 会话
+- 创建一个受 TermPilot 管理的任务会话
 - 把命令写进这个会话
-- 当前终端直接 attach 到这个会话
+- 当前终端直接接到这条会话
 
-手机上看到的是同一个会话，不是另开一份。
+手机上看到的是同一条会话，不是另开一份。底层当前用 `tmux` 实现。
 
 ## 核心能力
 
 ### 共享会话，而不是接管屏幕
 
-TermPilot 只关心进入它体系内的 `tmux` 会话。  
+TermPilot 只关心进入它体系内的终端会话。  
 电脑和手机都围绕这批会话工作，不做桌面像素级同步。
 
 ### 后台常驻，前台干净
