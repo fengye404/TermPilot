@@ -575,10 +575,10 @@ async function runManagedCommand(argv: string[]): Promise<void> {
     name: buildQuickSessionName(commandArgs),
     cwd: processCwd(),
     deviceId: resolveDeviceId(),
+    command: commandArgs,
   });
 
   console.log(`已创建会话 ${session.sid} (${session.name})`);
-  await sendInput(session, `${commandArgs.join(" ")}\n`);
   await attachSession(session);
 }
 

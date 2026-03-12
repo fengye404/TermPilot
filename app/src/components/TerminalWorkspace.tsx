@@ -36,6 +36,7 @@ interface TerminalWorkspaceProps {
 
 export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const isMobileView = Boolean(props.onBack);
+  const showFocusAction = Boolean(props.onToggleFocusMode);
   const executionKeys = props.shortcutKeys.filter((shortcut) => ["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const navigationKeys = props.shortcutKeys.filter((shortcut) => !["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const helperKeys = navigationKeys.filter((shortcut) => !shortcut.key.startsWith("arrow_"));
@@ -135,9 +136,9 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <div className={`${props.focusMode ? "h-[72svh] min-h-[540px]" : "h-[56svh] min-h-[460px]"} overflow-auto rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3`}>
                 <AnsiTerminalSnapshot snapshot={props.snapshot} />
               </div>
-              {props.onToggleFocusMode ? (
+              {showFocusAction ? (
                 <button className="tp-mobile-focus-fab" type="button" onClick={props.onToggleFocusMode}>
-                  {props.focusMode ? "退出横屏" : "横屏查看"}
+                  {props.focusMode ? "退出专注" : "专注模式"}
                 </button>
               ) : null}
             </div>
@@ -351,6 +352,11 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                 <div className="h-[52svh] min-h-[440px] max-h-[720px] overflow-auto rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3">
                   <AnsiTerminalSnapshot snapshot={props.snapshot} />
                 </div>
+                {showFocusAction ? (
+                  <button className="tp-mobile-focus-fab" type="button" onClick={props.onToggleFocusMode}>
+                    {props.focusMode ? "退出专注" : "专注模式"}
+                  </button>
+                ) : null}
               </div>
 
               <div className="tp-card px-4 py-4">

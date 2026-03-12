@@ -85,6 +85,14 @@ function tryParseUrl(value: string): URL | null {
   }
 }
 
+function detectTouchDevice(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+}
+
 export default function App() {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -123,6 +131,7 @@ export default function App() {
   const [createCwd, setCreateCwd] = useState("");
   const [createShell, setCreateShell] = useState("");
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+  const [isTouchDevice, setIsTouchDevice] = useState(detectTouchDevice);
   const [mobileTerminalFocusMode, setMobileTerminalFocusMode] = useState(false);
 
   const activeSession = useMemo(
@@ -181,6 +190,7 @@ export default function App() {
     }
     const handleResize = () => {
       setIsDesktop(window.innerWidth >= 1024);
+      setIsTouchDevice(detectTouchDevice());
     };
     window.addEventListener("resize", handleResize);
     return () => {
@@ -1103,11 +1113,15 @@ export default function App() {
                   activeSession={activeSession}
                   activeSid={activeSid}
                   canControl={canControlDevice}
+                  focusMode={mobileTerminalFocusMode}
                   command={command}
                   keyboardBridge={keyboardBridge}
                   pasteBuffer={pasteBuffer}
                   shortcutKeys={SHORTCUT_KEYS}
                   snapshot={activeSnapshot}
+                  onToggleFocusMode={isTouchDevice ? () => {
+                    void toggleMobileTerminalFocusMode();
+                  } : undefined}
                   onCommandChange={setCommand}
                   onKeyboardBridgeChange={handleKeyboardBridgeChange}
                   onKeyboardBridgeKey={handleKeyboardBridgeKey}

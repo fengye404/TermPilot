@@ -11,6 +11,7 @@ export interface CreateSessionInput {
   name?: string;
   cwd?: string;
   shell?: string;
+  command?: string[];
 }
 
 const TERM_PREFIX = "termpilot";
@@ -25,6 +26,13 @@ function sanitizeName(value: string): string {
 
 function buildTmuxSessionName(sid: string, name: string): string {
   return `${TERM_PREFIX}-${sanitizeName(name)}-${sid.slice(0, 8)}`;
+}
+
+function shellQuote(value: string): string {
+  if (value.length === 0) {
+    return "''";
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function runTmux(args: string[]): Promise<string> {
@@ -71,8 +79,15 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
     : getOrCreateGeneratedDeviceId();
   const startedAt = now();
   const tmuxSessionName = buildTmuxSessionName(sid, name);
+  const tmuxArgs = ["new-session", "-d", "-s", tmuxSessionName, "-c", workingDirectory];
+  if (input.command && input.command.length > 0) {
+    const commandText = `exec ${input.command.map(shellQuote).join(" ")}`;
+    tmuxArgs.push(shell, "-lc", commandText);
+  } else {
+    tmuxArgs.push(shell);
+  }
 
-  await runTmux(["new-session", "-d", "-s", tmuxSessionName, "-c", workingDirectory, shell]);
+  await runTmux(tmuxArgs);
   await runTmux(["set-window-option", "-t", tmuxSessionName, "window-size", "latest"]);
   await runTmux(["set-window-option", "-t", tmuxSessionName, "aggressive-resize", "off"]);
 
