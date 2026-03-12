@@ -41,6 +41,7 @@ export default defineConfig({
         items: [
           { text: "代码架构", link: "/architecture" },
           { text: "协议说明", link: "/protocol" },
+          { text: "设计系统", link: "/design-system" },
           { text: "开发文档", link: "/development" },
           { text: "技术选型", link: "/tech-selection-2026" },
         ],

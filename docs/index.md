@@ -6,28 +6,28 @@ hero:
   text: "手机和电脑共享同一条终端上下文"
   tagline: "为 Claude Code、OpenCode 和长期命令行任务设计的跨端终端控制工具。"
   actions:
-    - theme: alt
-      text: Why TermPilot
-      link: /why-termpilot
     - theme: brand
       text: 快速开始
       link: /getting-started
     - theme: alt
+      text: Why TermPilot
+      link: /why-termpilot
+    - theme: alt
       text: 部署与运维
       link: /operations-guide
     - theme: alt
-      text: GitHub
-      link: https://github.com/fengye404/TermPilot
+      text: 设计系统
+      link: /design-system
 
 features:
-  - title: 一个包，两端通用
-    details: 服务器和电脑都安装同一个 npm 包。对外只需要记住 `termpilot relay` 和 `termpilot agent`。
-  - title: 手机不安装
-    details: relay 同时托管网页和 WebSocket，中转层和 Web UI 在一起，手机浏览器直接打开域名即可。
-  - title: 共享同一个会话
-    details: 电脑和手机看到的是同一批任务会话，不是“一边一个独立终端”。
+  - title: 同一个会话
+    details: 电脑和手机看到的是同一条受管理终端会话，不是重新开出来的另一条 shell。
+  - title: 一个 relay，两端接入
+    details: relay 同时负责 Web UI、WebSocket 中继、配对、授权和最近输出缓冲。
+  - title: 当前底座是 tmux
+    details: agent 在电脑上管理本地 tmux 会话，并把状态和输出同步到 relay。
   - title: 面向长期任务
-    details: 特别适合需要离开电脑后继续观察 AI 编码、脚本、部署或批处理任务的场景。
+    details: 更适合 AI 编码、部署、迁移、批处理这类会持续运行的终端工作流。
 ---
 
 ## TermPilot 解决什么问题
@@ -48,6 +48,13 @@ TermPilot 的解法很直接：
 
 - [Why TermPilot](/why-termpilot)
 
+## 你应该先看哪份文档
+
+- 想最快跑通：看 [快速开始](/getting-started)
+- 想长期部署：看 [部署与运维指南](/operations-guide)
+- 想理解实现：看 [代码架构](/architecture) 和 [协议说明](/protocol)
+- 想保持界面一致：看 [设计系统](/design-system)
+
 ## 你会怎么用它
 
 最常见的一条路径只有四步：
@@ -62,40 +69,6 @@ TermPilot 的解法很直接：
 - 电脑和手机同步看到同一个会话输出
 - 手机上可以补命令、发快捷键、关闭会话
 - 电脑离开当前桌面以后，任务仍然会继续运行
-
-## 选择阅读路径
-
-### 我只想先跑起来
-
-先看 [快速开始](/getting-started)。
-
-这份文档会带你完成：
-
-- 安装
-- 启动 relay
-- 启动 agent
-- 手机配对
-- 跑第一个可同步任务
-
-### 我准备长期部署
-
-看 [部署与运维指南](/operations-guide)。
-
-它会覆盖：
-
-- 推荐拓扑
-- 域名和 HTTPS/WSS
-- 生产部署
-- 运维动作
-- 排障与安全边界
-
-### 我准备改代码
-
-先看这几份：
-
-- [代码架构](/architecture)
-- [协议说明](/protocol)
-- [开发文档](/development)
 
 ## 这套系统的边界
 
@@ -118,4 +91,5 @@ TermPilot 目前专注于一个明确问题：
 - [部署与运维指南](/operations-guide)
 - [代码架构](/architecture)
 - [协议说明](/protocol)
+- [设计系统](/design-system)
 - [开发文档](/development)

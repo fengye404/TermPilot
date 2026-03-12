@@ -1,7 +1,7 @@
 import type { FormEvent, Ref } from "react";
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 
-import { Panel } from "./chrome";
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, Panel } from "./chrome";
 
 interface ShortcutKeyMeta {
   key: InputKey;
@@ -41,247 +41,320 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
 
   const renderShortcutButton = (shortcut: ShortcutKeyMeta) => {
     const toneClass = shortcut.tone === "primary"
-      ? "border-sky-400/40 bg-sky-500/10 text-sky-100"
+      ? "border-[rgba(31,122,83,0.42)] bg-[rgba(31,122,83,0.12)] text-[#d8f3e6]"
       : shortcut.tone === "danger"
-        ? "border-rose-400/40 bg-rose-500/10 text-rose-100"
-        : "border-slate-700/80 bg-slate-950/60 text-slate-100";
+        ? "border-[rgba(204,104,86,0.34)] bg-[rgba(204,104,86,0.12)] text-[#ffd8d2]"
+        : "border-[var(--tp-border)] bg-[rgba(8,13,17,0.86)] text-[var(--tp-text)]";
 
     return (
       <button
         key={shortcut.key}
-        className={`flex min-h-14 items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:opacity-40 ${toneClass}`}
+        className={`flex min-h-12 items-center gap-3 rounded-[14px] border px-3 py-3 text-left transition disabled:opacity-40 ${toneClass}`}
         disabled={!props.activeSid || !props.canControl}
         onClick={() => props.onSendKey(shortcut.key)}
       >
-        <span className="inline-flex min-w-11 items-center justify-center rounded-xl border border-white/10 bg-slate-950/80 px-2 py-2 font-mono text-[13px] text-white">
+        <span className="inline-flex min-w-10 items-center justify-center rounded-[12px] border border-white/10 bg-[rgba(8,13,17,0.86)] px-2 py-2 font-mono text-[13px] text-white">
           {shortcut.chip}
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{shortcut.label}</span>
-          <span className="mt-0.5 block text-xs text-slate-400">{shortcut.description}</span>
+          <span className="mt-0.5 block text-xs text-[var(--tp-text-muted)]">{shortcut.description}</span>
         </span>
       </button>
     );
   };
 
-  return (
-    <Panel title={props.activeSession ? `${props.activeSession.name} · ${props.activeSession.status === "running" ? "运行中" : "已退出"}` : "当前未选择会话"}>
-      {!props.activeSession ? (
-        <div className="flex min-h-[56vh] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-700 bg-slate-950/35 px-6 py-12 text-center">
+  if (!props.activeSession) {
+    return (
+      <Panel title="当前未选择会话">
+        <div className="tp-empty-state flex min-h-[56vh] flex-col items-center justify-center px-6 py-12 text-center">
           <p className="text-sm font-semibold text-white">先选择一个会话</p>
-          <p className="mt-2 max-w-md text-sm text-slate-400">
+          <p className="mt-2 max-w-md text-sm text-[var(--tp-text-muted)]">
             你可以在左侧查看已有会话，或者先创建一个新的 tmux 会话。选中之后这里才会显示终端输出和输入控件。
           </p>
         </div>
-      ) : (
-        <div className="flex h-full min-h-[68vh] flex-col gap-4">
-          {props.onBack ? (
-            <button
-              className="inline-flex min-h-11 w-fit items-center rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200"
-              type="button"
-              onClick={props.onBack}
-            >
-              返回会话列表
-            </button>
-          ) : null}
-          {isMobileView ? (
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel title={`${props.activeSession.name} · ${props.activeSession.status === "running" ? "运行中" : "已退出"}`}>
+      <div className="flex h-full min-h-[68vh] flex-col gap-4">
+        {props.onBack ? (
+          <button className={`${BUTTON_SECONDARY} inline-flex min-h-11 w-fit items-center`} type="button" onClick={props.onBack}>
+            返回会话列表
+          </button>
+        ) : null}
+
+        {isMobileView ? (
+          <div className="space-y-4">
+            <div className="tp-terminal-shell p-3">
+              <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                <div>
+                  <p className="text-sm font-medium text-white">终端输出</p>
+                  <p className="text-xs text-[var(--tp-text-soft)]">和电脑看的是同一个 tmux 会话。</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {props.onToggleFocusMode ? (
+                    <button className={`${BUTTON_SECONDARY} min-h-0 px-3 py-1.5 text-[11px]`} type="button" onClick={props.onToggleFocusMode}>
+                      {props.focusMode ? "退出全屏" : "横屏全屏"}
+                    </button>
+                  ) : null}
+                  <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
+                    {props.activeSession.status === "running" ? "实时同步" : "已结束"}
+                  </span>
+                </div>
+              </div>
+              <div className={`${props.focusMode ? "h-[72svh] min-h-[540px]" : "h-[56svh] min-h-[460px]"} overflow-hidden rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3`}>
+                <div ref={props.terminalHostRef} className="h-full min-h-full w-full overflow-hidden" />
+              </div>
+            </div>
+
+            <div className="tp-card px-4 py-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-white">终端键盘</p>
+                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">手机软键盘输入会直接写进当前光标位置，回车立即发送。</p>
+                </div>
+                <button
+                  className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-xs`}
+                  type="button"
+                  disabled={!props.activeSid || !props.canControl}
+                  onClick={() => props.onKeyboardBridgeKey("enter")}
+                >
+                  回车
+                </button>
+              </div>
+              <input
+                className="tp-input min-h-11 disabled:opacity-50"
+                value={props.keyboardBridge}
+                onChange={(event) => props.onKeyboardBridgeChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    props.onKeyboardBridgeKey("enter");
+                    return;
+                  }
+                  if (event.key === "Backspace" && props.keyboardBridge.length === 0) {
+                    props.onKeyboardBridgeKey("backspace");
+                    return;
+                  }
+                  if (event.key === "Tab") {
+                    event.preventDefault();
+                    props.onKeyboardBridgeKey("tab");
+                  }
+                }}
+                placeholder="点这里唤起键盘，直接往当前光标输入"
+                enterKeyHint="send"
+                autoCapitalize="off"
+                autoCorrect="off"
+                disabled={!props.activeSid || !props.canControl}
+              />
+            </div>
+
+            <form className="tp-card px-4 py-4" onSubmit={props.onSubmitCommand}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-white">快速输入</p>
+                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">补一条命令最方便，发送时会自动回车。</p>
+                </div>
+                <button className={`${BUTTON_PRIMARY} min-h-9 px-4 py-2 text-sm`} type="submit" disabled={!props.activeSid || !props.canControl}>
+                  发送
+                </button>
+              </div>
+              <input
+                className="tp-input mt-4 min-h-14 disabled:opacity-50"
+                value={props.command}
+                onChange={(event) => props.onCommandChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    props.onSendCommandNow();
+                  }
+                }}
+                placeholder="例如：claude code / git status / npm test"
+                enterKeyHint="send"
+                disabled={!props.activeSid || !props.canControl}
+              />
+            </form>
+
+            <div className="tp-card px-4 py-4">
+              <div className="mb-3">
+                <p className="text-sm font-medium text-white">快捷操作</p>
+                <p className="mt-1 text-xs text-[var(--tp-text-soft)]">全部收成紧凑按钮，减少对终端区域的挤压。</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {executionKeys.map((shortcut) => (
+                  <button
+                    key={shortcut.key}
+                    className={`min-h-11 rounded-[14px] border px-2 py-2 text-center text-xs font-medium disabled:opacity-40 ${
+                      shortcut.tone === "primary"
+                        ? "border-[rgba(31,122,83,0.42)] bg-[rgba(31,122,83,0.12)] text-[#d8f3e6]"
+                        : shortcut.tone === "danger"
+                          ? "border-[rgba(204,104,86,0.34)] bg-[rgba(204,104,86,0.12)] text-[#ffd8d2]"
+                          : "border-[var(--tp-border)] bg-[rgba(8,13,17,0.86)] text-[var(--tp-text)]"
+                    }`}
+                    disabled={!props.activeSid || !props.canControl}
+                    onClick={() => props.onSendKey(shortcut.key)}
+                  >
+                    <span className="block font-mono text-[12px] opacity-80">{shortcut.chip}</span>
+                    <span className="mt-0.5 block">{shortcut.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <div className="flex justify-end">
+                  <button
+                    className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[var(--tp-border)] bg-[rgba(8,13,17,0.86)] text-lg text-[var(--tp-text)] disabled:opacity-40"
+                    type="button"
+                    disabled={!props.activeSid || !props.canControl}
+                    onClick={() => props.onSendKey("arrow_left")}
+                  >
+                    ←
+                  </button>
+                </div>
+                <div className="grid gap-2">
+                  <button
+                    className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[var(--tp-border)] bg-[rgba(8,13,17,0.86)] text-lg text-[var(--tp-text)] disabled:opacity-40"
+                    type="button"
+                    disabled={!props.activeSid || !props.canControl}
+                    onClick={() => props.onSendKey("arrow_up")}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[rgba(198,145,47,0.34)] bg-[rgba(198,145,47,0.12)] text-[11px] font-medium text-[#f2d79f] disabled:opacity-40"
+                    type="button"
+                    disabled={!props.activeSid || !props.canControl}
+                    onClick={() => props.onSendKey("escape")}
+                  >
+                    Esc
+                  </button>
+                  <button
+                    className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[var(--tp-border)] bg-[rgba(8,13,17,0.86)] text-lg text-[var(--tp-text)] disabled:opacity-40"
+                    type="button"
+                    disabled={!props.activeSid || !props.canControl}
+                    onClick={() => props.onSendKey("arrow_down")}
+                  >
+                    ↓
+                  </button>
+                </div>
+                <div className="flex justify-start">
+                  <button
+                    className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[var(--tp-border)] bg-[rgba(8,13,17,0.86)] text-lg text-[var(--tp-text)] disabled:opacity-40"
+                    type="button"
+                    disabled={!props.activeSid || !props.canControl}
+                    onClick={() => props.onSendKey("arrow_right")}
+                  >
+                    →
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {helperKeys.map((shortcut) => (
+                  <button
+                    key={shortcut.key}
+                    className="min-h-10 rounded-[14px] border border-[var(--tp-border)] bg-[rgba(8,13,17,0.86)] px-2 py-2 text-xs text-[var(--tp-text)] disabled:opacity-40"
+                    type="button"
+                    disabled={!props.activeSid || !props.canControl}
+                    onClick={() => props.onSendKey(shortcut.key)}
+                  >
+                    <span className="block font-mono text-[12px] opacity-80">{shortcut.chip}</span>
+                    <span className="mt-0.5 block">{shortcut.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <details className="tp-card px-4 py-4">
+              <summary className="list-none text-sm font-medium text-white">
+                多行粘贴
+                <span className="ml-2 text-xs font-normal text-[var(--tp-text-soft)]">脚本、长 prompt、多行命令放这里</span>
+              </summary>
+              <textarea
+                className="tp-input mt-4 min-h-36 disabled:opacity-50"
+                value={props.pasteBuffer}
+                onChange={(event) => props.onPasteBufferChange(event.target.value)}
+                placeholder="在这里粘贴多行内容。原样发送不会自动补回车；发送并回车会在末尾补一个回车。"
+                disabled={!props.activeSid || !props.canControl}
+              />
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                <button
+                  className={`${BUTTON_SECONDARY} min-h-12 flex-1 px-4 py-3 text-sm`}
+                  type="button"
+                  disabled={!props.activeSid || !props.canControl || !props.pasteBuffer}
+                  onClick={() => props.onSendPaste("raw")}
+                >
+                  原样发送
+                </button>
+                <button
+                  className={`${BUTTON_PRIMARY} min-h-12 flex-1 px-4 py-3 text-sm`}
+                  type="button"
+                  disabled={!props.activeSid || !props.canControl || !props.pasteBuffer}
+                  onClick={() => props.onSendPaste("line")}
+                >
+                  发送并回车
+                </button>
+              </div>
+            </details>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_312px]">
             <div className="space-y-4">
-              <div className="rounded-[28px] border border-slate-800 bg-slate-950/90 p-3 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
+              <div className="tp-terminal-shell p-3">
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                   <div>
                     <p className="text-sm font-medium text-white">终端输出</p>
-                    <p className="text-xs text-slate-500">和电脑看的是同一个 tmux 会话。</p>
+                    <p className="text-xs text-[var(--tp-text-soft)]">这里显示同一个 tmux 会话的实时快照输出。</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {props.onToggleFocusMode ? (
-                      <button
-                        className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-[11px] font-medium text-slate-200"
-                        type="button"
-                        onClick={props.onToggleFocusMode}
-                      >
-                        {props.focusMode ? "退出全屏" : "横屏全屏"}
-                      </button>
-                    ) : null}
-                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200">
-                      {props.activeSession.status === "running" ? "实时同步" : "已结束"}
-                    </span>
-                  </div>
+                  <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
+                    {props.activeSession.status === "running" ? "实时同步" : "已结束"}
+                  </span>
                 </div>
-                <div className={`${props.focusMode ? "h-[72svh] min-h-[540px]" : "h-[56svh] min-h-[460px]"} overflow-hidden rounded-[22px] border border-slate-800 bg-[#020617] p-3`}>
+                <div className="h-[52svh] min-h-[440px] max-h-[720px] overflow-hidden rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3">
                   <div ref={props.terminalHostRef} className="h-full min-h-full w-full overflow-hidden" />
                 </div>
               </div>
 
-              <div className="rounded-[28px] border border-slate-800 bg-slate-900/80 p-4 shadow-xl shadow-slate-950/25">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-white">终端键盘</p>
-                    <p className="mt-1 text-xs text-slate-500">手机软键盘输入会直接写进当前光标位置，回车立即发送。</p>
-                  </div>
-                  <button
-                    className="min-h-9 rounded-full border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 disabled:opacity-50"
-                    type="button"
-                    disabled={!props.activeSid || !props.canControl}
-                    onClick={() => props.onKeyboardBridgeKey("enter")}
-                  >
-                    回车
-                  </button>
-                </div>
-                <input
-                  className="min-h-11 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-[16px] outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
-                  value={props.keyboardBridge}
-                  onChange={(event) => props.onKeyboardBridgeChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      props.onKeyboardBridgeKey("enter");
-                      return;
-                    }
-                    if (event.key === "Backspace" && props.keyboardBridge.length === 0) {
-                      props.onKeyboardBridgeKey("backspace");
-                      return;
-                    }
-                    if (event.key === "Tab") {
-                      event.preventDefault();
-                      props.onKeyboardBridgeKey("tab");
-                    }
-                  }}
-                  placeholder="点这里唤起键盘，直接往当前光标输入"
-                  enterKeyHint="send"
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  disabled={!props.activeSid || !props.canControl}
-                />
-              </div>
-
-              <form className="rounded-[28px] border border-slate-800 bg-slate-900/80 p-4 shadow-xl shadow-slate-950/25" onSubmit={props.onSubmitCommand}>
+              <div className="tp-card px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-white">快速输入</p>
-                    <p className="mt-1 text-xs text-slate-500">补一条命令最方便，发送时会自动回车。</p>
+                    <p className="mt-1 text-xs text-[var(--tp-text-soft)]">适合补一条命令、确认一步操作，发送时会自动追加回车。</p>
                   </div>
-                  <button
-                    className="min-h-9 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
-                    type="submit"
+                  <span className="tp-chip min-h-0 px-3 py-1 text-[11px]">当前会话</span>
+                </div>
+                <form className="mt-4 flex flex-col gap-3 md:flex-row" onSubmit={props.onSubmitCommand}>
+                  <input
+                    className="tp-input min-h-14 flex-1 disabled:opacity-50"
+                    value={props.command}
+                    onChange={(event) => props.onCommandChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        props.onSendCommandNow();
+                      }
+                    }}
+                    placeholder="例如：claude code / git status / npm test"
+                    enterKeyHint="send"
                     disabled={!props.activeSid || !props.canControl}
-                  >
-                    发送
+                  />
+                  <button className={`${BUTTON_PRIMARY} min-h-14 px-5 py-3 text-sm`} type="submit" disabled={!props.activeSid || !props.canControl}>
+                    发送命令
                   </button>
-                </div>
-                <input
-                  className="mt-4 min-h-14 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-[16px] outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
-                  value={props.command}
-                  onChange={(event) => props.onCommandChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      props.onSendCommandNow();
-                    }
-                  }}
-                  placeholder="例如：claude code / git status / npm test"
-                  enterKeyHint="send"
-                  disabled={!props.activeSid || !props.canControl}
-                />
-              </form>
-
-              <div className="rounded-[28px] border border-slate-800 bg-slate-900/72 p-4">
-                <div className="mb-3">
-                  <p className="text-sm font-medium text-white">快捷操作</p>
-                  <p className="mt-1 text-xs text-slate-500">全部收成紧凑按钮，减少对终端区域的挤压。</p>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {executionKeys.map((shortcut) => (
-                    <button
-                      key={shortcut.key}
-                      className={`min-h-11 rounded-2xl border px-2 py-2 text-center text-xs font-medium disabled:opacity-40 ${
-                        shortcut.tone === "primary"
-                          ? "border-sky-400/40 bg-sky-500/10 text-sky-100"
-                          : shortcut.tone === "danger"
-                            ? "border-rose-400/40 bg-rose-500/10 text-rose-100"
-                            : "border-slate-700/80 bg-slate-950/60 text-slate-100"
-                      }`}
-                      disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onSendKey(shortcut.key)}
-                    >
-                      <span className="block font-mono text-[12px] opacity-80">{shortcut.chip}</span>
-                      <span className="mt-0.5 block">{shortcut.label}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                  <div className="flex justify-end">
-                    <button
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-lg text-slate-100 disabled:opacity-40"
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onSendKey("arrow_left")}
-                    >
-                      ←
-                    </button>
-                  </div>
-                  <div className="grid gap-2">
-                    <button
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-lg text-slate-100 disabled:opacity-40"
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onSendKey("arrow_up")}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-400/30 bg-amber-500/10 text-[11px] font-medium text-amber-100 disabled:opacity-40"
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onSendKey("escape")}
-                    >
-                      Esc
-                    </button>
-                    <button
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-lg text-slate-100 disabled:opacity-40"
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onSendKey("arrow_down")}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                  <div className="flex justify-start">
-                    <button
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 text-lg text-slate-100 disabled:opacity-40"
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onSendKey("arrow_right")}
-                    >
-                      →
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {helperKeys.map((shortcut) => (
-                    <button
-                      key={shortcut.key}
-                      className="min-h-10 rounded-2xl border border-slate-700 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 disabled:opacity-40"
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onSendKey(shortcut.key)}
-                    >
-                      <span className="block font-mono text-[12px] opacity-80">{shortcut.chip}</span>
-                      <span className="mt-0.5 block">{shortcut.label}</span>
-                    </button>
-                  ))}
-                </div>
+                </form>
               </div>
 
-              <details className="rounded-[28px] border border-slate-800 bg-slate-900/72 p-4">
-                <summary className="cursor-pointer list-none text-sm font-medium text-white">
+              <details className="tp-card px-4 py-4">
+                <summary className="list-none text-sm font-medium text-white">
                   多行粘贴
-                  <span className="ml-2 text-xs font-normal text-slate-500">脚本、长 prompt、多行命令放这里</span>
+                  <span className="ml-2 text-xs font-normal text-[var(--tp-text-soft)]">脚本、长 prompt、多行命令放这里</span>
                 </summary>
                 <textarea
-                  className="mt-4 min-h-36 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-[16px] outline-none placeholder:text-slate-500 disabled:opacity-50"
+                  className="tp-input mt-4 min-h-36 disabled:opacity-50"
                   value={props.pasteBuffer}
                   onChange={(event) => props.onPasteBufferChange(event.target.value)}
                   placeholder="在这里粘贴多行内容。原样发送不会自动补回车；发送并回车会在末尾补一个回车。"
@@ -289,7 +362,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                 />
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                   <button
-                    className="min-h-12 flex-1 rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-200 disabled:opacity-40"
+                    className={`${BUTTON_SECONDARY} min-h-12 flex-1 px-4 py-3 text-sm`}
                     type="button"
                     disabled={!props.activeSid || !props.canControl || !props.pasteBuffer}
                     onClick={() => props.onSendPaste("raw")}
@@ -297,7 +370,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                     原样发送
                   </button>
                   <button
-                    className="min-h-12 flex-1 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-medium text-slate-950 disabled:opacity-40"
+                    className={`${BUTTON_PRIMARY} min-h-12 flex-1 px-4 py-3 text-sm`}
                     type="button"
                     disabled={!props.activeSid || !props.canControl || !props.pasteBuffer}
                     onClick={() => props.onSendPaste("line")}
@@ -307,120 +380,35 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                 </div>
               </details>
             </div>
-          ) : (
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_312px]">
-              <div className="space-y-4">
-                <div className="rounded-[28px] border border-slate-800 bg-slate-950/90 p-3 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
-                  <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                    <div>
-                      <p className="text-sm font-medium text-white">终端输出</p>
-                      <p className="text-xs text-slate-500">这里显示同一个 tmux 会话的实时快照输出。</p>
-                    </div>
-                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200">
-                      {props.activeSession.status === "running" ? "实时同步" : "已结束"}
-                    </span>
-                  </div>
-                  <div className="h-[52svh] min-h-[440px] max-h-[720px] overflow-hidden rounded-[22px] border border-slate-800 bg-[#020617] p-3">
-                    <div ref={props.terminalHostRef} className="h-full min-h-full w-full overflow-hidden" />
-                  </div>
-                </div>
 
-                <div className="rounded-[28px] border border-slate-800 bg-slate-900/72 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-white">快速输入</p>
-                      <p className="mt-1 text-xs text-slate-500">适合补一条命令、确认一步操作，发送时会自动追加回车。</p>
-                    </div>
-                    <span className="rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-400">
-                      当前会话
-                    </span>
-                  </div>
-                  <form className="mt-4 flex flex-col gap-3 md:flex-row" onSubmit={props.onSubmitCommand}>
-                    <input
-                      className="min-h-14 flex-1 rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-[16px] outline-none ring-0 placeholder:text-slate-500 disabled:opacity-50"
-                      value={props.command}
-                      onChange={(event) => props.onCommandChange(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                          event.preventDefault();
-                          props.onSendCommandNow();
-                        }
-                      }}
-                      placeholder="例如：claude code / git status / npm test"
-                      enterKeyHint="send"
-                      disabled={!props.activeSid || !props.canControl}
-                    />
-                    <button
-                      className="min-h-14 rounded-2xl bg-sky-500 px-5 py-3 text-sm font-medium text-slate-950 disabled:opacity-60"
-                      type="submit"
-                      disabled={!props.activeSid || !props.canControl}
-                    >
-                      发送命令
-                    </button>
-                  </form>
+            <aside className="space-y-4">
+              <div className="tp-card px-4 py-4">
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-white">执行操作</p>
+                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">把最常用的几类控制集中到右侧，不再散成一排丑按钮。</p>
                 </div>
-
-                <details className="rounded-[28px] border border-slate-800 bg-slate-900/72 p-4">
-                  <summary className="cursor-pointer list-none text-sm font-medium text-white">
-                    多行粘贴
-                    <span className="ml-2 text-xs font-normal text-slate-500">脚本、长 prompt、多行命令放这里</span>
-                  </summary>
-                  <textarea
-                    className="mt-4 min-h-36 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-[16px] outline-none placeholder:text-slate-500 disabled:opacity-50"
-                    value={props.pasteBuffer}
-                    onChange={(event) => props.onPasteBufferChange(event.target.value)}
-                    placeholder="在这里粘贴多行内容。原样发送不会自动补回车；发送并回车会在末尾补一个回车。"
-                    disabled={!props.activeSid || !props.canControl}
-                  />
-                  <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                    <button
-                      className="min-h-12 flex-1 rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-200 disabled:opacity-40"
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl || !props.pasteBuffer}
-                      onClick={() => props.onSendPaste("raw")}
-                    >
-                      原样发送
-                    </button>
-                    <button
-                      className="min-h-12 flex-1 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-medium text-slate-950 disabled:opacity-40"
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl || !props.pasteBuffer}
-                      onClick={() => props.onSendPaste("line")}
-                    >
-                      发送并回车
-                    </button>
-                  </div>
-                </details>
+                <div className="grid gap-3">
+                  {executionKeys.map(renderShortcutButton)}
+                </div>
               </div>
 
-              <aside className="space-y-4">
-                <div className="rounded-[28px] border border-slate-800 bg-slate-900/72 p-4">
-                  <div className="mb-3">
-                    <p className="text-sm font-medium text-white">执行操作</p>
-                    <p className="mt-1 text-xs text-slate-500">把最常用的几类控制集中到右侧，不再散成一排丑按钮。</p>
-                  </div>
-                  <div className="grid gap-3">
-                    {executionKeys.map(renderShortcutButton)}
-                  </div>
+              <div className="tp-card px-4 py-4">
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-white">移动与补全</p>
+                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">用紧凑的快捷控制代替裸文本按钮，降低视觉噪音。</p>
                 </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  {navigationKeys.map(renderShortcutButton)}
+                </div>
+              </div>
+            </aside>
+          </div>
+        )}
 
-                <div className="rounded-[28px] border border-slate-800 bg-slate-900/72 p-4">
-                  <div className="mb-3">
-                    <p className="text-sm font-medium text-white">移动与补全</p>
-                    <p className="mt-1 text-xs text-slate-500">参考 WeTTY / ttyd 这类网页终端的做法，用紧凑的快捷控制代替原来那种裸文本按钮。</p>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                    {navigationKeys.map(renderShortcutButton)}
-                  </div>
-                </div>
-              </aside>
-            </div>
-          )}
-          <p className="text-xs text-slate-500">
-            当前模式是浏览器直开 PWA。适合查看流式输出、补命令和关闭会话，不适合重度长文本输入。
-          </p>
-        </div>
-      )}
+        <p className="text-xs text-[var(--tp-text-soft)]">
+          当前模式是浏览器直开 PWA。适合查看流式输出、补命令和关闭会话，不适合重度长文本输入。
+        </p>
+      </div>
     </Panel>
   );
 }

@@ -1,10 +1,15 @@
 import type { ReactNode } from "react";
 
+export const BUTTON_PRIMARY = "tp-button tp-button-primary";
+export const BUTTON_SECONDARY = "tp-button tp-button-secondary";
+export const BUTTON_DANGER = "tp-button tp-button-danger";
+export const BUTTON_SUBTLE = "tp-button tp-button-subtle";
+
 export function Panel(props: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-3xl border border-slate-800/80 bg-slate-900/72 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur">
+    <section className="tp-card px-4 py-4 sm:px-5">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-white">{props.title}</h2>
+        <h2 className="tp-panel-title">{props.title}</h2>
       </div>
       {props.children}
     </section>
@@ -20,9 +25,9 @@ export function Field(props: {
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm text-slate-400">{props.label}</span>
+      <span className="tp-label">{props.label}</span>
       <input
-        className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-[16px] outline-none placeholder:text-slate-500 disabled:opacity-50"
+        className="tp-input disabled:opacity-50"
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
@@ -34,13 +39,7 @@ export function Field(props: {
 
 export function StatusBadge(props: { active: boolean; label: string }) {
   return (
-    <span
-      className={`rounded-full border px-3 py-2 text-xs font-medium ${
-        props.active
-          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
-          : "border-rose-500/40 bg-rose-500/10 text-rose-200"
-      }`}
-    >
+    <span className={`tp-chip ${props.active ? "tp-chip-active" : "tp-chip-danger"}`}>
       {props.label}
     </span>
   );
@@ -52,16 +51,16 @@ export function NoticeBanner(props: {
   onDismiss: () => void;
 }) {
   const tone = props.kind === "error"
-    ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+    ? "border-[rgba(204,104,86,0.34)] bg-[rgba(204,104,86,0.12)] text-[#ffd8d2]"
     : props.kind === "success"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
-      : "border-sky-500/40 bg-sky-500/10 text-sky-100";
+      ? "border-[rgba(31,122,83,0.34)] bg-[rgba(31,122,83,0.12)] text-[#d8f3e6]"
+      : "border-[rgba(31,122,83,0.28)] bg-[rgba(31,122,83,0.08)] text-[#e4f4eb]";
 
   return (
-    <div className={`flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${tone}`}>
+    <div className={`tp-card flex items-start justify-between gap-3 px-4 py-3 text-sm ${tone}`}>
       <p>{props.text}</p>
       <button
-        className="rounded-full border border-current/30 px-3 py-1 text-xs"
+        className="tp-button tp-button-subtle min-h-0 px-3 py-1 text-xs"
         type="button"
         onClick={props.onDismiss}
       >
