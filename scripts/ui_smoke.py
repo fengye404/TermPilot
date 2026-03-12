@@ -103,18 +103,23 @@ def visible_session(page, name: str):
     return page.locator(f'[data-session-name="{name}"]:visible')
 
 
-def wait_for_session_text(page, name: str, text: str, timeout_seconds: float = 15) -> None:
+def wait_for_session_card(page, name: str, timeout_seconds: float = 15) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         locator = visible_session(page, name)
         if locator.count() == 0:
             time.sleep(0.2)
             continue
-        content = locator.first.text_content() or ""
-        if text in content:
+        if locator.first.is_visible():
             return
         time.sleep(0.2)
-    raise RuntimeError(f"等待会话 {name} 出现文本失败: {text}")
+    raise RuntimeError(f"等待会话卡片出现失败: {name}")
+
+
+def ensure_session_list_visible(page) -> None:
+    back_button = page.get_by_role("button", name="返回会话列表")
+    if back_button.count() > 0 and back_button.first.is_visible():
+        back_button.first.click()
 
 
 def main() -> None:
@@ -148,7 +153,8 @@ def main() -> None:
             else:
                 raise RuntimeError("配对后访问令牌没有写回页面")
 
-            wait_for_session_text(page, session_one, "查看")
+            ensure_session_list_visible(page)
+            wait_for_session_card(page, session_one)
             visible_session(page, session_one).get_by_role("button", name="查看").click()
             page.get_by_text(session_one, exact=False).first.wait_for(timeout=15000)
             wait_for_workspace_in_viewport(page)
@@ -162,7 +168,7 @@ def main() -> None:
             page.keyboard.press("Enter")
             wait_for_terminal_text(page, keyboard_text)
             page.get_by_role("button", name="返回会话列表").click()
-            wait_for_session_text(page, session_two, "查看")
+            wait_for_session_card(page, session_two)
             visible_session(page, session_two).get_by_role("button", name="查看").click()
             page.get_by_text(session_two, exact=False).first.wait_for(timeout=15000)
             page.get_by_role("button", name="返回会话列表").click()

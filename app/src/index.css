@@ -95,6 +95,62 @@ select {
   letter-spacing: -0.015em;
 }
 
+.tp-kicker {
+  color: var(--tp-accent-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.tp-subtle-copy {
+  color: var(--tp-text-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.tp-stat-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tp-stat-card {
+  border: 1px solid var(--tp-border);
+  border-radius: 14px;
+  background: rgba(8, 13, 17, 0.66);
+  padding: 12px 14px;
+}
+
+.tp-stat-label {
+  color: var(--tp-text-soft);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tp-stat-value {
+  margin-top: 6px;
+  color: #f7fbfd;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+
+.tp-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tp-panel-copy {
+  color: var(--tp-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .tp-label {
   margin-bottom: 0.45rem;
   display: block;
@@ -218,15 +274,25 @@ summary:focus-visible {
   background: rgba(10, 15, 18, 0.72);
   padding: 0.9rem 1rem;
   text-align: left;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 180ms ease;
 }
 
 .tp-session-card:hover {
   border-color: var(--tp-border-strong);
+  transform: translateY(-1px);
 }
 
 .tp-session-card-active {
   border-color: rgba(31, 122, 83, 0.45);
   background: var(--tp-accent-soft);
+}
+
+.tp-sidebar-sticky {
+  position: sticky;
+  top: 16px;
 }
 
 .tp-terminal-shell {
@@ -241,11 +307,31 @@ summary:focus-visible {
   background: rgba(10, 15, 18, 0.5);
 }
 
+.tp-empty-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 @media (prefers-reduced-motion: reduce) {
   button,
   input,
   textarea,
   select {
     transition: none;
+  }
+}
+
+@media (max-width: 1024px) {
+  .tp-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tp-empty-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tp-sidebar-sticky {
+    position: static;
   }
 }

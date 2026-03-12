@@ -26,9 +26,32 @@ const FILTER_OPTIONS: Array<{ value: SessionStatusFilter; label: string }> = [
 ];
 
 export function SessionListPanel(props: SessionListPanelProps) {
+  const runningCount = props.sessions.filter((session) => session.status === "running").length;
+  const exitedCount = props.sessions.filter((session) => session.status === "exited").length;
+  const pinnedCount = props.pinnedSids.length;
+
   return (
     <Panel title="会话列表">
       <div className="space-y-3">
+        <div className="tp-kicker">Sessions</div>
+        <div className="tp-stat-grid">
+          <div className="tp-stat-card">
+            <div className="tp-stat-label">总会话</div>
+            <div className="tp-stat-value">{props.sessions.length}</div>
+          </div>
+          <div className="tp-stat-card">
+            <div className="tp-stat-label">运行中</div>
+            <div className="tp-stat-value">{runningCount}</div>
+          </div>
+          <div className="tp-stat-card">
+            <div className="tp-stat-label">已退出</div>
+            <div className="tp-stat-value">{exitedCount}</div>
+          </div>
+          <div className="tp-stat-card">
+            <div className="tp-stat-label">已置顶</div>
+            <div className="tp-stat-value">{pinnedCount}</div>
+          </div>
+        </div>
         <input
           className="tp-input"
           value={props.sessionQuery}
@@ -73,6 +96,9 @@ export function SessionListPanel(props: SessionListPanelProps) {
                 <div>
                   <p className="font-medium text-white">{session.name}</p>
                   <p className="mt-1 text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
+                  <p className="mt-2 text-[11px] text-[var(--tp-text-soft)]">
+                    {session.backend} · 最近帧 {session.lastSeq}
+                  </p>
                 </div>
                 <span className={`tp-chip min-h-0 px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>
                   {session.status === "running" ? "运行中" : "已退出"}

@@ -101,6 +101,7 @@ export default function App() {
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const activeSidRef = useRef<string | null>(null);
   const canControlRef = useRef(false);
+  const suppressMobileAutoSelectRef = useRef(false);
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
   const previousSessionStatusRef = useRef<Record<string, SessionRecord["status"]>>({});
@@ -136,6 +137,14 @@ export default function App() {
   const activeSession = useMemo(
     () => sessions.find((session) => session.sid === activeSid) ?? null,
     [activeSid, sessions],
+  );
+  const runningSessionsCount = useMemo(
+    () => sessions.filter((session) => session.status === "running").length,
+    [sessions],
+  );
+  const exitedSessionsCount = useMemo(
+    () => sessions.filter((session) => session.status === "exited").length,
+    [sessions],
   );
   const isPaired = clientToken.trim().length > 0;
   const connected = connectionPhase === "connected";
@@ -207,6 +216,7 @@ export default function App() {
     setSessions([]);
     setBuffers({});
     setActiveSid(null);
+    suppressMobileAutoSelectRef.current = false;
 
     const timeoutId = window.setTimeout(() => {
       requestSessions(normalizedDeviceId);
@@ -452,6 +462,38 @@ export default function App() {
     const existing = new Set(sessions.map((session) => session.sid));
     setPinnedSids((current) => current.filter((sid) => existing.has(sid)));
   }, [sessions]);
+
+  useEffect(() => {
+    if (!connected || sessions.length === 0) {
+      suppressMobileAutoSelectRef.current = false;
+      return;
+    }
+    if (!isDesktop && suppressMobileAutoSelectRef.current) {
+      return;
+    }
+    if (activeSid && sessions.some((session) => session.sid === activeSid)) {
+      return;
+    }
+
+    const pickSession = [...sessions].sort((left, right) => {
+      const leftPinned = pinnedSids.includes(left.sid);
+      const rightPinned = pinnedSids.includes(right.sid);
+      if (leftPinned !== rightPinned) {
+        return leftPinned ? -1 : 1;
+      }
+      if (left.status !== right.status) {
+        return left.status === "running" ? -1 : 1;
+      }
+      return right.lastActivityAt.localeCompare(left.lastActivityAt);
+    })[0];
+
+    if (!pickSession) {
+      return;
+    }
+
+    setActiveSid(pickSession.sid);
+    requestReplay(pickSession.sid, deviceIdRef.current);
+  }, [activeSid, connected, isDesktop, pinnedSids, sessions]);
 
   useEffect(() => {
     const previousDeviceOnline = previousDeviceOnlineRef.current;
@@ -1049,6 +1091,26 @@ export default function App() {
             </div>
           ) : null}
         </div>
+        {isPaired ? (
+          <div className="mt-4 tp-stat-grid">
+            <div className="tp-stat-card">
+              <div className="tp-stat-label">当前设备</div>
+              <div className="mt-2 text-sm font-medium text-white">{deviceId}</div>
+            </div>
+            <div className="tp-stat-card">
+              <div className="tp-stat-label">运行中</div>
+              <div className="tp-stat-value">{runningSessionsCount}</div>
+            </div>
+            <div className="tp-stat-card">
+              <div className="tp-stat-label">已退出</div>
+              <div className="tp-stat-value">{exitedSessionsCount}</div>
+            </div>
+            <div className="tp-stat-card">
+              <div className="tp-stat-label">当前查看</div>
+              <div className="mt-2 text-sm font-medium text-white">{activeSession?.name ?? "未选择"}</div>
+            </div>
+          </div>
+        ) : null}
       </header>
 
       {notice ? (
@@ -1161,8 +1223,8 @@ export default function App() {
       ) : (
         <>
           {isDesktop ? (
-            <section className="grid gap-4 lg:grid-cols-[344px_minmax(0,1fr)]">
-              <div className="space-y-4">
+            <section className="grid gap-4 lg:grid-cols-[328px_minmax(0,1fr)] xl:grid-cols-[336px_minmax(0,1fr)]">
+              <div className="tp-sidebar-sticky space-y-4">
                 <CreateSessionPanel
                   canControl={canControlDevice}
                   createName={createName}
@@ -1186,6 +1248,7 @@ export default function App() {
                   onStatusFilterChange={setStatusFilter}
                   onTogglePinnedSession={togglePinnedSession}
                   onSelectSession={(sid) => {
+                    suppressMobileAutoSelectRef.current = false;
                     setActiveSid(sid);
                     requestReplay(sid, deviceIdRef.current);
                   }}
@@ -1233,6 +1296,7 @@ export default function App() {
                     shortcutKeys={SHORTCUT_KEYS}
                     terminalHostRef={setTerminalHost}
                     onBack={() => {
+                      suppressMobileAutoSelectRef.current = true;
                       setKeyboardBridge("");
                       setMobileTerminalFocusMode(false);
                       setActiveSid(null);
@@ -1264,6 +1328,7 @@ export default function App() {
                     onStatusFilterChange={setStatusFilter}
                     onTogglePinnedSession={togglePinnedSession}
                     onSelectSession={(sid) => {
+                      suppressMobileAutoSelectRef.current = false;
                       setActiveSid(sid);
                       requestReplay(sid, deviceIdRef.current);
                       revealWorkspace();

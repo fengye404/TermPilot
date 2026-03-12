@@ -67,11 +67,31 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   if (!props.activeSession) {
     return (
       <Panel title="当前未选择会话">
-        <div className="tp-empty-state flex min-h-[56vh] flex-col items-center justify-center px-6 py-12 text-center">
-          <p className="text-sm font-semibold text-white">先选择一个会话</p>
-          <p className="mt-2 max-w-md text-sm text-[var(--tp-text-muted)]">
-            你可以在左侧查看已有会话，或者先创建一个新的 tmux 会话。选中之后这里才会显示终端输出和输入控件。
-          </p>
+        <div className="tp-empty-state flex min-h-[56vh] flex-col justify-center px-6 py-12">
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="tp-kicker">Workspace</div>
+            <p className="mt-3 text-lg font-semibold text-white">先选择一个会话</p>
+            <p className="mt-2 text-sm text-[var(--tp-text-muted)]">
+              你可以在左侧查看已有会话，或者先创建一个新的 tmux 会话。选中之后这里才会显示终端输出、快速输入和快捷控制。
+            </p>
+          </div>
+          <div className="tp-empty-grid mt-6">
+            <div className="tp-card-muted px-4 py-4">
+              <p className="tp-kicker">01</p>
+              <p className="mt-2 text-sm font-medium text-white">选中一个会话</p>
+              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">优先查看运行中的会话，TermPilot 会在这里同步同一条终端输出。</p>
+            </div>
+            <div className="tp-card-muted px-4 py-4">
+              <p className="tp-kicker">02</p>
+              <p className="mt-2 text-sm font-medium text-white">补一条命令</p>
+              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">快速输入适合短命令，快捷控制适合回车、中断、方向键和补全。</p>
+            </div>
+            <div className="tp-card-muted px-4 py-4">
+              <p className="tp-kicker">03</p>
+              <p className="mt-2 text-sm font-medium text-white">继续同一上下文</p>
+              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">手机和电脑共享的是同一条会话，不是新开的 shell。</p>
+            </div>
+          </div>
         </div>
       </Panel>
     );
@@ -80,6 +100,26 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   return (
     <Panel title={`${props.activeSession.name} · ${props.activeSession.status === "running" ? "运行中" : "已退出"}`}>
       <div className="flex h-full min-h-[68vh] flex-col gap-4">
+        <div className="tp-panel-header">
+          <div>
+            <div className="tp-kicker">Workspace</div>
+            <p className="mt-2 max-w-2xl text-sm text-[var(--tp-text-muted)]">
+              当前会话工作目录为
+              <span className="mx-1 font-mono text-[13px] text-white">{props.activeSession.cwd}</span>
+              ，底层后端是
+              <span className="mx-1 font-mono text-[13px] text-white">{props.activeSession.backend}</span>
+              。所有输入都会直接写回同一条共享会话。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className={`tp-chip ${props.activeSession.status === "running" ? "tp-chip-active" : "tp-chip-danger"}`}>
+              {props.activeSession.status === "running" ? "运行中" : "已退出"}
+            </span>
+            <span className="tp-chip">{props.activeSession.backend}</span>
+            <span className="tp-chip">seq {props.activeSession.lastSeq}</span>
+          </div>
+        </div>
+
         {props.onBack ? (
           <button className={`${BUTTON_SECONDARY} inline-flex min-h-11 w-fit items-center`} type="button" onClick={props.onBack}>
             返回会话列表
@@ -302,13 +342,13 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             </details>
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_312px]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="space-y-4">
               <div className="tp-terminal-shell p-3">
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                   <div>
                     <p className="text-sm font-medium text-white">终端输出</p>
-                    <p className="text-xs text-[var(--tp-text-soft)]">这里显示同一个 tmux 会话的实时快照输出。</p>
+                    <p className="text-xs text-[var(--tp-text-soft)]">这里显示同一个 tmux 会话的实时快照输出。布局会保持在适合终端 UI 的宽度区间内。</p>
                   </div>
                   <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
                     {props.activeSession.status === "running" ? "实时同步" : "已结束"}
@@ -381,7 +421,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               </details>
             </div>
 
-            <aside className="space-y-4">
+            <aside className="tp-sidebar-sticky space-y-4">
               <div className="tp-card px-4 py-4">
                 <div className="mb-3">
                   <p className="text-sm font-medium text-white">执行操作</p>
@@ -399,6 +439,28 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                   {navigationKeys.map(renderShortcutButton)}
+                </div>
+              </div>
+
+              <div className="tp-card px-4 py-4">
+                <div className="tp-kicker">Session</div>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-[var(--tp-text-soft)]">名称</span>
+                    <span className="text-right text-white">{props.activeSession.name}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-[var(--tp-text-soft)]">目录</span>
+                    <span className="max-w-[180px] text-right text-[var(--tp-text-muted)]">{props.activeSession.cwd}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-[var(--tp-text-soft)]">Backend</span>
+                    <span className="text-right text-white">{props.activeSession.backend}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-[var(--tp-text-soft)]">最近序号</span>
+                    <span className="text-right text-white">{props.activeSession.lastSeq}</span>
+                  </div>
                 </div>
               </div>
             </aside>
