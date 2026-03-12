@@ -6,7 +6,7 @@ const base = process.env.GITHUB_ACTIONS ? `/${repo}/` : "/";
 export default defineConfig({
   lang: "zh-CN",
   title: "TermPilot",
-  description: "手机和电脑共享同一个 tmux 会话的终端远程控制工具。",
+  description: "让手机和电脑继续接上同一条受管理终端会话的文档站。",
   base,
   lastUpdated: true,
   cleanUrls: true,
@@ -20,8 +20,8 @@ export default defineConfig({
     logo: "/favicon.svg",
     nav: [
       { text: "首页", link: "/" },
-      { text: "Why TermPilot", link: "/why-termpilot" },
       { text: "快速开始", link: "/getting-started" },
+      { text: "CLI 参考", link: "/cli-reference" },
       { text: "部署与运维", link: "/operations-guide" },
       { text: "架构", link: "/architecture" },
       { text: "协议", link: "/protocol" },
@@ -29,11 +29,17 @@ export default defineConfig({
     ],
     sidebar: [
       {
-        text: "开始",
+        text: "了解产品",
         items: [
           { text: "文档首页", link: "/" },
           { text: "Why TermPilot", link: "/why-termpilot" },
           { text: "快速开始", link: "/getting-started" },
+        ],
+      },
+      {
+        text: "使用与运维",
+        items: [
+          { text: "CLI 参考", link: "/cli-reference" },
           { text: "部署与运维指南", link: "/operations-guide" },
         ],
       },
@@ -42,10 +48,15 @@ export default defineConfig({
         items: [
           { text: "代码架构", link: "/architecture" },
           { text: "协议说明", link: "/protocol" },
-          { text: "产品演进路线图", link: "/roadmap" },
-          { text: "设计系统", link: "/design-system" },
           { text: "开发文档", link: "/development" },
           { text: "技术选型", link: "/tech-selection-2026" },
+          { text: "设计系统", link: "/design-system" },
+        ],
+      },
+      {
+        text: "长期方向",
+        items: [
+          { text: "产品演进路线图", link: "/roadmap" },
         ],
       },
     ],
@@ -64,7 +75,7 @@ export default defineConfig({
       label: "本页目录",
     },
     footer: {
-      message: "为长期任务和跨端终端控制而构建。",
+      message: "当前实现以代码为准，长期目标见路线图。",
       copyright: "Copyright © 2026 Fengye",
     },
   },

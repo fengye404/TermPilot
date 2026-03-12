@@ -1,77 +1,78 @@
-# TermPilot 全栈技术选型（2026 版）
+# TermPilot 技术选型（当前实现）
 
-## 最终方案
+这份文档不讨论“可能的备选”，只记录当前仓库已经采用、并且仍然有效的技术栈。
 
-这次技术选型只保留已经拍板的方案，不再保留多余备选。
+## 1. 总体选型
 
 - 语言：TypeScript
-- 运行时：Node.js 22+（推荐 24 LTS）
+- 运行时：Node.js `22+`
 - 包管理：pnpm workspace
 
-手机端 `app/`：
+## 2. app
 
-- React
-- Vite
+当前 `app/` 使用：
+
+- React 19
+- Vite 7
 - Tailwind CSS v4
-- xterm.js
 - PWA
+- `ansi-to-html` 做 ANSI 快照渲染
 
-中继服务 `relay/`：
+仓库里仍然保留了 `xterm` 和 `@xterm/addon-fit` 依赖，但它们不是当前移动端终端展示的主路径。当前主路径是：
+
+- agent 抓取 ANSI 快照
+- app 直接渲染快照
+
+## 3. relay
+
+当前 `relay/` 使用：
 
 - Fastify
-- WebSocket
-- PostgreSQL
+- `@fastify/websocket`
+- PostgreSQL（可选）
 
-PC 端 `agent/`：
+对应策略是：
+
+- 默认无 `DATABASE_URL` 时使用内存存储
+- 设置 `DATABASE_URL` 时切到 PostgreSQL
+
+## 4. agent
+
+当前 `agent/` 使用：
 
 - Node.js
-- tmux
+- `ws`
+- `tmux`
 
-## 为什么是这套
+这里的关键不是“终端模拟器”，而是把本地受管理会话稳定建立在 `tmux` 上。
 
-这套方案最重要的优点不是“技术多”，而是“统一且克制”：
+## 5. 共享协议
 
-- 三端尽量共享同一种语言和同一种工程习惯
-- 前端走最主流的 React + Vite 路线，AI 最容易写对
-- relay 不引入重框架，Fastify 足够轻也足够成熟
-- agent 不引入多余框架，直接围绕 `tmux` 做就够了
-- 仓库层面用 pnpm workspace，把多模块项目管清楚
+`packages/protocol/` 提供：
 
-## 为什么不再加别的
+- 会话对象
+- WebSocket 消息类型
+- 配对与 grant 数据结构
+- 审计事件结构
 
-这次我刻意把一些名字收掉了，因为它们不是当前必须项：
+这样 `agent / relay / app` 可以共享同一套类型定义。
 
-- 不加 `Next.js`
-- 不加 `React Native`
-- 不加 `Flutter`
-- 不加 `shadcn/ui`
-- 不加 `Zustand`
-- 不加 `Drizzle`
-- 不加 `Zod`
+## 6. 为什么是这套
 
-这些技术不是不好，而是对当前目标来说不是最小必要集合。
+当前选型的核心目标不是“技术栈尽量新”，而是：
 
-TermPilot 现在要的不是“技术看起来完整”，而是：
+- 三端都能共享 TypeScript
+- 工程结构足够统一
+- 运行模型足够克制
+- AI 和人工都容易继续维护
 
-- AI 最容易持续参与开发
-- 三端结构统一
-- 尽量少配置、少概念、少框架
+## 7. 当前边界
 
-## 当前代码与选型的对应关系
+当前技术栈也直接反映了产品边界：
 
-当前仓库已经按这套方案开始收敛：
+- 会话后端固定依赖 `tmux`
+- 输出同步仍是快照替换，不是终端字节流
+- relay 仍承担了服务端状态与最近输出缓冲
+- 手机端 Web UI 重点是查看和轻控制，不是完整桌面终端体验
 
-- `app/`：React + Vite + Tailwind CSS + xterm.js
-- `relay/`：Fastify + WebSocket
-- `agent/`：Node.js + tmux
-- `packages/protocol/`：共享协议类型
-- 根目录：pnpm workspace
-
-其中 PostgreSQL 采用的是“正式栈默认使用、开发时允许内存回退”的策略：
-
-- 设置 `DATABASE_URL` 时使用 PostgreSQL
-- 未设置时，为了本地开发效率，relay 会退回内存模式
-
-## 一句话总结
-
-**TermPilot 当前最合理、最 AI 友好的全栈方案，就是 `TypeScript + Node.js 22+ + pnpm workspace`，在此基础上，手机端用 `React + Vite + Tailwind CSS + xterm.js`，中继服务用 `Fastify + WebSocket + PostgreSQL`，PC 端围绕 `tmux`。推荐运行在 Node.js 24 LTS 上，但不强制要求。**
+如果这些边界未来发生变化，优先会反映在 [产品演进路线图](./roadmap.md) 和 [代码架构](./architecture.md) 中。

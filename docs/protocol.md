@@ -1,29 +1,57 @@
-# TermPilot 当前协议
+# 当前协议说明
 
-> 这份文档描述的是当前实现中的协议和消息形态。它仍以 relay 可见部分业务明文、可持有最近输出缓冲为前提；未来目标是应用层 E2EE、本地优先 replay 和零知识 relay，见 [产品演进路线图](./roadmap.md)。
+这份文档描述的是当前代码里已经存在的协议形态。
+
+它有两个前提：
+
+- relay 当前仍可见业务明文
+- replay 当前仍依赖 relay 缓冲最近输出帧
+
+如果你关心长期的 E2EE 和零知识 relay 方向，请看 [产品演进路线图](./roadmap.md)。
 
 ## 1. 连接入口
 
-手机端和 agent 都通过 relay 的同一个 WebSocket 入口连接：
+agent 和 client 都通过同一个 WebSocket 入口连接 relay：
 
 ```text
 ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 ```
 
-- `role=agent`：PC 端 agent
-- `role=client`：手机端或浏览器端
-- `token`：agent 固定令牌或 client 访问令牌
-- `deviceId`：agent 连接时必须带；client 在业务消息里指定
+说明：
 
-## 2. 当前消息类型
+- `role=agent`：电脑上的 agent
+- `role=client`：手机或浏览器端
+- `token`：agent token 或 client access token
+- `deviceId`：agent 连接时必须带；client scope 则由 token 决定
 
-系统消息：
+## 2. 当前鉴权模型
+
+### agent
+
+agent 通过固定 `TERMPILOT_AGENT_TOKEN` 接入，并且必须声明 `deviceId`。
+
+如果同一个 `deviceId` 有新的 agent 连接上来，旧连接会收到 `AGENT_REPLACED` 错误并被断开。
+
+### client
+
+client 当前有两种进入方式：
+
+- 使用配对码换来的 access token，只能访问一个 device
+- 使用可选的全局 `TERMPILOT_CLIENT_TOKEN`，scope 为 `*`
+
+但有一个重要细节：
+
+- 如果 `TERMPILOT_CLIENT_TOKEN` 仍然是默认 `demo-client-token`，relay 会自动禁用它
+
+## 3. 当前消息类型
+
+### 系统消息
 
 - `auth.ok`
 - `error`
 - `relay.state`
 
-会话消息：
+### 会话消息
 
 - `session.list`
 - `session.list.result`
@@ -37,14 +65,15 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 - `session.state`
 - `session.exit`
 
-## 3. 会话模型
+## 4. 会话对象
 
-当前会话对象字段：
+当前 `SessionRecord` 字段包括：
 
 - `sid`
 - `deviceId`
 - `name`
 - `backend`
+- `launchMode`
 - `shell`
 - `cwd`
 - `status`
@@ -53,9 +82,70 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 - `lastActivityAt`
 - `tmuxSessionName`
 
-当前 `backend` 固定为 `tmux`。
+其中：
 
-## 4. 输入与快捷键
+- `backend` 当前固定为 `tmux`
+- `launchMode` 当前可能是 `shell` 或 `command`
+
+这两个字段很关键：
+
+- `shell`：普通 shell 会话，通常由 `create + attach` 形成
+- `command`：托管命令会话，通常由 `run -- <command>` 或 `termpilot claude code` 形成
+
+## 5. 会话创建与控制消息
+
+### 请求会话列表
+
+```json
+{
+  "type": "session.list",
+  "reqId": "req_1",
+  "deviceId": "mac-d1f1c6cb"
+}
+```
+
+### 创建会话
+
+当前 `session.create` 只允许请求这些字段：
+
+- `name`
+- `cwd`
+- `shell`
+
+示例：
+
+```json
+{
+  "type": "session.create",
+  "reqId": "req_2",
+  "deviceId": "mac-d1f1c6cb",
+  "payload": {
+    "name": "deploy",
+    "cwd": "/srv/app",
+    "shell": "/bin/zsh"
+  }
+}
+```
+
+注意：
+
+- 这条消息当前只创建普通 shell 会话
+- WebSocket 协议里还没有“远程创建托管命令会话”的单独字段
+
+### 输入
+
+`session.input` 同时支持文本和特殊按键：
+
+```json
+{
+  "type": "session.input",
+  "deviceId": "mac-d1f1c6cb",
+  "sid": "sid_123",
+  "payload": {
+    "text": "echo hello\n"
+  }
+}
+```
 
 当前支持的特殊按键：
 
@@ -69,131 +159,83 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 - `arrow_left`
 - `arrow_right`
 
-普通输入仍走：
+### 调整尺寸
 
 ```json
 {
-  "type": "session.input",
-  "deviceId": "pc-main",
-  "sid": "s_123",
+  "type": "session.resize",
+  "deviceId": "mac-d1f1c6cb",
+  "sid": "sid_123",
   "payload": {
-    "text": "echo hello\n"
+    "cols": 120,
+    "rows": 30
   }
 }
 ```
 
-## 5. 输出同步策略
+### 关闭会话
 
-当前不是字节级终端流，而是“快照替换”：
+```json
+{
+  "type": "session.kill",
+  "reqId": "req_3",
+  "deviceId": "mac-d1f1c6cb",
+  "sid": "sid_123"
+}
+```
+
+## 6. 输出同步
+
+当前输出模型不是终端字节流，而是“快照替换”。
+
+### agent 侧行为
+
+- 定时执行 `tmux capture-pane -p -e -N -S -2000`
+- 只在缓冲发生变化时发送新帧
+- 每次新帧都会带上递增的 `seq`
+
+### 输出消息
 
 ```json
 {
   "type": "session.output",
-  "deviceId": "pc-main",
-  "sid": "s_123",
+  "deviceId": "mac-d1f1c6cb",
+  "sid": "sid_123",
   "seq": 12,
   "payload": {
-    "data": "...当前 pane 快照...",
+    "data": "...当前 pane 的 ANSI 快照...",
     "mode": "replace"
   }
 }
 ```
 
-对应实现：
+当前实现里：
 
-- agent 轮询 `tmux capture-pane`
-- 只有缓冲变化时才推新帧
-- relay 保留最近一段输出帧
-- client 重连后用 `session.replay` 补拉
+- `mode` 固定是 `replace`
+- client 收到后用最新快照替换当前展示
 
-## 6. HTTP 接口
+## 7. 状态消息与退出消息
 
-### 创建一次性配对码
-
-`POST /api/pairing-codes`
-
-- 需要 `Authorization: Bearer <agent-token>`
-- 请求体：`{ "deviceId": "pc-main" }`
-
-### 兑换配对码
-
-`POST /api/pairings/redeem`
-
-- 请求体：`{ "pairingCode": "ABC-234" }`
-
-### 查看当前设备已发出的访问令牌
-
-`GET /api/devices/:deviceId/grants`
-
-### 撤销访问令牌
-
-`DELETE /api/devices/:deviceId/grants/:accessToken`
-
-### 查看审计事件
-
-`GET /api/devices/:deviceId/audit-events?limit=20`
-
-### 健康检查
-
-`GET /health`
-
-返回：
-
-- `ok`
-- `storeMode`
-- `agentsOnline`
-- `clientsOnline`
-- `webUiReady`
-
-## 7. 当前产品入口与协议的关系
-
-- `termpilot relay` 对外暴露 HTTP + WebSocket
-- 手机端直接访问 relay 域名，再走 `/ws`
-- `termpilot agent` 始终只和 `/ws`、`/api/*` 交互
-- 手机端网页不再要求单独部署
-
-当前审计动作包括：
-
-- `pairing.code_created`
-- `pairing.redeemed`
-- `grant.revoked`
-- `session.create_requested`
-- `session.kill_requested`
-
-## 8. 当前协议边界
-
-- client 侧仍直接处理较多状态拼装，没有事件聚合接口
-- 输出补拉依赖最近缓冲，不是完整历史回放
-- 审计目前只记录关键控制动作，不记录每一次普通输入
-
-字段说明：
-
-- `seq`：输出序号，递增
-- `data`：当前终端快照
-- `mode=replace`：客户端收到后直接替换当前渲染内容
-
-## 9. 会话状态消息
-
-会话状态变化时发送：
+### 会话状态
 
 ```json
 {
   "type": "session.state",
-  "deviceId": "pc-main",
-  "sid": "s_123",
+  "deviceId": "mac-d1f1c6cb",
+  "sid": "sid_123",
   "payload": {
     "session": {}
   }
 }
 ```
 
-会话退出时发送：
+### 会话退出
 
 ```json
 {
   "type": "session.exit",
-  "deviceId": "pc-main",
-  "sid": "s_123",
+  "deviceId": "mac-d1f1c6cb",
+  "sid": "sid_123",
   "payload": {
     "reason": "用户主动关闭会话",
     "exitCode": null
@@ -201,18 +243,77 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 }
 ```
 
-## 10. 输出补拉
+## 8. replay
 
-手机端重连或重新进入会话时，可以请求补拉最近输出：
+client 重新进入会话或重连时，可以请求补拉最近输出：
 
 ```json
 {
   "type": "session.replay",
   "reqId": "req_replay_001",
-  "deviceId": "pc-main",
-  "sid": "s_123",
+  "deviceId": "mac-d1f1c6cb",
+  "sid": "sid_123",
   "payload": {
     "afterSeq": 8
   }
 }
 ```
+
+当前 replay 依赖 relay 内存中的最近输出帧缓冲，不是完整历史回放。
+
+## 9. HTTP 接口
+
+### `POST /api/pairing-codes`
+
+创建一次性配对码。
+
+- 需要 `Authorization: Bearer <agent-token>`
+- 请求体：`{ "deviceId": "<deviceId>" }`
+
+### `POST /api/pairings/redeem`
+
+兑换配对码。
+
+- 请求体：`{ "pairingCode": "ABC-123" }`
+
+### `GET /api/devices/:deviceId/grants`
+
+查看设备当前 grants。
+
+- 需要 `Authorization: Bearer <agent-token>`
+
+### `DELETE /api/devices/:deviceId/grants/:accessToken`
+
+撤销 grant。
+
+- 需要 `Authorization: Bearer <agent-token>`
+
+### `GET /api/devices/:deviceId/audit-events?limit=20`
+
+查看审计事件。
+
+- 需要 `Authorization: Bearer <agent-token>`
+- 服务端会把 `limit` 约束在 `1` 到 `100`
+
+### `GET /health`
+
+返回当前 relay 健康信息，字段包括：
+
+- `ok`
+- `storeMode`
+- `agentsOnline`
+- `clientsOnline`
+- `webUiReady`
+- `adminClientTokenEnabled`
+
+## 10. 当前协议边界
+
+当前协议还有这些明显边界：
+
+- relay 可以看到明文会话元数据和最近输出
+- `session.create` 还只能创建 shell 会话，不能直接表达“托管命令”
+- 输出同步是快照替换，不是终端流
+- replay 只能补最近缓冲，不能回放完整历史
+- 审计只覆盖关键控制动作，不记录全部普通输入
+
+这些不是文档遗漏，而是当前实现本身的边界。
