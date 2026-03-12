@@ -1026,7 +1026,9 @@ export default function App() {
             </Panel>
 
             <details className="tp-card px-4 py-4 sm:px-5">
-              <summary className="list-none text-sm font-medium text-white">高级设置</summary>
+              <summary className="tp-disclosure-summary list-none">
+                <span className="block text-sm font-medium text-white">高级设置</span>
+              </summary>
               <div className="mt-4">
                 <ConnectionPanel
                   title="连接与设备设置"
@@ -1177,7 +1179,9 @@ export default function App() {
                   />
 
                   <details className="tp-card px-4 py-4 sm:px-5">
-                    <summary className="list-none text-sm font-medium text-white">新建会话</summary>
+                    <summary className="tp-disclosure-summary list-none">
+                      <span className="block text-sm font-medium text-white">新建会话</span>
+                    </summary>
                     <div className="mt-4">
                       <CreateSessionPanel
                         canControl={canControlDevice}
@@ -1197,7 +1201,12 @@ export default function App() {
           )}
 
           <details className="tp-card px-4 py-4 sm:px-5">
-            <summary className="list-none text-sm font-medium text-white">连接与设备设置</summary>
+            <summary className="tp-disclosure-summary list-none">
+              <span>
+                <span className="block text-sm font-medium text-white">连接与设备设置</span>
+                <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">不常用的连接信息和设备管理项放在这里。</span>
+              </span>
+            </summary>
             <p className="mt-3 text-xs text-[var(--tp-text-soft)]">
               这里放不常用的信息和管理项。日常使用时，你主要只需要看会话列表和终端输出。
             </p>

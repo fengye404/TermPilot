@@ -17,9 +17,8 @@ export function CreateSessionPanel(props: CreateSessionPanelProps) {
   return (
     <Panel title="创建会话">
       <form className="space-y-3" onSubmit={props.onSubmit}>
-        <div className="tp-kicker">Compose</div>
         <div className="tp-panel-copy">
-          新建一个受 TermPilot 管理的 tmux 会话。适合从一开始就准备让手机和电脑共享同一条上下文的任务。
+          为长期任务新建一个会话。创建后，你可以在电脑和手机上继续查看同一条上下文。
         </div>
         <Field label="名称" value={props.createName} onChange={props.onCreateNameChange} placeholder="claude-main" disabled={!props.canControl} />
         <Field label="工作目录" value={props.createCwd} onChange={props.onCreateCwdChange} placeholder="/Users/..." disabled={!props.canControl} />

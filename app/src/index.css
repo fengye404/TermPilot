@@ -150,6 +150,40 @@ select {
   line-height: 1.5;
 }
 
+.tp-disclosure-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  user-select: none;
+}
+
+.tp-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tp-disclosure-summary::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-right: 2px;
+  border-right: 1.5px solid var(--tp-text-soft);
+  border-bottom: 1.5px solid var(--tp-text-soft);
+  transform: rotate(45deg);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease;
+}
+
+details[open] > .tp-disclosure-summary::after {
+  transform: rotate(225deg);
+}
+
+.tp-disclosure-summary:hover::after {
+  border-color: var(--tp-text);
+}
+
 .tp-label {
   margin-bottom: 0.45rem;
   display: block;

@@ -33,7 +33,6 @@ export function SessionListPanel(props: SessionListPanelProps) {
   return (
     <Panel title="会话列表">
       <div className="space-y-3">
-        <div className="tp-kicker">Sessions</div>
         <div className="tp-stat-grid">
           <div className="tp-stat-card">
             <div className="tp-stat-label">总会话</div>
@@ -96,9 +95,6 @@ export function SessionListPanel(props: SessionListPanelProps) {
                 <div>
                   <p className="font-medium text-white">{session.name}</p>
                   <p className="mt-1 text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
-                  <p className="mt-2 text-[11px] text-[var(--tp-text-soft)]">
-                    {session.backend} · 最近帧 {session.lastSeq}
-                  </p>
                 </div>
                 <span className={`tp-chip min-h-0 px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>
                   {session.status === "running" ? "运行中" : "已退出"}

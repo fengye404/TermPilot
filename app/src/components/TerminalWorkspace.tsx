@@ -70,27 +70,23 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
       <Panel title="当前未选择会话">
         <div className="tp-empty-state flex min-h-[56vh] flex-col justify-center px-6 py-12">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="tp-kicker">Workspace</div>
             <p className="mt-3 text-lg font-semibold text-white">先选择一个会话</p>
             <p className="mt-2 text-sm text-[var(--tp-text-muted)]">
-              你可以在左侧查看已有会话，或者先创建一个新的 tmux 会话。选中之后这里才会显示终端输出、快速输入和快捷控制。
+              你可以先从左侧选择已有会话，或者新建一个。选中之后，这里才会显示输出和控制操作。
             </p>
           </div>
           <div className="tp-empty-grid mt-6">
             <div className="tp-card-muted px-4 py-4">
-              <p className="tp-kicker">01</p>
               <p className="mt-2 text-sm font-medium text-white">选中一个会话</p>
-              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">优先查看运行中的会话，TermPilot 会在这里同步同一条终端输出。</p>
+              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">优先查看正在运行的任务，方便继续跟进当前进度。</p>
             </div>
             <div className="tp-card-muted px-4 py-4">
-              <p className="tp-kicker">02</p>
               <p className="mt-2 text-sm font-medium text-white">补一条命令</p>
-              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">快速输入适合短命令，快捷控制适合回车、中断、方向键和补全。</p>
+              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">快速输入适合短命令，右侧按钮适合回车、中断和补全。</p>
             </div>
             <div className="tp-card-muted px-4 py-4">
-              <p className="tp-kicker">03</p>
               <p className="mt-2 text-sm font-medium text-white">继续同一上下文</p>
-              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">手机和电脑共享的是同一条会话，不是新开的 shell。</p>
+              <p className="mt-1 text-xs text-[var(--tp-text-muted)]">无论你在手机还是电脑查看，看到的都是同一条任务进度。</p>
             </div>
           </div>
         </div>
@@ -103,21 +99,16 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
       <div className="flex h-full min-h-[68vh] flex-col gap-4">
         <div className="tp-panel-header">
           <div>
-            <div className="tp-kicker">Workspace</div>
             <p className="mt-2 max-w-2xl text-sm text-[var(--tp-text-muted)]">
-              当前会话工作目录为
+              当前会话位于
               <span className="mx-1 font-mono text-[13px] text-white">{props.activeSession.cwd}</span>
-              ，底层后端是
-              <span className="mx-1 font-mono text-[13px] text-white">{props.activeSession.backend}</span>
-              。所有输入都会直接写回同一条共享会话。
+              。你可以继续查看输出、补命令，或发送常用控制操作。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <span className={`tp-chip ${props.activeSession.status === "running" ? "tp-chip-active" : "tp-chip-danger"}`}>
               {props.activeSession.status === "running" ? "运行中" : "已退出"}
             </span>
-            <span className="tp-chip">{props.activeSession.backend}</span>
-            <span className="tp-chip">seq {props.activeSession.lastSeq}</span>
           </div>
         </div>
 
@@ -133,7 +124,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <div className="mb-3 flex items-center justify-between gap-3 px-1">
                 <div>
                   <p className="text-sm font-medium text-white">终端输出</p>
-                  <p className="text-xs text-[var(--tp-text-soft)]">和电脑看的是同一个 tmux 会话。</p>
+                  <p className="text-xs text-[var(--tp-text-soft)]">和电脑看到的是同一条会话内容。</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {props.onToggleFocusMode ? (
@@ -311,9 +302,11 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             </div>
 
             <details className="tp-card px-4 py-4">
-              <summary className="list-none text-sm font-medium text-white">
-                多行粘贴
-                <span className="ml-2 text-xs font-normal text-[var(--tp-text-soft)]">脚本、长 prompt、多行命令放这里</span>
+              <summary className="tp-disclosure-summary list-none">
+                <span>
+                  <span className="block text-sm font-medium text-white">多行粘贴</span>
+                  <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">脚本、长 prompt、多行命令放这里</span>
+                </span>
               </summary>
               <textarea
                 className="tp-input mt-4 min-h-36 disabled:opacity-50"
@@ -349,7 +342,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                   <div>
                     <p className="text-sm font-medium text-white">终端输出</p>
-                    <p className="text-xs text-[var(--tp-text-soft)]">这里直接渲染 tmux 抓到的 ANSI 快照，不再主动改共享会话的窗口尺寸。</p>
+                    <p className="text-xs text-[var(--tp-text-soft)]">这里显示当前会话的最新输出。</p>
                   </div>
                   <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
                     {props.activeSession.status === "running" ? "实时同步" : "已结束"}
@@ -441,9 +434,11 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               </div>
 
               <details className="tp-card px-4 py-4">
-                <summary className="list-none text-sm font-medium text-white">
-                  多行粘贴
-                  <span className="ml-2 text-xs font-normal text-[var(--tp-text-soft)]">脚本、长 prompt、多行命令放这里</span>
+                <summary className="tp-disclosure-summary list-none">
+                  <span>
+                    <span className="block text-sm font-medium text-white">多行粘贴</span>
+                    <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">脚本、长 prompt、多行命令放这里</span>
+                  </span>
                 </summary>
                 <textarea
                   className="tp-input mt-4 min-h-36 disabled:opacity-50"
@@ -477,7 +472,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <div className="tp-card px-4 py-4">
                 <div className="mb-3">
                   <p className="text-sm font-medium text-white">执行操作</p>
-                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">把最常用的几类控制集中到右侧，不再散成一排丑按钮。</p>
+                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">回车、中断和结束输入都在这里。</p>
                 </div>
                 <div className="grid gap-3">
                   {executionKeys.map(renderShortcutButton)}
@@ -487,7 +482,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <div className="tp-card px-4 py-4">
                 <div className="mb-3">
                   <p className="text-sm font-medium text-white">移动与补全</p>
-                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">用紧凑的快捷控制代替裸文本按钮，降低视觉噪音。</p>
+                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">历史命令、方向键和补全都在这里。</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                   {navigationKeys.map(renderShortcutButton)}
@@ -495,7 +490,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               </div>
 
               <div className="tp-card px-4 py-4">
-                <div className="tp-kicker">Session</div>
+                <p className="text-sm font-medium text-white">当前会话</p>
                 <div className="mt-3 space-y-2 text-sm">
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-[var(--tp-text-soft)]">名称</span>
@@ -504,14 +499,6 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-[var(--tp-text-soft)]">目录</span>
                     <span className="max-w-[180px] text-right text-[var(--tp-text-muted)]">{props.activeSession.cwd}</span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[var(--tp-text-soft)]">Backend</span>
-                    <span className="text-right text-white">{props.activeSession.backend}</span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[var(--tp-text-soft)]">最近序号</span>
-                    <span className="text-right text-white">{props.activeSession.lastSeq}</span>
                   </div>
                 </div>
               </div>
