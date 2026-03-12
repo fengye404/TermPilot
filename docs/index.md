@@ -10,14 +10,14 @@ hero:
       text: 快速开始
       link: /getting-started
     - theme: alt
+      text: 演进路线图
+      link: /roadmap
+    - theme: alt
       text: Why TermPilot
       link: /why-termpilot
     - theme: alt
       text: 部署与运维
       link: /operations-guide
-    - theme: alt
-      text: 设计系统
-      link: /design-system
 
 features:
   - title: 同一个会话
@@ -48,11 +48,16 @@ TermPilot 的解法很直接：
 
 - [Why TermPilot](/why-termpilot)
 
+如果你想看这个项目未来一年最重要的演进方向，尤其是安全、本地优先、E2EE 和 relay 零知识形态，先读：
+
+- [产品演进路线图](/roadmap)
+
 ## 你应该先看哪份文档
 
 - 想最快跑通：看 [快速开始](/getting-started)
 - 想长期部署：看 [部署与运维指南](/operations-guide)
 - 想理解实现：看 [代码架构](/architecture) 和 [协议说明](/protocol)
+- 想看未来方向：看 [产品演进路线图](/roadmap)
 - 想保持界面一致：看 [设计系统](/design-system)
 
 ## 你会怎么用它
@@ -91,5 +96,6 @@ TermPilot 目前专注于一个明确问题：
 - [部署与运维指南](/operations-guide)
 - [代码架构](/architecture)
 - [协议说明](/protocol)
+- [产品演进路线图](/roadmap)
 - [设计系统](/design-system)
 - [开发文档](/development)

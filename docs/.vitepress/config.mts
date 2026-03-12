@@ -25,6 +25,7 @@ export default defineConfig({
       { text: "部署与运维", link: "/operations-guide" },
       { text: "架构", link: "/architecture" },
       { text: "协议", link: "/protocol" },
+      { text: "演进路线图", link: "/roadmap" },
     ],
     sidebar: [
       {
@@ -41,6 +42,7 @@ export default defineConfig({
         items: [
           { text: "代码架构", link: "/architecture" },
           { text: "协议说明", link: "/protocol" },
+          { text: "产品演进路线图", link: "/roadmap" },
           { text: "设计系统", link: "/design-system" },
           { text: "开发文档", link: "/development" },
           { text: "技术选型", link: "/tech-selection-2026" },

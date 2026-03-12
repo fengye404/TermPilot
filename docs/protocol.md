@@ -1,5 +1,7 @@
 # TermPilot 当前协议
 
+> 这份文档描述的是当前实现中的协议和消息形态。它仍以 relay 可见部分业务明文、可持有最近输出缓冲为前提；未来目标是应用层 E2EE、本地优先 replay 和零知识 relay，见 [产品演进路线图](./roadmap.md)。
+
 ## 1. 连接入口
 
 手机端和 agent 都通过 relay 的同一个 WebSocket 入口连接：
