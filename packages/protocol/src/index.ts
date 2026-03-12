@@ -5,6 +5,7 @@ export const DEFAULT_CLIENT_TOKEN = "demo-client-token";
 export type ConnectionRole = "agent" | "client";
 export type SessionStatus = "running" | "exited";
 export type SessionBackend = "tmux";
+export type SessionLaunchMode = "shell" | "command";
 export type AuditActorRole = "agent" | "client" | "relay";
 export type AuditAction =
   | "pairing.code_created"
@@ -28,6 +29,7 @@ export interface SessionRecord {
   deviceId: string;
   name: string;
   backend: SessionBackend;
+  launchMode?: SessionLaunchMode;
   shell: string;
   cwd: string;
   status: SessionStatus;

@@ -96,6 +96,7 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
     deviceId,
     name,
     backend: "tmux",
+    launchMode: input.command && input.command.length > 0 ? "command" : "shell",
     shell,
     cwd: workingDirectory,
     status: "running",

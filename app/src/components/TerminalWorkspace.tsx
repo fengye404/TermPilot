@@ -37,6 +37,11 @@ interface TerminalWorkspaceProps {
 export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const isMobileView = Boolean(props.onBack);
   const showFocusAction = Boolean(props.onToggleFocusMode);
+  const isManagedCommand = props.activeSession?.launchMode === "command";
+  const exitHintTitle = isManagedCommand ? "退出方式" : "离开与结束";
+  const exitHintBody = isManagedCommand
+    ? "退出当前程序后，这条会话会一起结束。多数前台命令可直接用 Ctrl+C 退出。"
+    : "临时离开用 Ctrl+B 然后按 D；彻底结束这条会话用 exit、Ctrl+D，或在外面关闭它。";
   const executionKeys = props.shortcutKeys.filter((shortcut) => ["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const navigationKeys = props.shortcutKeys.filter((shortcut) => !["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const helperKeys = navigationKeys.filter((shortcut) => !shortcut.key.startsWith("arrow_"));
@@ -302,6 +307,11 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               </div>
             </div>
 
+            <div className="tp-card px-4 py-4">
+              <p className="text-sm font-medium text-white">{exitHintTitle}</p>
+              <p className="mt-2 text-xs leading-6 text-[var(--tp-text-soft)]">{exitHintBody}</p>
+            </div>
+
             <details className="tp-card px-4 py-4">
               <summary className="tp-disclosure-summary list-none">
                 <span>
@@ -507,6 +517,11 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                     <span className="max-w-[180px] text-right text-[var(--tp-text-muted)]">{props.activeSession.cwd}</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="tp-card px-4 py-4">
+                <p className="text-sm font-medium text-white">{exitHintTitle}</p>
+                <p className="mt-2 text-xs leading-6 text-[var(--tp-text-soft)]">{exitHintBody}</p>
               </div>
             </aside>
           </div>
