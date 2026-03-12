@@ -348,6 +348,27 @@ summary:focus-visible {
   white-space: inherit;
 }
 
+.tp-mobile-focus-fab {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  min-height: 40px;
+  border: 1px solid rgba(31, 122, 83, 0.42);
+  border-radius: 999px;
+  background: rgba(8, 13, 17, 0.92);
+  padding: 0 14px;
+  color: #f3faf7;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(10px);
+}
+
+.tp-mobile-focus-fab:hover:not(:disabled) {
+  border-color: rgba(31, 122, 83, 0.58);
+  background: rgba(15, 24, 20, 0.96);
+}
+
 .tp-empty-state {
   border: 1px dashed var(--tp-border-strong);
   border-radius: 16px;

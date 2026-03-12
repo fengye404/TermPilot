@@ -120,18 +120,13 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
 
         {isMobileView ? (
           <div className="space-y-4">
-            <div className="tp-terminal-shell p-3">
+            <div className="tp-terminal-shell relative p-3">
               <div className="mb-3 flex items-center justify-between gap-3 px-1">
                 <div>
                   <p className="text-sm font-medium text-white">终端输出</p>
                   <p className="text-xs text-[var(--tp-text-soft)]">和电脑看到的是同一条会话内容。</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {props.onToggleFocusMode ? (
-                    <button className={`${BUTTON_SECONDARY} min-h-0 px-3 py-1.5 text-[11px]`} type="button" onClick={props.onToggleFocusMode}>
-                      {props.focusMode ? "退出全屏" : "横屏全屏"}
-                    </button>
-                  ) : null}
                   <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
                     {props.activeSession.status === "running" ? "实时同步" : "已结束"}
                   </span>
@@ -140,6 +135,11 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <div className={`${props.focusMode ? "h-[72svh] min-h-[540px]" : "h-[56svh] min-h-[460px]"} overflow-auto rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3`}>
                 <AnsiTerminalSnapshot snapshot={props.snapshot} />
               </div>
+              {props.onToggleFocusMode ? (
+                <button className="tp-mobile-focus-fab" type="button" onClick={props.onToggleFocusMode}>
+                  {props.focusMode ? "退出横屏" : "横屏查看"}
+                </button>
+              ) : null}
             </div>
 
             <div className="tp-card px-4 py-4">
