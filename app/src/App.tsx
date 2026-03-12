@@ -1,8 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "xterm";
-import "xterm/css/xterm.css";
-
 import type {
   InputKey,
   PairingRedeemResponse,
@@ -91,16 +87,12 @@ function tryParseUrl(value: string): URL | null {
 
 export default function App() {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
-  const terminal = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
-  const activeSidRef = useRef<string | null>(null);
-  const canControlRef = useRef(false);
   const suppressMobileAutoSelectRef = useRef(false);
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
@@ -130,13 +122,16 @@ export default function App() {
   const [createName, setCreateName] = useState("");
   const [createCwd, setCreateCwd] = useState("");
   const [createShell, setCreateShell] = useState("");
-  const [terminalHost, setTerminalHost] = useState<HTMLDivElement | null>(null);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
   const [mobileTerminalFocusMode, setMobileTerminalFocusMode] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.sid === activeSid) ?? null,
     [activeSid, sessions],
+  );
+  const activeSnapshot = useMemo(
+    () => (activeSid ? (buffers[activeSid] ?? "") : ""),
+    [activeSid, buffers],
   );
   const runningSessionsCount = useMemo(
     () => sessions.filter((session) => session.status === "running").length,
@@ -179,14 +174,6 @@ export default function App() {
   useEffect(() => {
     deviceIdRef.current = deviceId;
   }, [deviceId]);
-
-  useEffect(() => {
-    activeSidRef.current = activeSid;
-  }, [activeSid]);
-
-  useEffect(() => {
-    canControlRef.current = canControlDevice;
-  }, [canControlDevice]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -259,96 +246,6 @@ export default function App() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [activeSid, clientToken, deviceId, notificationsEnabled, pinnedSids, wsUrl]);
 
-  function renderTerminalSnapshot(target: Terminal | null = terminal.current): void {
-    if (!target) {
-      return;
-    }
-
-    if (!activeSid) {
-      return;
-    }
-
-    const snapshot = buffers[activeSid] ?? "";
-    target.clear();
-    if (!snapshot) {
-      return;
-    }
-    target.write(snapshot.replace(/\n/g, "\r\n"));
-  }
-
-  useEffect(() => {
-    if (!terminalHost) {
-      return;
-    }
-
-    const instance = new Terminal({
-      convertEol: true,
-      cursorBlink: true,
-      fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
-      fontSize: 13,
-      theme: {
-        background: "#071014",
-        foreground: "#e6edf2",
-        cursor: "#2c9a6a",
-        black: "#0b0f12",
-        brightBlack: "#51606b",
-      },
-    });
-    const fitAddon = new FitAddon();
-    let fitFrameId = 0;
-    let disposed = false;
-
-    instance.loadAddon(fitAddon);
-    instance.open(terminalHost);
-    instance.onData((data) => {
-      const sid = activeSidRef.current;
-      if (!sid || !canControlRef.current) {
-        return;
-      }
-      sendMessage({
-        type: "session.input",
-        reqId: createReqId("tty"),
-        deviceId: deviceIdRef.current,
-        sid,
-        payload: {
-          text: data,
-        },
-      });
-    });
-    const focusTerminal = () => {
-      instance.focus();
-    };
-    terminalHost.addEventListener("pointerdown", focusTerminal);
-    terminal.current = instance;
-    fitAddonRef.current = fitAddon;
-    fitFrameId = window.requestAnimationFrame(() => {
-      if (disposed) {
-        return;
-      }
-      fitTerminal();
-      renderTerminalSnapshot(instance);
-    });
-
-    return () => {
-      disposed = true;
-      window.cancelAnimationFrame(fitFrameId);
-      terminalHost.removeEventListener("pointerdown", focusTerminal);
-      terminal.current = null;
-      fitAddonRef.current = null;
-      instance.dispose();
-    };
-  }, [terminalHost]);
-
-  useEffect(() => {
-    if (!activeSid || !terminal.current) {
-      return;
-    }
-    const frameId = window.requestAnimationFrame(() => {
-      terminal.current?.focus();
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [activeSid, mobileTerminalFocusMode]);
-
   useEffect(() => {
     setKeyboardBridge("");
     if (activeSid) {
@@ -385,47 +282,6 @@ export default function App() {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
   }, []);
-
-  useEffect(() => {
-    if (!terminalHost || !fitAddonRef.current) {
-      return;
-    }
-
-    const resize = () => {
-      if (!terminal.current || !fitTerminal()) {
-        return;
-      }
-      if (!canControlDevice || !activeSid) {
-        return;
-      }
-      if (terminal.current.cols === 0 || terminal.current.rows === 0) {
-        return;
-      }
-
-      sendMessage({
-        type: "session.resize",
-        reqId: createReqId("resize"),
-        deviceId,
-        sid: activeSid,
-        payload: {
-          cols: terminal.current.cols,
-          rows: terminal.current.rows,
-        },
-      });
-    };
-
-    const observer = new ResizeObserver(() => resize());
-    observer.observe(terminalHost);
-    resize();
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [activeSid, canControlDevice, deviceId, terminalHost]);
-
-  useEffect(() => {
-    renderTerminalSnapshot();
-  }, [activeSid, buffers, terminalHost]);
 
   useEffect(() => {
     return () => {
@@ -520,22 +376,6 @@ export default function App() {
     previousSessionStatusRef.current = nextSessionStatus;
     bootstrappedNotificationsRef.current = true;
   }, [deviceId, deviceOnline, notificationsEnabled, sessions]);
-
-  function fitTerminal(): boolean {
-    if (!fitAddonRef.current || !terminal.current || !terminalHost) {
-      return false;
-    }
-    if (terminalHost.clientWidth === 0 || terminalHost.clientHeight === 0) {
-      return false;
-    }
-
-    try {
-      fitAddonRef.current.fit();
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
   function showNotice(kind: NoticeState["kind"], text: string): void {
     setNotice({ kind, text });
@@ -1265,7 +1105,7 @@ export default function App() {
                   keyboardBridge={keyboardBridge}
                   pasteBuffer={pasteBuffer}
                   shortcutKeys={SHORTCUT_KEYS}
-                  terminalHostRef={setTerminalHost}
+                  snapshot={activeSnapshot}
                   onCommandChange={setCommand}
                   onKeyboardBridgeChange={handleKeyboardBridgeChange}
                   onKeyboardBridgeKey={handleKeyboardBridgeKey}
@@ -1294,7 +1134,7 @@ export default function App() {
                     keyboardBridge={keyboardBridge}
                     pasteBuffer={pasteBuffer}
                     shortcutKeys={SHORTCUT_KEYS}
-                    terminalHostRef={setTerminalHost}
+                    snapshot={activeSnapshot}
                     onBack={() => {
                       suppressMobileAutoSelectRef.current = true;
                       setKeyboardBridge("");

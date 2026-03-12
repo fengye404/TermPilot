@@ -31,6 +31,7 @@ import {
   killSession,
   listSessions,
   markSessionExited,
+  normalizeSessionWindow,
   resizeSession,
   sendInput,
 } from "./tmux-backend";
@@ -47,6 +48,7 @@ interface DaemonOptions {
 interface SessionRuntimeState {
   lastRenderedBuffer: string;
   lastStatus: SessionRecord["status"];
+  layoutNormalized: boolean;
 }
 
 export class AgentDaemon {
@@ -129,6 +131,7 @@ export class AgentDaemon {
     const runtimeState = this.runtimeState.get(session.sid) ?? {
       lastRenderedBuffer: "",
       lastStatus: session.status,
+      layoutNormalized: false,
     };
 
     if (session.status === "exited") {
@@ -178,6 +181,12 @@ export class AgentDaemon {
       return;
     }
 
+    if (!runtimeState.layoutNormalized) {
+      await normalizeSessionWindow(session);
+      runtimeState.layoutNormalized = true;
+      this.runtimeState.set(session.sid, runtimeState);
+    }
+
     const buffer = await captureSession(session);
     if (buffer === runtimeState.lastRenderedBuffer && runtimeState.lastStatus === session.status) {
       return;
@@ -191,6 +200,7 @@ export class AgentDaemon {
     this.runtimeState.set(session.sid, {
       lastRenderedBuffer: buffer,
       lastStatus: nextSession.status,
+      layoutNormalized: runtimeState.layoutNormalized,
     });
 
     const outputMessage: SessionOutputMessage = {

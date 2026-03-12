@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "xterm/css/xterm.css";
 
 :root {
   color-scheme: dark;
@@ -299,6 +298,20 @@ summary:focus-visible {
   border: 1px solid var(--tp-border);
   border-radius: 16px;
   background: var(--tp-panel-strong);
+}
+
+.tp-ansi-snapshot {
+  margin: 0;
+  min-width: max-content;
+  color: #e6edf2;
+  font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: pre;
+}
+
+.tp-ansi-snapshot span {
+  white-space: inherit;
 }
 
 .tp-empty-state {

@@ -14,8 +14,6 @@ export interface CreateSessionInput {
 }
 
 const TERM_PREFIX = "termpilot";
-// Keep shared sessions from growing into ultra-wide layouts that distort TUIs like Claude Code.
-const MAX_SHARED_SESSION_COLS = 118;
 
 function now(): string {
   return new Date().toISOString();
@@ -75,6 +73,8 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
   const tmuxSessionName = buildTmuxSessionName(sid, name);
 
   await runTmux(["new-session", "-d", "-s", tmuxSessionName, "-c", workingDirectory, shell]);
+  await runTmux(["set-window-option", "-t", tmuxSessionName, "window-size", "latest"]);
+  await runTmux(["set-window-option", "-t", tmuxSessionName, "aggressive-resize", "off"]);
 
   const session: SessionRecord = {
     sid,
@@ -113,6 +113,11 @@ export async function hasSession(tmuxSessionName: string): Promise<boolean> {
 
 export async function captureSession(session: SessionRecord): Promise<string> {
   return runTmux(["capture-pane", "-p", "-e", "-N", "-S", "-2000", "-t", session.tmuxSessionName]);
+}
+
+export async function normalizeSessionWindow(session: SessionRecord): Promise<void> {
+  await runTmux(["set-window-option", "-t", session.tmuxSessionName, "window-size", "latest"]);
+  await runTmux(["set-window-option", "-t", session.tmuxSessionName, "aggressive-resize", "off"]);
 }
 
 async function sendLiteralText(tmuxSessionName: string, text: string): Promise<void> {
@@ -154,8 +159,9 @@ export async function sendInput(session: SessionRecord, text?: string, key?: Inp
 }
 
 export async function resizeSession(session: SessionRecord, cols: number, rows: number): Promise<void> {
-  const safeCols = Math.min(cols, MAX_SHARED_SESSION_COLS);
-  await runTmux(["resize-window", "-t", session.tmuxSessionName, "-x", String(safeCols), "-y", String(rows)]);
+  void cols;
+  void rows;
+  await normalizeSessionWindow(session);
 }
 
 export async function killSession(sid: string): Promise<SessionRecord> {

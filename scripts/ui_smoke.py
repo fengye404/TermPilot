@@ -90,7 +90,7 @@ def wait_for_workspace_in_viewport(page, timeout_seconds: float = 3) -> None:
 
 def wait_for_terminal_text(page, text: str, timeout_seconds: float = 15) -> None:
     deadline = time.time() + timeout_seconds
-    rows = page.locator(".xterm-rows").first
+    rows = page.locator(".tp-ansi-snapshot").first
     while time.time() < deadline:
         content = rows.inner_text()
         if text in content:

@@ -1,6 +1,7 @@
-import type { FormEvent, Ref } from "react";
+import type { FormEvent } from "react";
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 
+import { AnsiTerminalSnapshot } from "./AnsiTerminalSnapshot";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, Panel } from "./chrome";
 
 interface ShortcutKeyMeta {
@@ -19,8 +20,8 @@ interface TerminalWorkspaceProps {
   command: string;
   keyboardBridge: string;
   pasteBuffer: string;
+  snapshot: string;
   shortcutKeys: ShortcutKeyMeta[];
-  terminalHostRef: Ref<HTMLDivElement>;
   onBack?: () => void;
   onToggleFocusMode?: () => void;
   onCommandChange: (value: string) => void;
@@ -145,8 +146,8 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                   </span>
                 </div>
               </div>
-              <div className={`${props.focusMode ? "h-[72svh] min-h-[540px]" : "h-[56svh] min-h-[460px]"} overflow-hidden rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3`}>
-                <div ref={props.terminalHostRef} className="h-full min-h-full w-full overflow-hidden" />
+              <div className={`${props.focusMode ? "h-[72svh] min-h-[540px]" : "h-[56svh] min-h-[460px]"} overflow-auto rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3`}>
+                <AnsiTerminalSnapshot snapshot={props.snapshot} />
               </div>
             </div>
 
@@ -348,15 +349,66 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                   <div>
                     <p className="text-sm font-medium text-white">终端输出</p>
-                    <p className="text-xs text-[var(--tp-text-soft)]">这里显示同一个 tmux 会话的实时快照输出。布局会保持在适合终端 UI 的宽度区间内。</p>
+                    <p className="text-xs text-[var(--tp-text-soft)]">这里直接渲染 tmux 抓到的 ANSI 快照，不再主动改共享会话的窗口尺寸。</p>
                   </div>
                   <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
                     {props.activeSession.status === "running" ? "实时同步" : "已结束"}
                   </span>
                 </div>
-                <div className="h-[52svh] min-h-[440px] max-h-[720px] overflow-hidden rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3">
-                  <div ref={props.terminalHostRef} className="h-full min-h-full w-full overflow-hidden" />
+                <div className="h-[52svh] min-h-[440px] max-h-[720px] overflow-auto rounded-[14px] border border-[var(--tp-border)] bg-[#071014] p-3">
+                  <AnsiTerminalSnapshot snapshot={props.snapshot} />
                 </div>
+              </div>
+
+              <div className="tp-card px-4 py-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-white">终端键盘</p>
+                    <p className="mt-1 text-xs text-[var(--tp-text-soft)]">用于交互式提示、单字符输入和当前光标位置补字。</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-xs`}
+                      type="button"
+                      disabled={!props.activeSid || !props.canControl}
+                      onClick={() => props.onKeyboardBridgeKey("tab")}
+                    >
+                      补全
+                    </button>
+                    <button
+                      className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-xs`}
+                      type="button"
+                      disabled={!props.activeSid || !props.canControl}
+                      onClick={() => props.onKeyboardBridgeKey("enter")}
+                    >
+                      回车
+                    </button>
+                  </div>
+                </div>
+                <input
+                  className="tp-input min-h-11 disabled:opacity-50"
+                  value={props.keyboardBridge}
+                  onChange={(event) => props.onKeyboardBridgeChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      props.onKeyboardBridgeKey("enter");
+                      return;
+                    }
+                    if (event.key === "Backspace" && props.keyboardBridge.length === 0) {
+                      props.onKeyboardBridgeKey("backspace");
+                      return;
+                    }
+                    if (event.key === "Tab") {
+                      event.preventDefault();
+                      props.onKeyboardBridgeKey("tab");
+                    }
+                  }}
+                  placeholder="点这里直接往当前光标位置输入"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  disabled={!props.activeSid || !props.canControl}
+                />
               </div>
 
               <div className="tp-card px-4 py-4">
