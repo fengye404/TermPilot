@@ -260,6 +260,75 @@ body {
 
 .vp-doc table {
   overflow: hidden;
+  background: color-mix(in srgb, var(--vp-c-bg-elv) 92%, transparent);
+}
+
+.vp-doc table th {
+  color: var(--vp-c-text-1);
+  background: color-mix(in srgb, var(--vp-c-brand-soft) 32%, var(--vp-c-bg-elv));
+  font-weight: 650;
+}
+
+.vp-doc table td,
+.vp-doc table th {
+  border-color: var(--tp-doc-card-border);
+}
+
+.vp-doc div[class*="language-"] {
+  background: color-mix(in srgb, var(--vp-c-bg-soft) 82%, var(--vp-c-bg-elv));
+}
+
+.vp-doc div[class*="language-"] code {
+  font-size: 0.92rem;
+}
+
+.vp-doc .custom-block {
+  border: 1px solid var(--tp-doc-card-border);
+  background: color-mix(in srgb, var(--vp-c-bg-elv) 90%, transparent);
+}
+
+.vp-doc .custom-block.info {
+  border-left: 3px solid var(--vp-c-brand-1);
+}
+
+.vp-doc .custom-block.tip {
+  border-left: 3px solid var(--vp-c-brand-1);
+}
+
+.vp-doc .custom-block.warning {
+  border-left: 3px solid #b7791f;
+}
+
+.vp-doc .custom-block.danger {
+  border-left: 3px solid #ba4b3d;
+}
+
+.vp-doc blockquote {
+  border-left: 3px solid var(--vp-c-brand-1);
+  background: color-mix(in srgb, var(--vp-c-brand-soft) 32%, transparent);
+  border-radius: 0 12px 12px 0;
+  padding: 12px 16px;
+}
+
+.vp-doc p + ul,
+.vp-doc p + ol,
+.vp-doc ul + p,
+.vp-doc ol + p {
+  margin-top: 14px;
+}
+
+.vp-doc li + li {
+  margin-top: 6px;
+}
+
+.vp-doc h2 + p,
+.vp-doc h3 + p {
+  max-width: 68ch;
+}
+
+.vp-doc p,
+.vp-doc li {
+  line-height: 1.72;
 }
 
 .vp-doc h1 {
@@ -272,6 +341,11 @@ body {
   padding-top: 0.3rem;
   border-top: 1px solid var(--vp-c-divider-light);
   font-size: 1.55rem;
+}
+
+.vp-doc h3 {
+  margin-top: 1.5rem;
+  font-size: 1.16rem;
 }
 
 .vp-doc p,
@@ -305,11 +379,31 @@ body {
   font-weight: 600;
 }
 
+.VPSidebarItem.is-active > .item .link {
+  background: color-mix(in srgb, var(--vp-c-brand-soft) 38%, transparent);
+  border-radius: 10px;
+}
+
+.VPSidebarItem .item .link:hover,
+.VPDocAsideOutline .outline-link:hover {
+  color: var(--vp-c-text-1);
+}
+
 .VPDocAsideOutline .content,
 .VPLocalNavOutlineDropdown .items {
   border: 1px solid var(--tp-doc-card-border);
   border-radius: 14px;
   background: var(--tp-doc-card-bg);
+}
+
+.VPDocAsideOutline .outline-link {
+  border-left: 1px solid transparent;
+  padding-left: 10px;
+  transition: color 0.18s ease, border-color 0.18s ease;
+}
+
+.VPDocAsideOutline .outline-link.active {
+  border-left-color: var(--vp-c-brand-1);
 }
 
 .VPFooter {
