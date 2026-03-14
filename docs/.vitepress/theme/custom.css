@@ -142,6 +142,38 @@ body {
   letter-spacing: -0.02em;
 }
 
+.tp-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0 12px;
+}
+
+.tp-doc-panel {
+  border: 1px solid var(--tp-doc-card-border);
+  border-radius: var(--tp-doc-card-radius);
+  background: var(--tp-doc-card-bg);
+  padding: 18px 18px 16px;
+  backdrop-filter: blur(10px);
+}
+
+.tp-doc-panel h3 {
+  margin: 4px 0 8px;
+  font-size: 1.05rem;
+}
+
+.tp-doc-panel p {
+  margin: 0;
+}
+
+.tp-doc-kicker {
+  color: var(--vp-c-brand-1);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .vp-doc .custom-block,
 .vp-doc div[class*="language-"],
 .vp-doc table,
@@ -216,5 +248,9 @@ body {
 @media (max-width: 960px) {
   .VPHomeHero {
     padding-top: 24px;
+  }
+
+  .tp-doc-grid {
+    grid-template-columns: 1fr;
   }
 }

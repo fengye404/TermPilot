@@ -6,7 +6,7 @@ English | [简体中文](./README.zh-CN.md)
 [![npm downloads](https://img.shields.io/npm/dm/%40fengye404%2Ftermpilot)](https://www.npmjs.com/package/@fengye404/termpilot)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/fengye404/TermPilot/docs.yml?branch=main&label=docs)](https://github.com/fengye404/TermPilot/actions)
 
-Keep the same terminal session alive across desktop and mobile.
+Keep one managed terminal session available across desktop and mobile.
 
 TermPilot is a terminal session continuity tool for long-running work. It lets you leave your desk, open your phone browser, and keep watching or controlling the same session that is already running on your computer.
 
@@ -44,16 +44,17 @@ The system has three runtime pieces:
 - `agent`: daemon running on your computer, managing local sessions and syncing them to the relay
 - `app`: mobile web UI served by the relay
 
-## What It Does Well
+## Current Scope
 
-- Keeps desktop and mobile attached to the same managed session
-- Works well for long-running terminal tasks instead of one-off remote access
-- Ships as a single npm package with a unified CLI
-- Requires no mobile app install
-- Supports one-time pairing codes, grant listing, revocation, and audit events
-- Exposes a deployable relay plus a built-in mobile web UI
+- One npm package with a unified CLI
+- One relay serving both the web UI and `/ws`
+- One agent managing local tmux-backed sessions
+- One mobile web UI focused on viewing, light input, and shortcut controls
+- One pairing and grant model for cross-device access
 
-## Current Implementation
+This is a deliberately narrow scope. TermPilot is built for session continuity, not for desktop remoting or generic server administration.
+
+## How It Works Today
 
 These details are based on the current codebase:
 
@@ -63,7 +64,7 @@ These details are based on the current codebase:
 - Output sync: snapshot replacement from `tmux capture-pane`, with replay from recent buffered frames
 - Persistence: in-memory by default, optional PostgreSQL via `DATABASE_URL`
 
-This keeps the product honest: it is focused on continuity for managed terminal sessions, not on full terminal streaming fidelity or desktop remoting.
+The current implementation is already coherent as a product: relay, pairing, managed sessions, mobile viewing, and light terminal control are all part of the same working path.
 
 ## Quick Start
 
@@ -151,6 +152,11 @@ Then attach it explicitly:
 termpilot list
 termpilot attach --sid <sid>
 ```
+
+If you only remember one rule:
+
+- `termpilot run -- <command>` means “start a managed session around this command”
+- `termpilot create` + `termpilot attach` means “create a plain shell session, then re-enter it when needed”
 
 ## CLI Reference
 

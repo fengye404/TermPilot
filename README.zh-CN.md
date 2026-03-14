@@ -6,7 +6,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/%40fengye404%2Ftermpilot)](https://www.npmjs.com/package/@fengye404/termpilot)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/fengye404/TermPilot/docs.yml?branch=main&label=docs)](https://github.com/fengye404/TermPilot/actions)
 
-让同一条终端会话在电脑和手机之间持续可见、可控制。
+让同一条受管理终端会话在电脑和手机之间持续可见、可控制。
 
 TermPilot 是一个面向长期任务的终端会话连续性工具。你可以离开工位，在手机浏览器里继续查看和控制那条已经在电脑上运行的会话。
 
@@ -44,16 +44,17 @@ TermPilot 解决的是一个更具体的问题:
 - `agent`: 跑在电脑上的守护进程，负责管理本地会话并与 relay 同步
 - `app`: 由 relay 提供的移动端 Web UI
 
-## 它擅长什么
+## 当前定位
 
-- 让电脑和手机挂在同一条受管理的会话上
-- 更适合长期终端任务，而不是一次性远程登录
-- 通过一个 npm 包提供统一 CLI
-- 手机端不需要安装 App
-- 支持一次性配对码、授权列表、授权撤销和审计事件
-- 自带可部署的 relay 和移动端 Web UI
+- 一个 npm 包，统一 CLI
+- 一个 relay，同时提供 Web UI 和 `/ws`
+- 一个 agent，管理本地 tmux 会话
+- 一个移动端 Web UI，聚焦查看、轻输入和快捷控制
+- 一套配对与 grant 模型，用于跨设备访问
 
-## 当前实现细节
+这是一条刻意收窄的产品边界。TermPilot 解决的是会话连续性，不是桌面远控或通用运维平台。
+
+## 当前实现形态
 
 下面这些描述以当前代码为准:
 
@@ -63,7 +64,7 @@ TermPilot 解决的是一个更具体的问题:
 - 输出同步: 基于 `tmux capture-pane` 的快照替换，并支持最近缓冲的回放
 - 存储: 默认内存存储，可通过 `DATABASE_URL` 切换到 PostgreSQL
 
-把这些写清楚很重要。它说明 TermPilot 的重点是“受管理终端会话的连续性”，而不是完整终端流还原，或桌面级远控。
+当前这套实现已经形成完整主路径：relay、配对、受管理会话、移动端查看和轻控制是一整套可直接使用的产品，而不是只停在概念层面。
 
 ## 快速开始
 
@@ -151,6 +152,11 @@ termpilot create --name my-task --cwd /path/to/project
 termpilot list
 termpilot attach --sid <sid>
 ```
+
+如果你只记一条规则，记这个就够了:
+
+- `termpilot run -- <command>` 表示“围绕这个命令启动一条受管理会话”
+- `termpilot create` + `termpilot attach` 表示“先建一条普通 shell 会话，再按需回到它”
 
 ## CLI 参考
 
