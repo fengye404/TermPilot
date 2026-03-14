@@ -41,18 +41,16 @@ The system has three runtime pieces:
 - `agent`: daemon running on your computer, managing local sessions and keeping session content on-device
 - `app`: mobile web UI served by the relay
 
-## Current Product Shape
+## At a Glance
 
-- One npm package with a unified CLI
-- One relay serving both the web UI and `/ws`
-- One agent managing local tmux-backed sessions
-- One mobile web UI focused on viewing, light input, and shortcut controls
-- One device pairing and grant model for cross-device access
-- One local-first security model with encrypted browser-to-agent messaging
+- Unified CLI package for relay, agent, and session commands
+- Local-first session model with titles, state, and output kept on the agent host
+- Device-scoped pairing, access grants, and encrypted browser-to-agent messaging
+- Mobile web UI for viewing, light input, and shortcut controls on the same session
 
 This is a deliberately narrow scope. TermPilot is built for session continuity, not for desktop remoting or generic server administration.
 
-## Current Capabilities
+## Current Implementation
 
 These details are based on the current codebase:
 
@@ -64,7 +62,7 @@ These details are based on the current codebase:
 - Relay persistence: pairing/grant metadata and audit events only; no session titles, cwd, or terminal output
 - Persistence: in-memory by default, optional PostgreSQL via `DATABASE_URL` for relay metadata only
 
-The current implementation is already coherent as a product: relay, pairing, managed sessions, mobile viewing, and light terminal control are all part of the same working path.
+The current implementation is intentionally compact: relay, pairing, managed sessions, mobile viewing, and light terminal control are all part of one working path.
 
 ## Security Model
 

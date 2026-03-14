@@ -144,7 +144,7 @@ body {
 
 .tp-doc-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
   margin: 24px 0 12px;
 }
@@ -164,6 +164,11 @@ body {
 
 .tp-doc-panel p {
   margin: 0;
+}
+
+.vp-doc ul:has(+ .tp-doc-grid),
+.vp-doc .tp-doc-grid + h2 {
+  margin-top: 20px;
 }
 
 .tp-doc-kicker {

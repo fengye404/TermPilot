@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: "TermPilot"
-  text: "同一条终端会话，跨端连续可见"
-  tagline: "一个本地优先的终端会话连续性工具，在桌面与移动端之间持续访问同一条受管理会话。"
+  text: "同一条会话，不换上下文"
+  tagline: "面向长期任务的本地优先终端会话连续性工具，在桌面与移动端之间持续接入同一条受管理会话。"
   actions:
     - theme: brand
       text: 快速开始
@@ -21,9 +21,9 @@ hero:
 
 features:
   - title: 同一条受管理会话
-    details: 桌面与移动端连接的是同一条会话，不是另一条新 shell。
+    details: 桌面与移动端接入的是同一条会话，不是另一条新 shell。
   - title: relay 仅做中转
-    details: relay 托管 Web UI、配对与授权路由，不保存会话内容。
+    details: relay 托管 Web UI、配对与授权路由，只保留最小元数据。
   - title: 基于 tmux 的当前实现
     details: agent 管理本地 tmux 会话，输出通过 ANSI 快照同步到移动端。
   - title: 设备级加密访问
@@ -36,7 +36,7 @@ TermPilot 面向的是一个明确场景：
 
 **一条终端会话已经在电脑上运行，而你希望离开桌面后仍继续接入这条原会话。**
 
-## 当前特性
+## 当前模型
 
 <div class="tp-doc-grid">
   <div class="tp-doc-panel">
@@ -65,6 +65,13 @@ TermPilot 面向的是一个明确场景：
     <p>浏览器通过一次性配对码、访问令牌和设备指纹与 agent 建立绑定。</p>
   </div>
 </div>
+
+## 当前特性
+
+- 同一条受管理会话可在桌面与移动端连续接入
+- relay 同时提供 Web UI、`/ws` 和配对授权入口
+- agent 管理本地 tmux 会话，并保留会话主数据与输出
+- 浏览器与 agent 之间的会话消息以加密信封传输
 
 ## 核心工作流
 
