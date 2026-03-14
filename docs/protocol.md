@@ -1,6 +1,6 @@
 # 当前协议说明
 
-这份文档描述的是当前代码里已经存在的协议形态，重点是把现有消息、字段和行为讲清楚。
+这份文档描述当前代码里的协议与安全模型，重点是说明 relay、agent 和浏览器各自负责什么。
 
 ## 1. 连接入口
 
@@ -10,55 +10,117 @@ agent 和 client 都通过同一个 WebSocket 入口连接 relay：
 ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
 ```
 
-说明：
-
 - `role=agent`：电脑上的 agent
 - `role=client`：手机或浏览器端
-- `token`：agent token 或 client access token
-- `deviceId`：agent 连接时必须带；client scope 则由 token 决定
+- `token`：agent token 或配对得到的 client access token
+- `deviceId`：agent 连接时必须带；client 的 device scope 由 token 决定
 
-## 2. 当前鉴权模型
+## 2. 配对与授权
 
-### agent
+### agent 侧
 
-agent 通过固定 `TERMPILOT_AGENT_TOKEN` 接入，并且必须声明 `deviceId`。
+- agent 通过固定 `TERMPILOT_AGENT_TOKEN` 接入 relay
+- agent 启动或申请配对码时，会确保本地存在长期 ECDH 密钥对
+- `POST /api/pairing-codes` 会把 `agentPublicKey` 一起提交给 relay
 
-如果同一个 `deviceId` 有新的 agent 连接上来，旧连接会收到 `AGENT_REPLACED` 错误并被断开。
+### client 侧
 
-### client
+- 浏览器在兑换配对码前生成本地长期 ECDH 密钥对
+- `POST /api/pairings/redeem` 会提交：
+  - `pairingCode`
+  - `clientPublicKey`
+- relay 返回：
+  - `deviceId`
+  - `accessToken`
+  - `agentPublicKey`
 
-client 当前有两种进入方式：
+这样浏览器和 agent 就建立了同一条设备范围的端到端密钥关系。
 
-- 使用配对码换来的 access token，只能访问一个 device
-- 使用可选的全局 `TERMPILOT_CLIENT_TOKEN`，scope 为 `*`
+## 3. relay 可见与不可见的数据
 
-但有一个重要细节：
+relay 当前可见的服务端元数据只有：
 
-- 如果 `TERMPILOT_CLIENT_TOKEN` 仍然是默认 `demo-client-token`，relay 会自动禁用它
+- 一次性配对码
+- 设备范围 access grants
+- 审计事件
 
-## 3. 当前消息类型
+relay 当前不可见的会话内容包括：
 
-### 系统消息
+- 会话标题
+- `cwd`
+- `shell`
+- `tmuxSessionName`
+- 会话状态细节
+- 终端输出
+- replay 缓冲
+
+这些内容都只保留在 agent 所在电脑，并以密文形式经过 relay。
+
+## 4. WebSocket 消息分层
+
+### 明文系统消息
+
+relay 仍会直接发送少量系统消息：
 
 - `auth.ok`
-- `error`
 - `relay.state`
+- `error`
 
-### 会话消息
+这些消息只描述连接状态、设备在线情况和鉴权错误，不包含会话内容。
+
+### 加密信封消息
+
+会话相关消息不再以明文 `session.*` 直接经过 relay，而是包裹在两类信封里：
+
+- `secure.client`
+- `secure.agent`
+
+信封结构：
+
+```json
+{
+  "type": "secure.client",
+  "reqId": "req_123",
+  "deviceId": "mac-d1f1c6cb",
+  "payload": {
+    "iv": "<base64>",
+    "ciphertext": "<base64>"
+  }
+}
+```
+
+其中：
+
+- `payload.iv`：AES-GCM IV
+- `payload.ciphertext`：浏览器或 agent 加密后的业务消息
+
+relay 只根据 `deviceId` 和 `accessToken` 做路由，不解析密文里的业务字段。
+
+## 5. 端到端业务消息
+
+解密之后，浏览器与 agent 之间仍然使用统一的 `session.*` 业务消息：
+
+### client -> agent
 
 - `session.list`
-- `session.list.result`
 - `session.create`
-- `session.created`
 - `session.input`
 - `session.resize`
 - `session.kill`
 - `session.replay`
+
+### agent -> client
+
+- `session.list.result`
+- `session.created`
 - `session.output`
 - `session.state`
 - `session.exit`
+- `error`
 
-## 4. 会话对象
+也就是说，现有会话协议还在，但它只存在于浏览器和 agent 的解密边界内。
+
+## 6. 会话对象
 
 当前 `SessionRecord` 字段包括：
 
@@ -80,233 +142,81 @@ client 当前有两种进入方式：
 - `backend` 当前固定为 `tmux`
 - `launchMode` 当前可能是 `shell` 或 `command`
 
-这两个字段很关键：
+## 7. 输出同步与 replay
 
-- `shell`：普通 shell 会话，通常由 `create + attach` 形成
-- `command`：托管命令会话，通常由 `run -- <command>` 或 `termpilot claude code` 形成
+当前输出模型不是终端字节流，而是 ANSI 快照替换。
 
-## 5. 会话创建与控制消息
+agent 侧行为：
 
-### 请求会话列表
+1. 定时执行 `tmux capture-pane -p -e -N -S -2000`
+2. 如果 pane 内容发生变化，递增 `lastSeq`
+3. 在本地缓存最近输出帧
+4. 向所有已配对 client 广播加密后的 `session.output`
 
-```json
-{
-  "type": "session.list",
-  "reqId": "req_1",
-  "deviceId": "mac-d1f1c6cb"
-}
-```
+replay 行为：
 
-### 创建会话
+- client 进入会话或重连时，发送 `session.replay`
+- agent 用本地缓存的最近帧响应
+- replay 不依赖 relay 内存缓冲
 
-当前 `session.create` 只允许请求这些字段：
-
-- `name`
-- `cwd`
-- `shell`
-
-示例：
-
-```json
-{
-  "type": "session.create",
-  "reqId": "req_2",
-  "deviceId": "mac-d1f1c6cb",
-  "payload": {
-    "name": "deploy",
-    "cwd": "/srv/app",
-    "shell": "/bin/zsh"
-  }
-}
-```
-
-注意：
-
-- 这条消息当前只创建普通 shell 会话
-- WebSocket 协议里还没有“远程创建托管命令会话”的单独字段
-
-### 输入
-
-`session.input` 同时支持文本和特殊按键：
-
-```json
-{
-  "type": "session.input",
-  "deviceId": "mac-d1f1c6cb",
-  "sid": "sid_123",
-  "payload": {
-    "text": "echo hello\n"
-  }
-}
-```
-
-当前支持的特殊按键：
-
-- `enter`
-- `tab`
-- `ctrl_c`
-- `ctrl_d`
-- `escape`
-- `arrow_up`
-- `arrow_down`
-- `arrow_left`
-- `arrow_right`
-
-### 调整尺寸
-
-```json
-{
-  "type": "session.resize",
-  "deviceId": "mac-d1f1c6cb",
-  "sid": "sid_123",
-  "payload": {
-    "cols": 120,
-    "rows": 30
-  }
-}
-```
-
-### 关闭会话
-
-```json
-{
-  "type": "session.kill",
-  "reqId": "req_3",
-  "deviceId": "mac-d1f1c6cb",
-  "sid": "sid_123"
-}
-```
-
-## 6. 输出同步
-
-当前输出模型不是终端字节流，而是“快照替换”。
-
-### agent 侧行为
-
-- 定时执行 `tmux capture-pane -p -e -N -S -2000`
-- 只在缓冲发生变化时发送新帧
-- 每次新帧都会带上递增的 `seq`
-
-### 输出消息
-
-```json
-{
-  "type": "session.output",
-  "deviceId": "mac-d1f1c6cb",
-  "sid": "sid_123",
-  "seq": 12,
-  "payload": {
-    "data": "...当前 pane 的 ANSI 快照...",
-    "mode": "replace"
-  }
-}
-```
-
-当前实现里：
-
-- `mode` 固定是 `replace`
-- client 收到后用最新快照替换当前展示
-
-## 7. 状态消息与退出消息
-
-### 会话状态
-
-```json
-{
-  "type": "session.state",
-  "deviceId": "mac-d1f1c6cb",
-  "sid": "sid_123",
-  "payload": {
-    "session": {}
-  }
-}
-```
-
-### 会话退出
-
-```json
-{
-  "type": "session.exit",
-  "deviceId": "mac-d1f1c6cb",
-  "sid": "sid_123",
-  "payload": {
-    "reason": "用户主动关闭会话",
-    "exitCode": null
-  }
-}
-```
-
-## 8. replay
-
-client 重新进入会话或重连时，可以请求补拉最近输出：
-
-```json
-{
-  "type": "session.replay",
-  "reqId": "req_replay_001",
-  "deviceId": "mac-d1f1c6cb",
-  "sid": "sid_123",
-  "payload": {
-    "afterSeq": 8
-  }
-}
-```
-
-当前 replay 依赖 relay 内存中的最近输出帧缓冲，不是完整历史回放。
-
-## 9. HTTP 接口
+## 8. HTTP 接口
 
 ### `POST /api/pairing-codes`
 
-创建一次性配对码。
+用途：由 agent 申请一次性配对码。
 
-- 需要 `Authorization: Bearer <agent-token>`
-- 请求体：`{ "deviceId": "<deviceId>" }`
+请求体：
+
+```json
+{
+  "deviceId": "mac-d1f1c6cb",
+  "agentPublicKey": "<base64 spki>"
+}
+```
 
 ### `POST /api/pairings/redeem`
 
-兑换配对码。
+用途：由浏览器兑换配对码。
 
-- 请求体：`{ "pairingCode": "ABC-123" }`
+请求体：
+
+```json
+{
+  "pairingCode": "ABC-123",
+  "clientPublicKey": "<base64 spki>"
+}
+```
+
+返回：
+
+```json
+{
+  "deviceId": "mac-d1f1c6cb",
+  "accessToken": "<token>",
+  "agentPublicKey": "<base64 spki>"
+}
+```
 
 ### `GET /api/devices/:deviceId/grants`
 
-查看设备当前 grants。
-
-- 需要 `Authorization: Bearer <agent-token>`
+用途：agent 拉取当前设备 grants，用于建立 access token 与 client 公钥的映射。
 
 ### `DELETE /api/devices/:deviceId/grants/:accessToken`
 
-撤销 grant。
-
-- 需要 `Authorization: Bearer <agent-token>`
-
-### `GET /api/devices/:deviceId/audit-events?limit=20`
-
-查看审计事件。
-
-- 需要 `Authorization: Bearer <agent-token>`
-- 服务端会把 `limit` 约束在 `1` 到 `100`
+用途：撤销某个已绑定 client 的访问权。relay 会主动断开对应 client WebSocket。
 
 ### `GET /health`
 
-返回当前 relay 健康信息，字段包括：
+返回当前 relay 健康状态。当前与安全相关的关键字段包括：
 
-- `ok`
 - `storeMode`
-- `agentsOnline`
-- `clientsOnline`
-- `webUiReady`
 - `adminClientTokenEnabled`
+- `security.relayStoresSessionContent`
+- `security.endToEndEncryptionRequiredForPairedClients`
 
-## 10. 当前协议限制
+## 9. 当前协议边界
 
-当前协议还有这些已知限制：
-
-- relay 可以看到明文会话元数据和最近输出
-- `session.create` 还只能创建 shell 会话，不能直接表达“托管命令”
-- 输出同步是快照替换，不是终端流
-- replay 只能补最近缓冲，不能回放完整历史
-- 审计只覆盖关键控制动作，不记录全部普通输入
-
-这些限制并不妨碍当前主路径使用，但它们确实定义了现在这套协议的适用范围。
+- 会话后端仍固定为 `tmux`
+- 输出同步仍是快照替换，不是字节流终端协议
+- relay 仍然是中心路由点，但不再承载会话主数据
+- 使用旧 access token 且缺少本地密钥绑定的 client，需要重新配对

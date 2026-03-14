@@ -33,8 +33,7 @@ TermPilot 当前由三部分组成：
 
 不设置 `DATABASE_URL` 时：
 
-- 会话元数据存在内存里
-- 配对码、client grants、审计事件也存在内存里
+- 配对码、client grants、审计事件存在内存里
 - relay 重启后这些服务端状态都会丢失
 
 适合：
@@ -47,22 +46,26 @@ TermPilot 当前由三部分组成：
 
 设置 `DATABASE_URL` 后：
 
-- relay 会把会话元数据写进 PostgreSQL
-- 配对码、client grants、审计事件也会持久化
+- relay 会把配对码、client grants、审计事件写进 PostgreSQL
 
 适合：
 
 - 长期部署
 - 希望 relay 重启后仍保留服务端侧状态
 
-当前实现里，relay 仍然负责：
+当前实现里，relay 只负责：
 
-- 会话元数据
 - 配对和 grants
 - 审计事件
-- 最近输出缓冲
+- 密文路由
 
-这也是为什么 PostgreSQL 模式更适合长期部署。
+当前实现里，relay 不负责：
+
+- 会话元数据
+- 终端输出
+- replay 缓冲
+
+这也是为什么 PostgreSQL 模式现在是“元数据持久化”，而不是“会话持久化”。
 
 ## 3. 基础部署步骤
 
@@ -120,6 +123,7 @@ termpilot agent --foreground
 - 或反向代理后的 `https://your-domain.com`
 
 输入配对码后，client 会换到该设备对应的访问令牌，并通过 `/ws` 建立 WebSocket。
+同时，浏览器会生成本地密钥对，并与 agent 公钥建立端到端加密关系。
 
 ## 4. 推荐公网部署
 
@@ -191,6 +195,7 @@ your-domain.com {
 - `config.json`：agent 保存的 relay 配置
 - `state.json`：本地会话状态
 - `device-id`：自动生成的设备 ID
+- `device-key.json`：agent 本地端到端加密密钥
 - `agent-runtime.json`：后台 agent 运行信息
 - `relay-runtime.json`：后台 relay 运行信息
 - `agent.log`
@@ -219,6 +224,8 @@ curl http://127.0.0.1:8787/health
 - `clientsOnline`
 - `webUiReady`
 - `adminClientTokenEnabled`
+- `security.relayStoresSessionContent`
+- `security.endToEndEncryptionRequiredForPairedClients`
 
 这些字段很适合做最小监控和验收。
 
@@ -254,6 +261,12 @@ termpilot attach --sid <sid>
 ```bash
 termpilot agent --pair
 ```
+
+注意：
+
+- `agent --pair` 默认会复用已运行的后台 agent
+- 它不会强制重启已有 agent
+- 如果你升级到了新的安全实现，但当前本地绑定还是旧 token，请先清除绑定并重新配对
 
 ### 查看当前设备 grants
 

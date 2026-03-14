@@ -3,24 +3,31 @@ import { setTimeout as delay } from "node:timers/promises";
 import WebSocket from "ws";
 
 import type {
+  AgentBusinessMessage,
   AgentToRelayMessage,
+  E2EEKeyPair,
   ErrorMessage,
   RelayToAgentMessage,
+  SecureAgentEnvelopeMessage,
   SessionCreateMessage,
   SessionExitMessage,
   SessionInputMessage,
   SessionListResultMessage,
   SessionOutputMessage,
   SessionRecord,
+  SessionReplayMessage,
   SessionResizeMessage,
-  SessionStateMessage,
 } from "@termpilot/protocol";
 import {
   DEFAULT_AGENT_TOKEN,
   DEFAULT_DEVICE_ID,
+  createReqId,
+  decryptFromPeer,
+  encryptForPeer,
   parseJsonMessage,
 } from "@termpilot/protocol";
-import { loadState } from "./state-store";
+import { listDeviceGrants } from "./relay-admin";
+import { getOrCreateDeviceKeyPairAsync, loadState } from "./state-store";
 import {
   bumpSessionSeq,
   captureSession,
@@ -37,6 +44,8 @@ import {
 } from "./tmux-backend";
 
 const DEFAULT_RELAY_URL = "ws://127.0.0.1:8787/ws";
+const OUTPUT_FRAME_LIMIT = 40;
+const GRANT_REFRESH_INTERVAL_MS = 10_000;
 
 interface DaemonOptions {
   relayUrl: string;
@@ -51,17 +60,29 @@ interface SessionRuntimeState {
   layoutNormalized: boolean;
 }
 
+type EncryptedClientMessage = RelayToAgentMessage & { type: "secure.client"; accessToken?: string };
+
 export class AgentDaemon {
   private readonly runtimeState = new Map<string, SessionRuntimeState>();
+
+  private readonly outputBuffers = new Map<string, SessionOutputMessage[]>();
+
+  private readonly grantPublicKeys = new Map<string, string>();
 
   private socket: WebSocket | null = null;
 
   private running = false;
 
+  private deviceKeyPair: E2EEKeyPair | null = null;
+
+  private lastGrantRefreshAt = 0;
+
   constructor(private readonly options: DaemonOptions) {}
 
   async start(): Promise<void> {
     await ensureTmuxAvailable();
+    this.deviceKeyPair = await getOrCreateDeviceKeyPairAsync();
+    await this.refreshGrantPublicKeys(true);
     this.running = true;
     await Promise.all([this.connectLoop(), this.syncLoop()]);
   }
@@ -82,14 +103,7 @@ export class AgentDaemon {
       this.socket = socket;
 
       socket.on("open", () => {
-        this.sendSessionListResult({
-          type: "session.list.result",
-          reqId: "initial-sync",
-          deviceId: this.options.deviceId,
-          payload: {
-            sessions: listSessions().filter((session) => session.deviceId === this.options.deviceId),
-          },
-        });
+        void this.refreshGrantPublicKeys(true);
       });
 
       socket.on("message", (raw) => {
@@ -117,6 +131,7 @@ export class AgentDaemon {
 
   private async syncLoop(): Promise<void> {
     while (this.running) {
+      await this.refreshGrantPublicKeys();
       const sessions = loadState().sessions.filter((session) => session.deviceId === this.options.deviceId);
 
       for (const session of sessions) {
@@ -124,6 +139,28 @@ export class AgentDaemon {
       }
 
       await delay(this.options.pollIntervalMs);
+    }
+  }
+
+  private async refreshGrantPublicKeys(force = false): Promise<void> {
+    if (!force && Date.now() - this.lastGrantRefreshAt < GRANT_REFRESH_INTERVAL_MS) {
+      return;
+    }
+
+    try {
+      const payload = await listDeviceGrants(this.options.deviceId);
+      this.grantPublicKeys.clear();
+      for (const grant of payload.grants) {
+        if (grant.clientPublicKey) {
+          this.grantPublicKeys.set(grant.accessToken, grant.clientPublicKey);
+        }
+      }
+      this.lastGrantRefreshAt = Date.now();
+    } catch (error) {
+      if (force) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`刷新访问令牌失败: ${message}`);
+      }
     }
   }
 
@@ -140,7 +177,7 @@ export class AgentDaemon {
           ...runtimeState,
           lastStatus: "exited",
         });
-        this.sendMessage({
+        await this.broadcastBusinessMessage({
           type: "session.state",
           deviceId: this.options.deviceId,
           sid: session.sid,
@@ -160,7 +197,7 @@ export class AgentDaemon {
           ...runtimeState,
           lastStatus: "exited",
         });
-        this.sendMessage({
+        const exitMessage: SessionExitMessage = {
           type: "session.exit",
           deviceId: this.options.deviceId,
           sid: exitedSession.sid,
@@ -168,8 +205,9 @@ export class AgentDaemon {
             reason: "tmux 会话不存在，已标记退出",
             exitCode: null,
           },
-        });
-        this.sendMessage({
+        };
+        await this.broadcastBusinessMessage(exitMessage);
+        await this.broadcastBusinessMessage({
           type: "session.state",
           deviceId: this.options.deviceId,
           sid: exitedSession.sid,
@@ -213,48 +251,37 @@ export class AgentDaemon {
         mode: "replace",
       },
     };
+    this.pushOutputFrame(outputMessage);
 
-    const stateMessage: SessionStateMessage = {
+    const stateMessage: AgentBusinessMessage = {
       type: "session.state",
       deviceId: this.options.deviceId,
-      sid: session.sid,
+      sid: nextSession.sid,
       payload: {
         session: nextSession,
       },
     };
 
-    this.sendMessage(outputMessage);
-    this.sendMessage(stateMessage);
+    await this.broadcastBusinessMessage(outputMessage);
+    await this.broadcastBusinessMessage(stateMessage);
+  }
+
+  private pushOutputFrame(frame: SessionOutputMessage): void {
+    const key = `${frame.deviceId}:${frame.sid}`;
+    const nextFrames = [...(this.outputBuffers.get(key) ?? []), frame].slice(-OUTPUT_FRAME_LIMIT);
+    this.outputBuffers.set(key, nextFrames);
   }
 
   private async handleMessage(message: RelayToAgentMessage): Promise<void> {
     switch (message.type) {
       case "auth.ok":
+        await this.refreshGrantPublicKeys(true);
         return;
       case "error":
         this.handleError(message);
         return;
-      case "session.list":
-        this.sendSessionListResult({
-          type: "session.list.result",
-          reqId: message.reqId,
-          deviceId: this.options.deviceId,
-          payload: {
-            sessions: listSessions().filter((session) => session.deviceId === this.options.deviceId),
-          },
-        });
-        return;
-      case "session.create":
-        await this.handleCreate(message);
-        return;
-      case "session.input":
-        await this.handleInput(message);
-        return;
-      case "session.resize":
-        await this.handleResize(message);
-        return;
-      case "session.kill":
-        await this.handleKill(message);
+      case "secure.client":
+        await this.handleSecureClientMessage(message);
         return;
     }
   }
@@ -267,7 +294,74 @@ export class AgentDaemon {
     }
   }
 
-  private async handleCreate(message: SessionCreateMessage): Promise<void> {
+  private async handleSecureClientMessage(message: EncryptedClientMessage): Promise<void> {
+    const accessToken = message.accessToken?.trim();
+    if (!accessToken || !this.deviceKeyPair) {
+      return;
+    }
+
+    let clientPublicKey = this.grantPublicKeys.get(accessToken);
+    if (!clientPublicKey) {
+      await this.refreshGrantPublicKeys(true);
+      clientPublicKey = this.grantPublicKeys.get(accessToken);
+      if (!clientPublicKey) {
+        return;
+      }
+    }
+
+    let plaintext: string;
+    try {
+      plaintext = await decryptFromPeer(message.payload, this.deviceKeyPair.privateKey, clientPublicKey);
+    } catch {
+      await this.sendEncryptedError(accessToken, message.reqId, "E2EE_DECRYPT_FAILED", "无法解密当前请求，请重新配对。");
+      return;
+    }
+
+    const inner = parseJsonMessage<SessionCreateMessage | SessionInputMessage | SessionResizeMessage | SessionReplayMessage | { type: "session.kill"; reqId?: string; sid: string } | { type: "session.list"; reqId: string; deviceId: string }>(plaintext);
+    if (!inner) {
+      await this.sendEncryptedError(accessToken, message.reqId, "INVALID_MESSAGE", "请求格式无效。");
+      return;
+    }
+
+    switch (inner.type) {
+      case "session.list":
+        await this.sendSessionListResult(accessToken, {
+          type: "session.list.result",
+          reqId: inner.reqId,
+          deviceId: this.options.deviceId,
+          payload: {
+            sessions: listSessions().filter((session) => session.deviceId === this.options.deviceId),
+          },
+        });
+        return;
+      case "session.replay":
+        await this.handleReplay(accessToken, inner);
+        return;
+      case "session.create":
+        await this.handleCreate(accessToken, inner);
+        return;
+      case "session.input":
+        await this.handleInput(accessToken, inner);
+        return;
+      case "session.resize":
+        await this.handleResize(accessToken, inner);
+        return;
+      case "session.kill":
+        await this.handleKill(accessToken, inner);
+        return;
+    }
+  }
+
+  private async handleReplay(accessToken: string, message: SessionReplayMessage): Promise<void> {
+    const key = `${this.options.deviceId}:${message.sid}`;
+    const afterSeq = message.payload?.afterSeq ?? -1;
+    const frames = (this.outputBuffers.get(key) ?? []).filter((item) => item.seq > afterSeq);
+    for (const frame of frames) {
+      await this.sendBusinessMessageToClient(accessToken, frame);
+    }
+  }
+
+  private async handleCreate(accessToken: string, message: SessionCreateMessage): Promise<void> {
     try {
       const session = await createSession({
         deviceId: this.options.deviceId,
@@ -276,7 +370,7 @@ export class AgentDaemon {
         shell: message.payload.shell,
       });
 
-      this.sendMessage({
+      await this.sendBusinessMessageToClient(accessToken, {
         type: "session.created",
         reqId: message.reqId,
         deviceId: this.options.deviceId,
@@ -284,39 +378,47 @@ export class AgentDaemon {
           session,
         },
       });
+      await this.broadcastBusinessMessage({
+        type: "session.state",
+        deviceId: this.options.deviceId,
+        sid: session.sid,
+        payload: {
+          session,
+        },
+      });
     } catch (error) {
-      this.sendError(message.reqId, "SESSION_CREATE_FAILED", error);
+      await this.sendEncryptedError(accessToken, message.reqId, "SESSION_CREATE_FAILED", error);
     }
   }
 
-  private async handleInput(message: SessionInputMessage): Promise<void> {
+  private async handleInput(accessToken: string, message: SessionInputMessage): Promise<void> {
     try {
       const session = getSessionBySid(message.sid);
       if (!session) {
-        this.sendError(message.reqId, "SESSION_NOT_FOUND", `会话 ${message.sid} 不存在`);
+        await this.sendEncryptedError(accessToken, message.reqId, "SESSION_NOT_FOUND", `会话 ${message.sid} 不存在`);
         return;
       }
 
       await sendInput(session, message.payload.text, message.payload.key);
     } catch (error) {
-      this.sendError(message.reqId, "SESSION_INPUT_FAILED", error);
+      await this.sendEncryptedError(accessToken, message.reqId, "SESSION_INPUT_FAILED", error);
     }
   }
 
-  private async handleResize(message: SessionResizeMessage): Promise<void> {
+  private async handleResize(accessToken: string, message: SessionResizeMessage): Promise<void> {
     try {
       const session = getSessionBySid(message.sid);
       if (!session) {
-        this.sendError(message.reqId, "SESSION_NOT_FOUND", `会话 ${message.sid} 不存在`);
+        await this.sendEncryptedError(accessToken, message.reqId, "SESSION_NOT_FOUND", `会话 ${message.sid} 不存在`);
         return;
       }
       await resizeSession(session, message.payload.cols, message.payload.rows);
     } catch (error) {
-      this.sendError(message.reqId, "SESSION_RESIZE_FAILED", error);
+      await this.sendEncryptedError(accessToken, message.reqId, "SESSION_RESIZE_FAILED", error);
     }
   }
 
-  private async handleKill(message: { reqId?: string; sid: string }): Promise<void> {
+  private async handleKill(accessToken: string, message: { reqId?: string; sid: string }): Promise<void> {
     try {
       const session = await killSession(message.sid);
 
@@ -331,7 +433,7 @@ export class AgentDaemon {
         },
       };
 
-      const stateMessage: SessionStateMessage = {
+      const stateMessage: AgentBusinessMessage = {
         type: "session.state",
         reqId: message.reqId,
         deviceId: this.options.deviceId,
@@ -341,18 +443,18 @@ export class AgentDaemon {
         },
       };
 
-      this.sendMessage(exitMessage);
-      this.sendMessage(stateMessage);
+      await this.broadcastBusinessMessage(exitMessage);
+      await this.broadcastBusinessMessage(stateMessage);
     } catch (error) {
-      this.sendError(message.reqId, "SESSION_KILL_FAILED", error);
+      await this.sendEncryptedError(accessToken, message.reqId, "SESSION_KILL_FAILED", error);
     }
   }
 
-  private sendSessionListResult(message: SessionListResultMessage): void {
-    this.sendMessage(message);
+  private async sendSessionListResult(accessToken: string, message: SessionListResultMessage): Promise<void> {
+    await this.sendBusinessMessageToClient(accessToken, message);
   }
 
-  private sendError(reqId: string | undefined, code: string, error: unknown): void {
+  private async sendEncryptedError(accessToken: string, reqId: string | undefined, code: string, error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     const payload: ErrorMessage = {
       type: "error",
@@ -361,10 +463,42 @@ export class AgentDaemon {
       code,
       message,
     };
-    this.sendMessage(payload);
+    await this.sendBusinessMessageToClient(accessToken, payload);
   }
 
-  private sendMessage(message: AgentToRelayMessage): void {
+  private async sendBusinessMessageToClient(accessToken: string, message: AgentBusinessMessage): Promise<void> {
+    if (!this.deviceKeyPair) {
+      return;
+    }
+
+    let clientPublicKey = this.grantPublicKeys.get(accessToken);
+    if (!clientPublicKey) {
+      await this.refreshGrantPublicKeys(true);
+      clientPublicKey = this.grantPublicKeys.get(accessToken);
+      if (!clientPublicKey) {
+        return;
+      }
+    }
+
+    const payload = await encryptForPeer(JSON.stringify(message), this.deviceKeyPair.privateKey, clientPublicKey);
+    const envelope: SecureAgentEnvelopeMessage = {
+      type: "secure.agent",
+      reqId: "reqId" in message ? message.reqId : undefined,
+      deviceId: this.options.deviceId,
+      accessToken,
+      payload,
+    };
+    this.sendRelayMessage(envelope);
+  }
+
+  private async broadcastBusinessMessage(message: AgentBusinessMessage): Promise<void> {
+    const accessTokens = Array.from(this.grantPublicKeys.keys());
+    for (const accessToken of accessTokens) {
+      await this.sendBusinessMessageToClient(accessToken, message);
+    }
+  }
+
+  private sendRelayMessage(message: AgentToRelayMessage): void {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       return;
     }

@@ -80,7 +80,8 @@ termpilot claude code
 
 - 电脑主动连 relay
 - 手机主动连 relay
-- relay 负责配对、scope 和消息转发
+- relay 负责配对、scope 和密文转发
+- 会话标题与终端输出保留在 agent 所在电脑
 
 这意味着：
 

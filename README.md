@@ -34,14 +34,14 @@ That is the main path in this project.
 ```text
 Phone browser / PWA  -- https / wss -->  relay  <-- ws / wss --  agent on your computer
                                               |
-                                              +-- pairing, auth, session metadata,
-                                                  output replay, audit events, web UI
+                                              +-- pairing, grant routing,
+                                                  audit metadata, web UI
 ```
 
 The system has three runtime pieces:
 
-- `relay`: HTTP + WebSocket entrypoint, web UI hosting, pairing, access control, session metadata
-- `agent`: daemon running on your computer, managing local sessions and syncing them to the relay
+- `relay`: HTTP + WebSocket entrypoint, web UI hosting, pairing, access control, encrypted message routing
+- `agent`: daemon running on your computer, managing local sessions and keeping session content on-device
 - `app`: mobile web UI served by the relay
 
 ## Current Scope
@@ -61,10 +61,23 @@ These details are based on the current codebase:
 - Session backend: `tmux`
 - Relay transport: HTTP + WebSocket on the same service
 - Mobile client: React app with PWA support, served by the relay
-- Output sync: snapshot replacement from `tmux capture-pane`, with replay from recent buffered frames
-- Persistence: in-memory by default, optional PostgreSQL via `DATABASE_URL`
+- Output sync: snapshot replacement from `tmux capture-pane`, with replay served by the agent
+- Paired access: end-to-end encrypted between browser and agent using per-device pairing keys
+- Relay persistence: pairing/grant metadata and audit events only; no session titles, cwd, or terminal output
+- Persistence: in-memory by default, optional PostgreSQL via `DATABASE_URL` for relay metadata only
 
 The current implementation is already coherent as a product: relay, pairing, managed sessions, mobile viewing, and light terminal control are all part of the same working path.
+
+## Security Model
+
+- Paired clients exchange public keys during pairing and receive an access token scoped to one device.
+- Session messages travel as encrypted envelopes between the browser and the agent.
+- Sensitive session data stays on the computer running the agent: titles, cwd, shell, status details, and terminal output.
+- The relay keeps only the minimum server-side metadata required to operate:
+  - pairing codes
+  - scoped access grants
+  - audit events
+- If you redeploy or migrate from an older binding without local keys, re-pair the device.
 
 ## Quick Start
 
@@ -198,6 +211,7 @@ Common files:
 - `agent-runtime.json`: background agent runtime state
 - `relay-runtime.json`: background relay runtime state
 - `state.json`: local managed session state
+- `device-key.json`: local agent E2EE keypair
 - `agent.log` / `relay.log`: logs
 
 Useful environment variables:

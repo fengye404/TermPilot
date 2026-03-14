@@ -4,6 +4,7 @@ import { homedir, hostname } from "node:os";
 import path from "node:path";
 
 import { DEFAULT_DEVICE_ID } from "@termpilot/protocol";
+import { generateE2EEKeyPair, type E2EEKeyPair } from "@termpilot/protocol";
 import type { SessionRecord } from "@termpilot/protocol";
 
 export interface AgentState {
@@ -57,6 +58,10 @@ export function getAgentConfigFilePath(): string {
 
 export function getGeneratedDeviceIdFilePath(): string {
   return path.join(getAgentHome(), "device-id");
+}
+
+export function getDeviceKeyFilePath(): string {
+  return path.join(getAgentHome(), "device-key.json");
 }
 
 function getStateLockPath(): string {
@@ -168,6 +173,46 @@ export function getOrCreateGeneratedDeviceId(): string {
   const deviceId = generateDeviceId();
   writeFileSync(filePath, `${deviceId}\n`, "utf8");
   return deviceId;
+}
+
+export function getOrCreateDeviceKeyPair(): E2EEKeyPair {
+  ensureAgentHome();
+  const filePath = getDeviceKeyFilePath();
+
+  try {
+    const existing = JSON.parse(readFileSync(filePath, "utf8")) as Partial<E2EEKeyPair>;
+    if (typeof existing.publicKey === "string" && typeof existing.privateKey === "string" && existing.publicKey && existing.privateKey) {
+      return {
+        publicKey: existing.publicKey,
+        privateKey: existing.privateKey,
+      };
+    }
+  } catch {
+    // ignore and create below
+  }
+
+  throw new Error("设备密钥尚未初始化，请改用异步接口 getOrCreateDeviceKeyPairAsync。");
+}
+
+export async function getOrCreateDeviceKeyPairAsync(): Promise<E2EEKeyPair> {
+  ensureAgentHome();
+  const filePath = getDeviceKeyFilePath();
+
+  try {
+    const existing = JSON.parse(readFileSync(filePath, "utf8")) as Partial<E2EEKeyPair>;
+    if (typeof existing.publicKey === "string" && typeof existing.privateKey === "string" && existing.publicKey && existing.privateKey) {
+      return {
+        publicKey: existing.publicKey,
+        privateKey: existing.privateKey,
+      };
+    }
+  } catch {
+    // ignore and create below
+  }
+
+  const next = await generateE2EEKeyPair();
+  writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  return next;
 }
 
 export function rewriteSessionsDeviceId(previousDeviceId: string, nextDeviceId: string): AgentState {

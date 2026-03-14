@@ -126,7 +126,7 @@ async function fetchJson<T>(input: URL, init: RequestInit, message: string): Pro
   throw new Error(`${message}: 无法连接 relay (${lastOrigin})，${detail}`);
 }
 
-export async function createPairingCode(deviceId: string): Promise<PairingCodeResponse> {
+export async function createPairingCode(deviceId: string, agentPublicKey: string): Promise<PairingCodeResponse> {
   return fetchJson<PairingCodeResponse>(
     new URL("/api/pairing-codes", "https://placeholder.invalid"),
     {
@@ -135,7 +135,7 @@ export async function createPairingCode(deviceId: string): Promise<PairingCodeRe
         authorization: `Bearer ${getAgentToken()}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ deviceId }),
+      body: JSON.stringify({ deviceId, agentPublicKey }),
     },
     "申请配对码失败",
   );

@@ -14,6 +14,7 @@ import {
   getAgentConfigFilePath,
   getAgentHome,
   getAgentLogFilePath,
+  getOrCreateDeviceKeyPairAsync,
   getOrCreateGeneratedDeviceId,
   getStateFilePath,
   loadAgentConfig,
@@ -386,10 +387,11 @@ function readRuntimeStatus() {
 }
 
 async function waitForPairingCode(deviceId: string): Promise<Awaited<ReturnType<typeof createPairingCode>> | null> {
+  const deviceKeyPair = await getOrCreateDeviceKeyPairAsync();
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 12; attempt += 1) {
     try {
-      const payload = await createPairingCode(deviceId);
+      const payload = await createPairingCode(deviceId, deviceKeyPair.publicKey);
       persistMigratedRelayUrl(deviceId);
       return payload;
     } catch (error) {
@@ -613,7 +615,8 @@ async function runPair(argv: string[]): Promise<void> {
   const config = await ensureConfigured(argv);
   applyAgentConfig(config.config);
   const deviceId = getDeviceId(argv);
-  const payload = await createPairingCode(deviceId);
+  const deviceKeyPair = await getOrCreateDeviceKeyPairAsync();
+  const payload = await createPairingCode(deviceId, deviceKeyPair.publicKey);
   persistMigratedRelayUrl(deviceId);
   console.log(`设备: ${payload.deviceId}`);
   console.log(`配对码: ${payload.pairingCode}`);

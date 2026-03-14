@@ -2,7 +2,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import Fastify, { type FastifyReply } from "fastify";
+import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { Pool } from "pg";
 
@@ -18,16 +18,13 @@ import type {
   PairingRedeemResponse,
   RelayStateMessage,
   RelayToClientMessage,
-  SessionListResultMessage,
-  SessionOutputMessage,
-  SessionRecord,
+  RelayToAgentMessage,
 } from "@termpilot/protocol";
 import { DEFAULT_CLIENT_TOKEN, parseJsonMessage } from "@termpilot/protocol";
 
 import { MemoryAuthStore, PostgresAuthStore, type AuthStore } from "./auth-store.js";
 import { MemoryAuditStore, PostgresAuditStore, type AuditStore } from "./audit-store.js";
 import { loadConfig, type RelayConfig } from "./config.js";
-import { MemorySessionStore, PostgresSessionStore, type SessionStore } from "./session-store.js";
 
 type ClientSocket = import("ws").WebSocket;
 
@@ -40,10 +37,6 @@ interface ClientConnection {
   socket: ClientSocket;
   deviceScope: "*" | Set<string>;
   accessToken?: string;
-}
-
-interface OutputBuffer {
-  frames: SessionOutputMessage[];
 }
 
 interface RelayServerOptions {
@@ -113,34 +106,31 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   const app = Fastify({ logger: true });
   const agents = new Map<string, AgentConnection>();
   const clients = new Set<ClientConnection>();
-  const sessionCache = new Map<string, Map<string, SessionRecord>>();
-  const outputBuffers = new Map<string, OutputBuffer>();
   const webDir = options.webDir ?? resolveDefaultWebDir(import.meta.url);
+  const storeMode = config.databaseUrl ? "postgres" : "memory";
+  let pool: Pool | null = null;
 
   if ((process.env.TERMPILOT_CLIENT_TOKEN ?? "").trim() === DEFAULT_CLIENT_TOKEN) {
     app.log.warn("检测到 TERMPILOT_CLIENT_TOKEN 仍为默认 demo-client-token。出于隔离安全考虑，relay 已自动禁用全局客户端访问令牌。");
   }
 
-  const storesPromise: Promise<{ sessionStore: SessionStore; authStore: AuthStore; auditStore: AuditStore }> = (async () => {
+  const storesPromise: Promise<{ authStore: AuthStore; auditStore: AuditStore }> = (async () => {
     if (!config.databaseUrl) {
-      app.log.warn("未提供 DATABASE_URL，当前 relay 使用内存存储会话元数据。");
-      const sessionStore = new MemorySessionStore();
+      app.log.warn("未提供 DATABASE_URL，当前 relay 使用内存存储授权与审计元数据。");
       const authStore = new MemoryAuthStore();
       const auditStore = new MemoryAuditStore();
       await authStore.init();
       await auditStore.init();
-      return { sessionStore, authStore, auditStore };
+      return { authStore, auditStore };
     }
 
-    const pool = new Pool({ connectionString: config.databaseUrl });
-    const sessionStore = new PostgresSessionStore(pool);
+    pool = new Pool({ connectionString: config.databaseUrl });
     const authStore = new PostgresAuthStore(pool);
     const auditStore = new PostgresAuditStore(pool);
-    await sessionStore.init();
     await authStore.init();
     await auditStore.init();
-    app.log.info("relay 已连接 PostgreSQL，会话元数据将写入数据库。");
-    return { sessionStore, authStore, auditStore };
+    app.log.info("relay 已连接 PostgreSQL，当前仅存储授权与审计元数据。");
+    return { authStore, auditStore };
   })();
 
   async function appendAuditEvent(input: {
@@ -178,8 +168,12 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
         return clientCanAccessDevice(client, message.deviceId) ? JSON.stringify(message) : null;
       case "auth.ok":
         return JSON.stringify(message);
+      case "secure.agent":
+        return client.accessToken === message.accessToken && clientCanAccessDevice(client, message.deviceId)
+          ? JSON.stringify(message)
+          : null;
       default:
-        return clientCanAccessDevice(client, message.deviceId) ? JSON.stringify(message) : null;
+        return null;
     }
   }
 
@@ -195,7 +189,16 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     }
   }
 
-  function sendError(socket: ClientSocket, code: string, message: string, reqId?: string): void {
+  function sendToAgent(deviceId: string, message: RelayToAgentMessage): boolean {
+    const agent = agents.get(deviceId);
+    if (!agent || agent.socket.readyState !== agent.socket.OPEN) {
+      return false;
+    }
+    agent.socket.send(JSON.stringify(message));
+    return true;
+  }
+
+  function sendError(socket: ClientSocket, code: string, message: string, reqId?: string, deviceId?: string): void {
     if (socket.readyState !== socket.OPEN) {
       return;
     }
@@ -204,6 +207,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
       code,
       message,
       reqId,
+      deviceId,
     };
     socket.send(JSON.stringify(payload));
   }
@@ -234,82 +238,9 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     broadcastToClients(relayStateMessage());
   }
 
-  function pruneOutputBuffers(deviceId: string, sessions: Map<string, SessionRecord>): void {
-    const prefix = `${deviceId}:`;
-    for (const key of outputBuffers.keys()) {
-      if (!key.startsWith(prefix)) {
-        continue;
-      }
-      const sid = key.slice(prefix.length);
-      if (!sessions.has(sid)) {
-        outputBuffers.delete(key);
-      }
-    }
-  }
-
-  function setCachedSessions(deviceId: string, sessions: SessionRecord[]): void {
-    const bucket = new Map<string, SessionRecord>();
-    for (const session of sessions) {
-      bucket.set(session.sid, session);
-    }
-    sessionCache.set(deviceId, bucket);
-    pruneOutputBuffers(deviceId, bucket);
-  }
-
-  function upsertCachedSession(session: SessionRecord): void {
-    const bucket = sessionCache.get(session.deviceId) ?? new Map<string, SessionRecord>();
-    bucket.set(session.sid, session);
-    sessionCache.set(session.deviceId, bucket);
-  }
-
-  function markCachedSessionExited(deviceId: string, sid: string): void {
-    const bucket = sessionCache.get(deviceId);
-    const session = bucket?.get(sid);
-    if (!bucket || !session) {
-      return;
-    }
-
-    bucket.set(sid, {
-      ...session,
-      status: "exited",
-      lastActivityAt: new Date().toISOString(),
-    });
-  }
-
-  function pushOutputFrame(frame: SessionOutputMessage): void {
-    const key = `${frame.deviceId}:${frame.sid}`;
-    const buffer = outputBuffers.get(key) ?? { frames: [] };
-    buffer.frames.push(frame);
-    buffer.frames = buffer.frames.slice(-40);
-    outputBuffers.set(key, buffer);
-  }
-
   async function handleAgentMessage(message: AgentToRelayMessage): Promise<void> {
-    const { sessionStore } = await storesPromise;
-
     switch (message.type) {
-      case "session.list.result":
-        setCachedSessions(message.deviceId, message.payload.sessions);
-        await sessionStore.replaceSessions(message.deviceId, message.payload.sessions);
-        broadcastToClients(message);
-        return;
-      case "session.created":
-        upsertCachedSession(message.payload.session);
-        await sessionStore.upsertSession(message.payload.session);
-        broadcastToClients(message);
-        return;
-      case "session.state":
-        upsertCachedSession(message.payload.session);
-        await sessionStore.upsertSession(message.payload.session);
-        broadcastToClients(message);
-        return;
-      case "session.output":
-        pushOutputFrame(message);
-        broadcastToClients(message);
-        return;
-      case "session.exit":
-        markCachedSessionExited(message.deviceId, message.sid);
-        await sessionStore.markSessionExited(message.deviceId, message.sid);
+      case "secure.agent":
         broadcastToClients(message);
         return;
       case "error":
@@ -319,60 +250,23 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
 
   async function handleClientMessage(client: ClientConnection, message: ClientToRelayMessage): Promise<void> {
     if (!clientCanAccessDevice(client, message.deviceId)) {
-      sendError(client.socket, "DEVICE_FORBIDDEN", `当前客户端无权访问设备 ${message.deviceId}`, "reqId" in message ? message.reqId : undefined);
+      sendError(client.socket, "DEVICE_FORBIDDEN", `当前客户端无权访问设备 ${message.deviceId}`, message.reqId, message.deviceId);
       return;
     }
 
-    if (message.type === "session.replay") {
-      const key = `${message.deviceId}:${message.sid}`;
-      const frames = outputBuffers.get(key)?.frames ?? [];
-      for (const frame of frames.filter((item) => item.seq > (message.payload?.afterSeq ?? -1))) {
-        client.socket.send(JSON.stringify(frame));
-      }
+    if (!client.accessToken) {
+      sendError(client.socket, "E2EE_REQUIRED", "当前客户端未绑定端到端密钥，请重新配对后再访问会话。", message.reqId, message.deviceId);
       return;
     }
 
-    if (message.type === "session.list" && !agents.has(message.deviceId)) {
-      const { sessionStore } = await storesPromise;
-      const cached = sessionCache.get(message.deviceId);
-      const sessions = cached ? Array.from(cached.values()) : await sessionStore.listSessions(message.deviceId);
-      const payload: SessionListResultMessage = {
-        type: "session.list.result",
-        reqId: message.reqId,
-        deviceId: message.deviceId,
-        payload: {
-          sessions,
-        },
-      };
-      client.socket.send(JSON.stringify(payload));
-      return;
-    }
+    const forwarded: RelayToAgentMessage = {
+      ...message,
+      accessToken: client.accessToken,
+    };
 
-    const agent = agents.get(message.deviceId);
-    if (!agent || agent.socket.readyState !== agent.socket.OPEN) {
-      sendError(client.socket, "DEVICE_OFFLINE", `设备 ${message.deviceId} 当前不在线`, "reqId" in message ? message.reqId : undefined);
-      return;
+    if (!sendToAgent(message.deviceId, forwarded)) {
+      sendError(client.socket, "DEVICE_OFFLINE", `设备 ${message.deviceId} 当前不在线`, message.reqId, message.deviceId);
     }
-
-    if (message.type === "session.create") {
-      await appendAuditEvent({
-        deviceId: message.deviceId,
-        action: "session.create_requested",
-        actorRole: "client",
-        detail: `请求创建会话 ${message.payload.name?.trim() || "(未命名)"}${message.payload.cwd ? ` @ ${message.payload.cwd}` : ""}`,
-      });
-    }
-
-    if (message.type === "session.kill") {
-      await appendAuditEvent({
-        deviceId: message.deviceId,
-        action: "session.kill_requested",
-        actorRole: "client",
-        detail: `请求关闭会话 ${message.sid}`,
-      });
-    }
-
-    agent.socket.send(JSON.stringify(message));
   }
 
   await app.register(websocket);
@@ -387,21 +281,23 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   });
 
   app.addHook("onClose", async () => {
-    const { sessionStore } = await storesPromise;
-    await sessionStore.close();
+    if (pool) {
+      await pool.end();
+    }
   });
 
-  app.get("/health", async () => {
-    const { sessionStore } = await storesPromise;
-    return {
-      ok: true,
-      storeMode: sessionStore.mode,
-      agentsOnline: agents.size,
-      clientsOnline: clients.size,
-      webUiReady: existsSync(webDir),
-      adminClientTokenEnabled: Boolean(config.clientToken),
-    };
-  });
+  app.get("/health", async () => ({
+    ok: true,
+    storeMode,
+    agentsOnline: agents.size,
+    clientsOnline: clients.size,
+    webUiReady: existsSync(webDir),
+    adminClientTokenEnabled: Boolean(config.clientToken),
+    security: {
+      relayStoresSessionContent: false,
+      endToEndEncryptionRequiredForPairedClients: true,
+    },
+  }));
 
   app.post<{ Body: PairingCodeRequest }>("/api/pairing-codes", async (request, reply) => {
     const authHeader = request.headers.authorization;
@@ -411,15 +307,19 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     }
 
     const deviceId = request.body?.deviceId?.trim();
+    const agentPublicKey = request.body?.agentPublicKey?.trim();
     if (!deviceId) {
       return reply.code(400).send({ message: "deviceId 不能为空" });
+    }
+    if (!agentPublicKey) {
+      return reply.code(400).send({ message: "agentPublicKey 不能为空" });
     }
     if (!agents.has(deviceId)) {
       return reply.code(404).send({ message: `设备 ${deviceId} 当前不在线` });
     }
 
     const { authStore } = await storesPromise;
-    const pairing = await authStore.createPairingCode(deviceId, config.pairingTtlMinutes);
+    const pairing = await authStore.createPairingCode(deviceId, config.pairingTtlMinutes, agentPublicKey);
     await appendAuditEvent({
       deviceId,
       action: "pairing.code_created",
@@ -436,25 +336,30 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
 
   app.post<{ Body: PairingRedeemRequest }>("/api/pairings/redeem", async (request, reply) => {
     const pairingCode = request.body?.pairingCode?.trim().toUpperCase();
+    const clientPublicKey = request.body?.clientPublicKey?.trim();
     if (!pairingCode) {
       return reply.code(400).send({ message: "pairingCode 不能为空" });
     }
+    if (!clientPublicKey) {
+      return reply.code(400).send({ message: "clientPublicKey 不能为空" });
+    }
 
     const { authStore } = await storesPromise;
-    const grant = await authStore.redeemPairingCode(pairingCode);
+    const grant = await authStore.redeemPairingCode(pairingCode, clientPublicKey);
     if (!grant) {
-      return reply.code(400).send({ message: "配对码无效、已使用或已过期" });
+      return reply.code(400).send({ message: "配对码无效、已使用、已过期，或设备端到端密钥未就绪" });
     }
     await appendAuditEvent({
       deviceId: grant.deviceId,
       action: "pairing.redeemed",
       actorRole: "client",
-      detail: `使用配对码 ${pairingCode} 兑换访问令牌 ${grant.accessToken.slice(0, 8)}...`,
+      detail: `使用配对码 ${pairingCode} 完成端到端密钥绑定，并签发访问令牌 ${grant.accessToken.slice(0, 8)}...`,
     });
 
     const payload: PairingRedeemResponse = {
       deviceId: grant.deviceId,
       accessToken: grant.accessToken,
+      agentPublicKey: grant.agentPublicKey,
     };
     return reply.send(payload);
   });
@@ -535,7 +440,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
 
       const previousAgent = agents.get(deviceId);
       if (previousAgent && previousAgent.socket !== socket) {
-        sendError(previousAgent.socket, "AGENT_REPLACED", `设备 ${deviceId} 已由新的 agent 接管`);
+        sendError(previousAgent.socket, "AGENT_REPLACED", `设备 ${deviceId} 已由新的 agent 接管`, undefined, deviceId);
         previousAgent.socket.close();
       }
       agents.set(deviceId, { socket, deviceId });
@@ -576,6 +481,11 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
           const { authStore } = await storesPromise;
           const grant = await authStore.getGrantByAccessToken(token);
           if (grant) {
+            if (!grant.clientPublicKey) {
+              sendError(socket, "AUTH_FAILED", "该访问令牌缺少端到端密钥绑定，请重新配对。", undefined, grant.deviceId);
+              socket.close();
+              return;
+            }
             client = {
               socket,
               deviceScope: new Set([grant.deviceId]),
@@ -619,31 +529,16 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     socket.close();
   });
 
-  const serveWebUi = async (requestPath: string, reply: FastifyReply) => {
-    if (!existsSync(webDir)) {
-      return reply
-        .code(503)
-        .type("text/plain; charset=utf-8")
-        .send("TermPilot Web UI 尚未构建，请先运行 `pnpm build` 或安装已打包版本。");
-    }
-
-    const filePath = createStaticPath(webDir, requestPath);
-    return reply.type(getMimeType(filePath)).send(createReadStream(filePath));
-  };
-
-  app.get("/", async (request, reply) => serveWebUi(request.url, reply));
-  app.get("/*", async (request, reply) => serveWebUi(request.url, reply));
-
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.on(signal, () => {
-      void app.close().finally(() => process.exit(0));
-    });
-  }
-
-  await app.listen({
-    host: config.host,
-    port: config.port,
+  app.get("/*", async (request, reply) => {
+    const filePath = createStaticPath(webDir, request.raw.url ?? "/");
+    reply.header("content-type", getMimeType(filePath));
+    return reply.send(createReadStream(filePath));
   });
+
+  const host = config.host;
+  const port = config.port;
+  await app.listen({ host, port });
+  app.log.info(`relay listening on http://${host}:${port}`);
 
   return app;
 }

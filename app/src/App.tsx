@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AgentBusinessMessage,
+  ClientBusinessMessage,
+  ClientToRelayMessage,
+  E2EEKeyPair,
   InputKey,
   PairingRedeemResponse,
   RelayToClientMessage,
   SessionRecord,
 } from "@termpilot/protocol";
-import { createReqId } from "@termpilot/protocol";
+import { createReqId, decryptFromPeer, encryptForPeer, generateE2EEKeyPair, parseJsonMessage } from "@termpilot/protocol";
 import { ConnectionPanel } from "./components/ConnectionPanel";
 import { CreateSessionPanel } from "./components/CreateSessionPanel";
 import { SessionListPanel } from "./components/SessionListPanel";
@@ -39,6 +43,8 @@ interface StoredState {
   activeSid: string | null;
   pinnedSids?: string[];
   notificationsEnabled?: boolean;
+  clientKeyPair?: E2EEKeyPair | null;
+  agentPublicKey?: string;
 }
 
 interface NoticeState {
@@ -101,6 +107,8 @@ export default function App() {
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
+  const clientKeyPairRef = useRef<E2EEKeyPair | null>(null);
+  const agentPublicKeyRef = useRef("");
   const suppressMobileAutoSelectRef = useRef(false);
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
@@ -109,6 +117,8 @@ export default function App() {
 
   const [wsUrl, setWsUrl] = useState(getDefaultWsUrl);
   const [clientToken, setClientToken] = useState(DEFAULT_CLIENT_TOKEN);
+  const [clientKeyPair, setClientKeyPair] = useState<E2EEKeyPair | null>(null);
+  const [agentPublicKey, setAgentPublicKey] = useState("");
   const [deviceId, setDeviceId] = useState(DEFAULT_DEVICE_ID);
   const [deviceIdLocked, setDeviceIdLocked] = useState(false);
   const [connectionPhase, setConnectionPhase] = useState<ConnectionPhase>("idle");
@@ -185,6 +195,14 @@ export default function App() {
   }, [deviceId]);
 
   useEffect(() => {
+    clientKeyPairRef.current = clientKeyPair;
+  }, [clientKeyPair]);
+
+  useEffect(() => {
+    agentPublicKeyRef.current = agentPublicKey;
+  }, [agentPublicKey]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -216,7 +234,7 @@ export default function App() {
     suppressMobileAutoSelectRef.current = false;
 
     const timeoutId = window.setTimeout(() => {
-      requestSessions(normalizedDeviceId);
+      void requestSessions(normalizedDeviceId);
     }, 200);
 
     return () => {
@@ -239,6 +257,12 @@ export default function App() {
       if (typeof parsed.activeSid === "string" || parsed.activeSid === null) setActiveSid(parsed.activeSid ?? null);
       if (Array.isArray(parsed.pinnedSids)) setPinnedSids(parsed.pinnedSids.filter((value): value is string => typeof value === "string"));
       if (typeof parsed.notificationsEnabled === "boolean") setNotificationsEnabled(parsed.notificationsEnabled);
+      if (parsed.clientKeyPair && typeof parsed.clientKeyPair.publicKey === "string" && typeof parsed.clientKeyPair.privateKey === "string") {
+        setClientKeyPair(parsed.clientKeyPair);
+      }
+      if (typeof parsed.agentPublicKey === "string") {
+        setAgentPublicKey(parsed.agentPublicKey);
+      }
     } catch {
       // ignore malformed local state
     }
@@ -252,9 +276,11 @@ export default function App() {
       activeSid,
       pinnedSids,
       notificationsEnabled,
+      clientKeyPair,
+      agentPublicKey,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [activeSid, clientToken, deviceId, notificationsEnabled, pinnedSids, wsUrl]);
+  }, [activeSid, agentPublicKey, clientKeyPair, clientToken, deviceId, notificationsEnabled, pinnedSids, wsUrl]);
 
   useEffect(() => {
     setKeyboardBridge("");
@@ -307,9 +333,9 @@ export default function App() {
 
   useEffect(() => {
     if (connected) {
-      requestSessions(deviceIdRef.current);
+      void requestSessions(deviceIdRef.current);
       if (activeSid) {
-        requestReplay(activeSid, deviceIdRef.current);
+        void requestReplay(activeSid, deviceIdRef.current);
       }
     }
   }, [activeSid, connected]);
@@ -318,11 +344,15 @@ export default function App() {
     if (!clientToken.trim() || parsedWsUrl === null) {
       return;
     }
+    if (!clientKeyPair || !agentPublicKey.trim()) {
+      setPairingMessage("当前绑定缺少端到端密钥，请清除绑定后重新配对。");
+      return;
+    }
     if (socketRef.current || connectionPhase !== "idle" || manuallyDisconnectedRef.current) {
       return;
     }
     connect(false);
-  }, [clientToken, connectionPhase, parsedWsUrl]);
+  }, [agentPublicKey, clientKeyPair, clientToken, connectionPhase, parsedWsUrl]);
 
   useEffect(() => {
     const existing = new Set(sessions.map((session) => session.sid));
@@ -358,7 +388,7 @@ export default function App() {
     }
 
     setActiveSid(pickSession.sid);
-    requestReplay(pickSession.sid, deviceIdRef.current);
+    void requestReplay(pickSession.sid, deviceIdRef.current);
   }, [activeSid, connected, isDesktop, pinnedSids, sessions]);
 
   useEffect(() => {
@@ -398,24 +428,105 @@ export default function App() {
     }, 4000);
   }
 
-  function sendMessage(message: unknown): void {
+  function handleSecureBindingMissing(): void {
+    setPairingMessage("当前绑定缺少端到端密钥，请清除绑定后重新配对。");
+    showNotice("error", "当前绑定缺少端到端密钥，请重新配对。");
+  }
+
+  async function sendSecureMessage(message: ClientBusinessMessage): Promise<void> {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
-    socket.send(JSON.stringify(message));
+    const keyPair = clientKeyPairRef.current;
+    const peerPublicKey = agentPublicKeyRef.current.trim();
+    if (!clientToken.trim() || !keyPair || !peerPublicKey) {
+      handleSecureBindingMissing();
+      return;
+    }
+
+    const payload = await encryptForPeer(JSON.stringify(message), keyPair.privateKey, peerPublicKey);
+    socket.send(JSON.stringify({
+      type: "secure.client",
+      reqId: "reqId" in message ? message.reqId : undefined,
+      deviceId: message.deviceId,
+      payload,
+    } satisfies ClientToRelayMessage));
   }
 
-  function requestSessions(deviceIdOverride?: string): void {
-    sendMessage({
+  function handleAgentBusinessMessage(message: AgentBusinessMessage): void {
+    switch (message.type) {
+      case "session.list.result":
+        if (message.deviceId !== deviceIdRef.current) {
+          return;
+        }
+        setSessions(message.payload.sessions);
+        setBuffers((current) => {
+          const nextBuffers: SessionMap = {};
+          for (const session of message.payload.sessions) {
+            if (current[session.sid]) {
+              nextBuffers[session.sid] = current[session.sid];
+            }
+          }
+          return nextBuffers;
+        });
+        setActiveSid((current) => {
+          const next = current && message.payload.sessions.some((session) => session.sid === current)
+            ? current
+            : null;
+          if (next) {
+            void requestReplay(next, deviceIdRef.current);
+          }
+          return next;
+        });
+        return;
+      case "session.created":
+      case "session.state": {
+        const session = message.payload.session;
+        if (session.deviceId !== deviceIdRef.current) {
+          return;
+        }
+        setSessions((current) => {
+          const next = current.filter((item) => item.sid !== session.sid);
+          next.push(session);
+          next.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+          return next;
+        });
+        setActiveSid((current) => current ?? session.sid);
+        return;
+      }
+      case "session.output":
+        if (message.deviceId !== deviceIdRef.current) {
+          return;
+        }
+        setBuffers((current) => ({ ...current, [message.sid]: message.payload.data }));
+        return;
+      case "session.exit":
+        if (message.deviceId !== deviceIdRef.current) {
+          return;
+        }
+        setSessions((current) =>
+          current.map((session) =>
+            session.sid === message.sid ? { ...session, status: "exited" } : session,
+          ),
+        );
+        return;
+      case "error":
+        showNotice("error", message.message);
+        return;
+    }
+  }
+
+  async function requestSessions(deviceIdOverride?: string): Promise<void> {
+    await sendSecureMessage({
       type: "session.list",
       reqId: createReqId("list"),
       deviceId: deviceIdOverride ?? deviceIdRef.current,
     });
   }
 
-  function requestReplay(sid: string, deviceIdOverride?: string): void {
-    sendMessage({
+  async function requestReplay(sid: string, deviceIdOverride?: string): Promise<void> {
+    await sendSecureMessage({
       type: "session.replay",
       reqId: createReqId("replay"),
       deviceId: deviceIdOverride ?? deviceIdRef.current,
@@ -460,6 +571,8 @@ export default function App() {
   function clearBinding(): void {
     disconnect();
     setClientToken("");
+    setClientKeyPair(null);
+    setAgentPublicKey("");
     setDeviceId(DEFAULT_DEVICE_ID);
     setDeviceIdLocked(false);
     setActiveSid(null);
@@ -505,6 +618,12 @@ export default function App() {
       setConnectionPhase("idle");
       return;
     }
+    const effectiveToken = tokenOverride ?? clientToken;
+    if (effectiveToken.trim() && (!clientKeyPairRef.current || !agentPublicKeyRef.current.trim())) {
+      handleSecureBindingMissing();
+      setConnectionPhase("idle");
+      return;
+    }
     if (resetManual) {
       manuallyDisconnectedRef.current = false;
       reconnectAttemptRef.current = 0;
@@ -521,7 +640,7 @@ export default function App() {
 
     const url = new URL(parsedWsUrl.toString());
     url.searchParams.set("role", "client");
-    url.searchParams.set("token", tokenOverride ?? clientToken);
+    url.searchParams.set("token", effectiveToken);
 
     const socket = new WebSocket(url);
     socketRef.current = socket;
@@ -571,69 +690,33 @@ export default function App() {
             if (shouldHydrateDeviceId) {
               setDeviceId(nextDeviceId);
             }
-            requestSessions(nextDeviceId);
+            void requestSessions(nextDeviceId);
             if (activeSid) {
-              requestReplay(activeSid, nextDeviceId);
+              void requestReplay(activeSid, nextDeviceId);
             }
           }
           return;
         case "relay.state":
           setDeviceOnline(message.payload.agents.some((agent) => agent.deviceId === deviceIdRef.current && agent.online));
           return;
-        case "session.list.result":
-          if (message.deviceId !== deviceIdRef.current) {
-            return;
-          }
-          setSessions(message.payload.sessions);
-          setBuffers((current) => {
-            const nextBuffers: SessionMap = {};
-            for (const session of message.payload.sessions) {
-              if (current[session.sid]) {
-                nextBuffers[session.sid] = current[session.sid];
-              }
+        case "secure.agent":
+          {
+            const keyPair = clientKeyPairRef.current;
+            const peerPublicKey = agentPublicKeyRef.current.trim();
+            if (!keyPair || !peerPublicKey || message.deviceId !== deviceIdRef.current || message.accessToken !== effectiveToken) {
+              return;
             }
-            return nextBuffers;
-          });
-          setActiveSid((current) => {
-            const next = current && message.payload.sessions.some((session) => session.sid === current)
-              ? current
-              : null;
-            if (next) {
-              requestReplay(next, deviceIdRef.current);
-            }
-            return next;
-          });
-          return;
-        case "session.created":
-        case "session.state": {
-          const session = message.payload.session;
-          if (session.deviceId !== deviceIdRef.current) {
-            return;
+            void decryptFromPeer(message.payload, keyPair.privateKey, peerPublicKey)
+              .then((plaintext) => {
+                const inner = parseJsonMessage<AgentBusinessMessage>(plaintext);
+                if (inner) {
+                  handleAgentBusinessMessage(inner);
+                }
+              })
+              .catch(() => {
+                showNotice("error", "收到了一条无法解密的设备消息，请重新配对。");
+              });
           }
-          setSessions((current) => {
-            const next = current.filter((item) => item.sid !== session.sid);
-            next.push(session);
-            next.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-            return next;
-          });
-          setActiveSid((current) => current ?? session.sid);
-          return;
-        }
-        case "session.output":
-          if (message.deviceId !== deviceIdRef.current) {
-            return;
-          }
-          setBuffers((current) => ({ ...current, [message.sid]: message.payload.data }));
-          return;
-        case "session.exit":
-          if (message.deviceId !== deviceIdRef.current) {
-            return;
-          }
-          setSessions((current) =>
-            current.map((session) =>
-              session.sid === message.sid ? { ...session, status: "exited" } : session,
-            ),
-          );
           return;
         case "error":
           if (message.code === "AUTH_FAILED" || message.code === "AUTH_REVOKED") {
@@ -642,6 +725,8 @@ export default function App() {
             setDeviceOnline(false);
             if (message.code === "AUTH_REVOKED") {
               setClientToken("");
+              setClientKeyPair(null);
+              setAgentPublicKey("");
             }
             setPairingMessage(message.message);
             showNotice("error", message.message);
@@ -667,12 +752,16 @@ export default function App() {
     setPairingPending(true);
     setPairingMessage("");
     try {
+      const nextClientKeyPair = await generateE2EEKeyPair();
       const response = await fetch(`${relayHttpBaseUrl}/api/pairings/redeem`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ pairingCode: code }),
+        body: JSON.stringify({
+          pairingCode: code,
+          clientPublicKey: nextClientKeyPair.publicKey,
+        }),
       });
 
       const payload = await response.json().catch(() => null) as PairingRedeemResponse | { message?: string } | null;
@@ -686,6 +775,8 @@ export default function App() {
       setActiveSid(null);
       setDeviceId(payload.deviceId);
       setClientToken(payload.accessToken);
+      setClientKeyPair(nextClientKeyPair);
+      setAgentPublicKey(payload.agentPublicKey);
       setPairingCode("");
       setPairingMessage("");
       showNotice("success", `已绑定设备 ${payload.deviceId}。`);
@@ -708,7 +799,7 @@ export default function App() {
       );
       return;
     }
-    sendMessage({
+    void sendSecureMessage({
       type: "session.create",
       reqId: createReqId("create"),
       deviceId,
@@ -732,7 +823,7 @@ export default function App() {
       return;
     }
 
-    sendMessage({
+    void sendSecureMessage({
       type: "session.input",
       reqId: createReqId("input"),
       deviceId,
@@ -814,7 +905,7 @@ export default function App() {
       return;
     }
 
-    sendMessage({
+    void sendSecureMessage({
       type: "session.input",
       reqId: createReqId("paste"),
       deviceId,
@@ -832,7 +923,7 @@ export default function App() {
       return;
     }
 
-    sendMessage({
+    void sendSecureMessage({
       type: "session.input",
       reqId: createReqId("key"),
       deviceId,
@@ -844,7 +935,7 @@ export default function App() {
   }
 
   function handleKillSession(sid: string): void {
-    sendMessage({
+    void sendSecureMessage({
       type: "session.kill",
       reqId: createReqId("kill"),
       deviceId,
@@ -1060,7 +1151,9 @@ export default function App() {
                     void handleRedeemPairingCode();
                   }}
                   onConnect={() => connect(true)}
-                  onRefresh={() => requestSessions(deviceIdRef.current)}
+                  onRefresh={() => {
+                    void requestSessions(deviceIdRef.current);
+                  }}
                   onDisconnect={disconnect}
                   onClearBinding={clearBinding}
                   onToggleNotifications={() => {
@@ -1102,7 +1195,7 @@ export default function App() {
                   onSelectSession={(sid) => {
                     suppressMobileAutoSelectRef.current = false;
                     setActiveSid(sid);
-                    requestReplay(sid, deviceIdRef.current);
+                    void requestReplay(sid, deviceIdRef.current);
                   }}
                   onKillSession={handleKillSession}
                 />
@@ -1186,7 +1279,7 @@ export default function App() {
                     onSelectSession={(sid) => {
                       suppressMobileAutoSelectRef.current = false;
                       setActiveSid(sid);
-                      requestReplay(sid, deviceIdRef.current);
+                      void requestReplay(sid, deviceIdRef.current);
                       revealWorkspace();
                     }}
                     onKillSession={handleKillSession}
@@ -1245,7 +1338,9 @@ export default function App() {
                   void handleRedeemPairingCode();
                 }}
                 onConnect={() => connect(true)}
-                onRefresh={() => requestSessions(deviceIdRef.current)}
+                onRefresh={() => {
+                  void requestSessions(deviceIdRef.current);
+                }}
                 onDisconnect={disconnect}
                 onClearBinding={clearBinding}
                 onToggleNotifications={() => {

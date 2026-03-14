@@ -67,8 +67,7 @@ docs/
 服务器侧实现：
 
 - `src/cli.ts`：后台 / 前台启动与停止逻辑
-- `src/server.ts`：Fastify HTTP、WebSocket、消息路由、静态资源托管
-- `src/session-store.ts`：会话元数据存储
+- `src/server.ts`：Fastify HTTP、WebSocket、配对、授权路由和静态资源托管
 - `src/auth-store.ts`：配对码与 client grants 存储
 - `src/audit-store.ts`：审计事件存储
 - `src/config.ts`：环境变量配置
@@ -103,6 +102,7 @@ Web UI：
 4. agent 保存 relay 配置并在后台启动守护进程
 5. 手机打开 relay 页面，通过配对码换取访问令牌
 6. client 和 agent 都通过 relay 建立 WebSocket
+7. 配对完成后，浏览器与 agent 之间的会话消息通过 relay 以加密信封中转
 
 ### 会话创建
 
@@ -132,9 +132,8 @@ termpilot claude code
 
 1. agent 定时执行 `tmux capture-pane -p -e -N`
 2. 如果 pane 内容发生变化，agent 递增 `lastSeq`
-3. agent 发送 `session.output`，其中 `payload.mode` 固定为 `replace`
-4. relay 缓冲最近输出帧
-5. client 进入会话或重连时，可以通过 `session.replay` 补拉最近帧
+3. agent 在本地缓存最近输出帧，并向已配对 client 广播加密后的 `session.output`
+4. client 进入会话或重连时，可以通过 `session.replay` 向 agent 请求补拉最近帧
 
 ### 会话退出
 
@@ -157,6 +156,7 @@ termpilot claude code
 
 - 本地配置
 - 设备 ID
+- 设备端到端密钥
 - 会话列表与状态
 - 后台 runtime 信息
 - 日志
@@ -168,22 +168,29 @@ termpilot claude code
 - 无 `DATABASE_URL`：内存存储
 - 有 `DATABASE_URL`：PostgreSQL
 
-当前 relay 持有的服务端状态包括：
+当前 relay 只持有最小必要元数据：
 
-- 会话元数据
 - 配对码
 - client grants
 - 审计事件
-- 最近输出缓冲
+
+当前 relay 不保存：
+
+- 会话标题
+- cwd / shell / tmux 会话名
+- 会话状态详情
+- 终端输出与 replay 缓冲
 
 ## 5. 安全边界
 
-当前安全模型是“TLS / WSS + token + device scope”的形态：
+当前安全模型是“配对绑定 + device scope + 端到端加密”的形态：
 
 - agent 通过固定 `TERMPILOT_AGENT_TOKEN` 接入 relay
-- client 通过一次性配对码换到 access token
-- relay 负责鉴权、设备 scope 和消息转发
-- relay 负责会话元数据、配对授权、审计和最近输出缓冲
+- client 在配对时上传本地公钥，换到单设备范围 access token
+- agent 也持有本地长期公钥，配对码会把该公钥带给 client
+- relay 负责鉴权、设备 scope 和密文转发
+- 会话消息在浏览器与 agent 之间端到端加密
+- relay 只保留配对、grant 和审计元数据
 
 ## 6. 当前实现的几个重要取舍
 

@@ -70,6 +70,7 @@ HOST=0.0.0.0 PORT=8787 termpilot relay
 
 - 它默认不会强制重启已有后台 agent
 - 如果当前后台 agent 的 relay 配置和设备 ID 没变化，它只会复用现有进程并重新取配对码
+- 配对码现在还会把 agent 公钥交给浏览器，用于后续端到端加密
 
 ### `termpilot agent --foreground`
 
@@ -155,6 +156,8 @@ termpilot run -- claude code
 ### `termpilot pair`
 
 直接调用 relay 的 HTTP API 创建一次性配对码，适合脚本化或在不想启动完整 `agent start` 流程时使用。
+
+前提是本机 agent 已经初始化本地设备密钥。
 
 ### `termpilot grants`
 

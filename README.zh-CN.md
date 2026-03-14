@@ -34,14 +34,14 @@ TermPilot 解决的是一个更具体的问题:
 ```text
 手机浏览器 / PWA  -- https / wss -->  relay  <-- ws / wss -- 电脑上的 agent
                                                    |
-                                                   +-- 配对、鉴权、会话元数据、
-                                                       输出回放、审计事件、Web UI
+                                                   +-- 配对、授权路由、
+                                                       审计元数据、Web UI
 ```
 
 运行时由三部分组成:
 
-- `relay`: HTTP + WebSocket 入口，负责 Web UI 托管、配对、权限控制、会话元数据
-- `agent`: 跑在电脑上的守护进程，负责管理本地会话并与 relay 同步
+- `relay`: HTTP + WebSocket 入口，负责 Web UI 托管、配对、权限控制和密文转发
+- `agent`: 跑在电脑上的守护进程，负责管理本地会话，并把敏感会话数据留在端侧
 - `app`: 由 relay 提供的移动端 Web UI
 
 ## 当前定位
@@ -61,10 +61,23 @@ TermPilot 解决的是一个更具体的问题:
 - 会话底座: `tmux`
 - relay 传输层: 同一个服务同时提供 HTTP 和 WebSocket
 - 手机端: React 应用，带 PWA 支持，由 relay 直接托管
-- 输出同步: 基于 `tmux capture-pane` 的快照替换，并支持最近缓冲的回放
-- 存储: 默认内存存储，可通过 `DATABASE_URL` 切换到 PostgreSQL
+- 输出同步: 基于 `tmux capture-pane` 的快照替换，回放由 agent 端提供
+- 访问模型: 浏览器与 agent 在配对时交换公钥，之后会话消息端到端加密
+- relay 持久化: 默认只保留配对、grant 与审计元数据，不保存会话标题、cwd 或终端输出
+- 存储: 默认内存存储，可通过 `DATABASE_URL` 切换到 PostgreSQL，用于 relay 元数据
 
 当前这套实现已经形成完整主路径：relay、配对、受管理会话、移动端查看和轻控制是一整套可直接使用的产品，而不是只停在概念层面。
+
+## 安全模型
+
+- 已配对客户端会在配对阶段与 agent 交换公钥，并获得单设备范围的 access token。
+- 会话相关消息都以加密信封在浏览器与 agent 之间传递。
+- 敏感会话信息保留在 agent 所在电脑本地，包括会话标题、cwd、shell、状态细节和终端输出。
+- relay 只保留最小必要的服务端元数据：
+  - 一次性配对码
+  - 设备范围 access grants
+  - 审计事件
+- 如果你是从旧版本升级、且本地绑定里还没有端到端密钥，需要重新配对一次。
 
 ## 快速开始
 
@@ -198,6 +211,7 @@ termpilot run -- <command>
 - `agent-runtime.json`: 后台 agent 运行状态
 - `relay-runtime.json`: 后台 relay 运行状态
 - `state.json`: 本地受管理会话状态
+- `device-key.json`: agent 本地端到端加密密钥
 - `agent.log` / `relay.log`: 日志
 
 常用环境变量:

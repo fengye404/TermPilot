@@ -59,6 +59,7 @@ export interface AuthOkMessage {
 
 export interface PairingCodeRequest {
   deviceId: string;
+  agentPublicKey: string;
 }
 
 export interface PairingCodeResponse {
@@ -69,16 +70,19 @@ export interface PairingCodeResponse {
 
 export interface PairingRedeemRequest {
   pairingCode: string;
+  clientPublicKey: string;
 }
 
 export interface PairingRedeemResponse {
   deviceId: string;
   accessToken: string;
+  agentPublicKey: string;
 }
 
 export interface ClientGrantRecord {
   accessToken: string;
   deviceId: string;
+  clientPublicKey?: string;
   createdAt: string;
   lastUsedAt: string;
 }
@@ -98,6 +102,27 @@ export interface ErrorMessage {
   deviceId?: string;
   code: string;
   message: string;
+}
+
+export interface SecureEnvelopePayload {
+  iv: string;
+  ciphertext: string;
+}
+
+export interface SecureClientEnvelopeMessage {
+  type: "secure.client";
+  reqId?: string;
+  deviceId: string;
+  accessToken?: string;
+  payload: SecureEnvelopePayload;
+}
+
+export interface SecureAgentEnvelopeMessage {
+  type: "secure.agent";
+  reqId?: string;
+  deviceId: string;
+  accessToken: string;
+  payload: SecureEnvelopePayload;
 }
 
 export interface SessionListMessage {
@@ -206,7 +231,7 @@ export interface SessionExitMessage {
   };
 }
 
-export type ClientToRelayMessage =
+export type ClientBusinessMessage =
   | SessionListMessage
   | SessionCreateMessage
   | SessionInputMessage
@@ -214,31 +239,30 @@ export type ClientToRelayMessage =
   | SessionKillMessage
   | SessionReplayMessage;
 
-export type AgentToRelayMessage =
+export type AgentBusinessMessage =
   | SessionListResultMessage
   | SessionCreatedMessage
-  | SessionStateMessage
   | SessionOutputMessage
+  | SessionStateMessage
   | SessionExitMessage
+  | ErrorMessage;
+
+export type ClientToRelayMessage =
+  | SecureClientEnvelopeMessage;
+
+export type AgentToRelayMessage =
+  | SecureAgentEnvelopeMessage
   | ErrorMessage;
 
 export type RelayToClientMessage =
   | AuthOkMessage
   | RelayStateMessage
-  | SessionListResultMessage
-  | SessionCreatedMessage
-  | SessionStateMessage
-  | SessionOutputMessage
-  | SessionExitMessage
+  | SecureAgentEnvelopeMessage
   | ErrorMessage;
 
 export type RelayToAgentMessage =
   | AuthOkMessage
-  | SessionListMessage
-  | SessionCreateMessage
-  | SessionInputMessage
-  | SessionResizeMessage
-  | SessionKillMessage
+  | SecureClientEnvelopeMessage
   | ErrorMessage;
 
 export function createReqId(prefix = "req"): string {
@@ -251,4 +275,153 @@ export function parseJsonMessage<T>(raw: string): T | null {
   } catch {
     return null;
   }
+}
+
+function getSubtle(): SubtleCrypto {
+  const maybeCrypto = globalThis.crypto;
+  if (!maybeCrypto?.subtle) {
+    throw new Error("当前运行环境不支持 Web Crypto。");
+  }
+  return maybeCrypto.subtle;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(bytes).toString("base64");
+  }
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function fromBase64(value: string): Uint8Array {
+  if (typeof Buffer !== "undefined") {
+    return new Uint8Array(Buffer.from(value, "base64"));
+  }
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function textEncoder(): TextEncoder {
+  return new TextEncoder();
+}
+
+function textDecoder(): TextDecoder {
+  return new TextDecoder();
+}
+
+async function importPrivateKey(pkcs8Base64: string): Promise<CryptoKey> {
+  return getSubtle().importKey(
+    "pkcs8",
+    toArrayBuffer(fromBase64(pkcs8Base64)),
+    {
+      name: "ECDH",
+      namedCurve: "P-256",
+    },
+    false,
+    ["deriveBits"],
+  );
+}
+
+async function importPublicKey(spkiBase64: string): Promise<CryptoKey> {
+  return getSubtle().importKey(
+    "spki",
+    toArrayBuffer(fromBase64(spkiBase64)),
+    {
+      name: "ECDH",
+      namedCurve: "P-256",
+    },
+    false,
+    [],
+  );
+}
+
+async function deriveSharedKey(privateKeyPkcs8: string, publicKeySpki: string): Promise<CryptoKey> {
+  const privateKey = await importPrivateKey(privateKeyPkcs8);
+  const publicKey = await importPublicKey(publicKeySpki);
+  const bits = await getSubtle().deriveBits(
+    {
+      name: "ECDH",
+      public: publicKey,
+    },
+    privateKey,
+    256,
+  );
+  return getSubtle().importKey(
+    "raw",
+    bits,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+export interface E2EEKeyPair {
+  publicKey: string;
+  privateKey: string;
+}
+
+export async function generateE2EEKeyPair(): Promise<E2EEKeyPair> {
+  const keyPair = await getSubtle().generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-256",
+    },
+    true,
+    ["deriveBits"],
+  );
+  const publicKey = await getSubtle().exportKey("spki", keyPair.publicKey);
+  const privateKey = await getSubtle().exportKey("pkcs8", keyPair.privateKey);
+  return {
+    publicKey: toBase64(new Uint8Array(publicKey)),
+    privateKey: toBase64(new Uint8Array(privateKey)),
+  };
+}
+
+export async function encryptForPeer(
+  plaintext: string,
+  privateKeyPkcs8: string,
+  publicKeySpki: string,
+): Promise<SecureEnvelopePayload> {
+  const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await getSubtle().encrypt(
+    {
+      name: "AES-GCM",
+      iv: toArrayBuffer(iv),
+    },
+    key,
+    toArrayBuffer(textEncoder().encode(plaintext)),
+  );
+  return {
+    iv: toBase64(iv),
+    ciphertext: toBase64(new Uint8Array(ciphertext)),
+  };
+}
+
+export async function decryptFromPeer(
+  payload: SecureEnvelopePayload,
+  privateKeyPkcs8: string,
+  publicKeySpki: string,
+): Promise<string> {
+  const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
+  const plaintext = await getSubtle().decrypt(
+    {
+      name: "AES-GCM",
+      iv: toArrayBuffer(fromBase64(payload.iv)),
+    },
+    key,
+    toArrayBuffer(fromBase64(payload.ciphertext)),
+  );
+  return textDecoder().decode(plaintext);
 }
