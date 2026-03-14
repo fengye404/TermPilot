@@ -8,7 +8,7 @@ English | [简体中文](./README.zh-CN.md)
 
 Keep one managed terminal session available across desktop and mobile.
 
-TermPilot is a terminal session continuity tool for long-running work. It lets you leave your desk, open your phone browser, and keep watching or controlling the same session that is already running on your computer.
+TermPilot is a local-first terminal session continuity tool for long-running work. It keeps the same managed session reachable from your phone without moving session content into the relay.
 
 > [!TIP]
 > Documentation site: [TermPilot Docs](https://fengye404.top/TermPilot/) · [Quick Start](https://fengye404.top/TermPilot/getting-started) · [CLI Reference](https://fengye404.top/TermPilot/cli-reference) · [Operations Guide](https://fengye404.top/TermPilot/operations-guide) · [Security Design](https://fengye404.top/TermPilot/security-design) · [Architecture](https://fengye404.top/TermPilot/architecture) · [Protocol](https://fengye404.top/TermPilot/protocol)
@@ -16,18 +16,15 @@ TermPilot is a terminal session continuity tool for long-running work. It lets y
 > [!IMPORTANT]
 > TermPilot does not import arbitrary Terminal or iTerm tabs. A session must be created or managed by TermPilot to be available on mobile.
 
-## Why It Exists
+## What It Is
 
-Most remote tools solve "how do I get back into a machine?".
+TermPilot is built around one narrow path:
 
-TermPilot solves a narrower problem:
-
-- a session is already running on your computer
-- it might be Claude Code, OpenCode, a deployment, a migration, or a batch job
+- one managed session already exists on your computer
 - you leave your desk
-- you still want that exact session, not a fresh shell with a different context
+- you still want that exact session on your phone
 
-That is the main path in this project.
+That session can be Claude Code, a deployment, a migration, or any other long-running terminal task. The product is designed around continuity, not remote desktop access.
 
 ## Architecture
 
@@ -44,17 +41,18 @@ The system has three runtime pieces:
 - `agent`: daemon running on your computer, managing local sessions and keeping session content on-device
 - `app`: mobile web UI served by the relay
 
-## Current Scope
+## Current Product Shape
 
 - One npm package with a unified CLI
 - One relay serving both the web UI and `/ws`
 - One agent managing local tmux-backed sessions
 - One mobile web UI focused on viewing, light input, and shortcut controls
-- One pairing and grant model for cross-device access
+- One device pairing and grant model for cross-device access
+- One local-first security model with encrypted browser-to-agent messaging
 
 This is a deliberately narrow scope. TermPilot is built for session continuity, not for desktop remoting or generic server administration.
 
-## How It Works Today
+## Current Capabilities
 
 These details are based on the current codebase:
 
@@ -62,7 +60,7 @@ These details are based on the current codebase:
 - Relay transport: HTTP + WebSocket on the same service
 - Mobile client: React app with PWA support, served by the relay
 - Output sync: snapshot replacement from `tmux capture-pane`, with replay served by the agent
-- Paired access: end-to-end encrypted between browser and agent using per-device pairing keys
+- Paired access: per-device pairing with encrypted browser-to-agent session messages
 - Relay persistence: pairing/grant metadata and audit events only; no session titles, cwd, or terminal output
 - Persistence: in-memory by default, optional PostgreSQL via `DATABASE_URL` for relay metadata only
 
@@ -70,15 +68,14 @@ The current implementation is already coherent as a product: relay, pairing, man
 
 ## Security Model
 
-- Paired clients exchange public keys during pairing and receive an access token scoped to one device.
-- The agent prints a device fingerprint during pairing; compare it with the fingerprint shown in the browser before accepting the binding.
+- Session data is local-first: titles, cwd, shell, status details, and terminal output remain on the computer running the agent.
+- Paired clients exchange public keys during pairing and receive a device-scoped access token.
+- The agent prints a device fingerprint during pairing, and the browser shows the same fingerprint after binding for verification.
 - Session messages travel as encrypted envelopes between the browser and the agent.
-- Sensitive session data stays on the computer running the agent: titles, cwd, shell, status details, and terminal output.
 - The relay keeps only the minimum server-side metadata required to operate:
   - pairing codes
   - scoped access grants
   - audit events
-- Deployment assumption: the relay serves the web client, handles pairing and routes encrypted envelopes, while session content remains on the agent host.
 - If you redeploy or migrate from an older binding without local keys, re-pair the device.
 
 ## Quick Start

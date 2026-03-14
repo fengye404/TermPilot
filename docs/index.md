@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "TermPilot"
   text: "同一条终端会话，跨端连续可见"
-  tagline: "一个本地优先的终端会话连续性工具，在桌面与移动端之间共享同一条受管理会话。"
+  tagline: "一个本地优先的终端会话连续性工具，在桌面与移动端之间持续访问同一条受管理会话。"
   actions:
     - theme: brand
       text: 快速开始
@@ -26,15 +26,15 @@ features:
     details: relay 托管 Web UI、配对与授权路由，不保存会话内容。
   - title: 基于 tmux 的当前实现
     details: agent 管理本地 tmux 会话，输出通过 ANSI 快照同步到移动端。
-  - title: 端到端加密
-    details: 已配对浏览器与 agent 之间的会话消息采用端到端加密。
+  - title: 设备级加密访问
+    details: 已配对浏览器与 agent 之间的会话消息以加密信封传输。
 ---
 
 ## 项目定义
 
-TermPilot 解决的不是“重新进入一台机器”，而是：
+TermPilot 面向的是一个明确场景：
 
-**让一条已经在电脑上运行的终端会话，在离开桌面之后仍可被移动端继续接入。**
+**一条终端会话已经在电脑上运行，而你希望离开桌面后仍继续接入这条原会话。**
 
 ## 当前特性
 
@@ -47,7 +47,7 @@ TermPilot 解决的不是“重新进入一台机器”，而是：
   <div class="tp-doc-panel">
     <p class="tp-doc-kicker">Security</p>
     <h3>本地优先</h3>
-    <p>会话标题、cwd、状态细节和终端输出保留在 agent 所在电脑，不写入 relay。</p>
+    <p>会话标题、cwd、状态细节和终端输出保留在 agent 所在电脑，relay 仅保留最小元数据。</p>
   </div>
   <div class="tp-doc-panel">
     <p class="tp-doc-kicker">Session</p>
@@ -58,6 +58,11 @@ TermPilot 解决的不是“重新进入一台机器”，而是：
     <p class="tp-doc-kicker">Sync</p>
     <h3>端侧 replay</h3>
     <p>输出同步基于 <code>tmux capture-pane</code> 的快照替换，最近帧回放由 agent 提供。</p>
+  </div>
+  <div class="tp-doc-panel">
+    <p class="tp-doc-kicker">Access</p>
+    <h3>设备级配对</h3>
+    <p>浏览器通过一次性配对码、访问令牌和设备指纹与 agent 建立绑定。</p>
   </div>
 </div>
 
