@@ -68,7 +68,7 @@ docs/
 
 - `src/cli.ts`：后台 / 前台启动与停止逻辑
 - `src/server.ts`：Fastify HTTP、WebSocket、配对、授权路由和静态资源托管
-- `src/auth-store.ts`：配对码与 client grants 存储
+- `src/auth-store.ts`：配对码与设备 grants 存储
 - `src/audit-store.ts`：审计事件存储
 - `src/config.ts`：环境变量配置
 
@@ -156,7 +156,7 @@ termpilot claude code
 
 - 本地配置
 - 设备 ID
-- 设备端到端密钥
+- 设备密钥
 - 会话列表与状态
 - 后台 runtime 信息
 - 日志
@@ -171,7 +171,7 @@ termpilot claude code
 当前 relay 只持有最小必要元数据：
 
 - 配对码
-- client grants
+- 设备 grants
 - 审计事件
 
 当前 relay 不保存：
@@ -181,15 +181,15 @@ termpilot claude code
 - 会话状态详情
 - 终端输出与 replay 缓冲
 
-## 5. 安全边界
+## 5. 安全模型
 
-当前安全模型是“配对绑定 + device scope + 端到端加密”的形态：
+当前安全模型是“设备级配对 + device scope + 加密信封路由”的形态：
 
 - agent 通过固定 `TERMPILOT_AGENT_TOKEN` 接入 relay
 - client 在配对时上传本地公钥，换到单设备范围 access token
 - agent 也持有本地长期公钥，配对码会把该公钥带给 client
-- relay 负责鉴权、设备 scope 和密文转发
-- 会话消息在浏览器与 agent 之间端到端加密
+- relay 负责鉴权、设备 scope 和加密信封转发
+- 会话消息在浏览器与 agent 之间加密传输
 - relay 只保留配对、grant 和审计元数据
 
 ## 6. 当前实现的几个重要取舍

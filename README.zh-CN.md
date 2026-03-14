@@ -37,7 +37,7 @@ TermPilot 围绕一条很明确的主路径设计：
 
 运行时由三部分组成:
 
-- `relay`: HTTP + WebSocket 入口，负责 Web UI 托管、配对、权限控制和密文转发
+- `relay`: HTTP + WebSocket 入口，负责 Web UI 托管、配对、权限控制和加密信封转发
 - `agent`: 跑在电脑上的守护进程，负责管理本地会话，并把敏感会话数据留在端侧
 - `app`: 由 relay 提供的移动端 Web UI
 
@@ -76,7 +76,7 @@ TermPilot 围绕一条很明确的主路径设计：
   - 一次性配对码
   - 设备范围 access grants
   - 审计事件
-- 如果你是从旧版本升级、且本地绑定里还没有端到端密钥，需要重新配对一次。
+- 如果你是从旧版本升级、且本地绑定里还没有本地密钥，需要重新配对一次。
 
 ## 快速开始
 
@@ -210,7 +210,7 @@ termpilot run -- <command>
 - `agent-runtime.json`: 后台 agent 运行状态
 - `relay-runtime.json`: 后台 relay 运行状态
 - `state.json`: 本地受管理会话状态
-- `device-key.json`: agent 本地端到端加密密钥
+- `device-key.json`: agent 本地设备密钥
 - `agent.log` / `relay.log`: 日志
 
 常用环境变量:

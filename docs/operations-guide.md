@@ -3,7 +3,7 @@
 这份文档面向准备长期运行 TermPilot 的用户。它聚焦三件事：
 
 - 怎么把 relay 稳定跑起来
-- 怎么管理 agent、本地状态和授权
+- 怎么管理 agent、本地状态和设备授权
 - 出问题时应该先查什么
 
 如果你还没有跑通过最小链路，先回到 [快速开始](./getting-started.md)。
@@ -33,7 +33,7 @@ TermPilot 当前由三部分组成：
 
 不设置 `DATABASE_URL` 时：
 
-- 配对码、client grants、审计事件存在内存里
+- 配对码、设备 grants、审计事件存在内存里
 - relay 重启后这些服务端状态都会丢失
 
 适合：
@@ -46,7 +46,7 @@ TermPilot 当前由三部分组成：
 
 设置 `DATABASE_URL` 后：
 
-- relay 会把配对码、client grants、审计事件写进 PostgreSQL
+- relay 会把配对码、设备 grants、审计事件写进 PostgreSQL
 
 适合：
 
@@ -55,13 +55,12 @@ TermPilot 当前由三部分组成：
 
 当前实现里，relay 只负责：
 
-- 配对和 grants
-- 审计事件
-- 密文路由
+- 配对、grants 与审计
+- 加密信封路由
 
 当前实现里，relay 不负责：
 
-- 会话元数据
+- 会话主数据
 - 终端输出
 - replay 缓冲
 
@@ -123,7 +122,7 @@ termpilot agent --foreground
 - 或反向代理后的 `https://your-domain.com`
 
 输入配对码后，client 会换到该设备对应的访问令牌，并通过 `/ws` 建立 WebSocket。
-同时，浏览器会生成本地密钥对，并与 agent 公钥建立端到端加密关系。
+同时，浏览器会生成本地密钥对，并与 agent 公钥建立设备级绑定；后续会话消息以加密信封方式经过 relay。
 
 ## 4. 推荐公网部署
 
@@ -171,7 +170,7 @@ your-domain.com {
 一个重要细节：
 
 - `TERMPILOT_CLIENT_TOKEN` 旧模式已停用
-- 当前安全模型要求通过设备配对建立 access token 和端到端密钥
+- 当前安全模型要求通过设备配对建立 access token 和本地密钥绑定
 
 ### agent 侧
 
@@ -194,7 +193,7 @@ your-domain.com {
 - `config.json`：agent 保存的 relay 配置
 - `state.json`：本地会话状态
 - `device-id`：自动生成的设备 ID
-- `device-key.json`：agent 本地端到端加密密钥
+- `device-key.json`：agent 本地设备密钥
 - `agent-runtime.json`：后台 agent 运行信息
 - `relay-runtime.json`：后台 relay 运行信息
 - `agent.log`

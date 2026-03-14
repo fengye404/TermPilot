@@ -34,7 +34,7 @@ ws(s)://<relay-host>/ws?role=<agent|client>&token=<token>&deviceId=<deviceId?>
   - `accessToken`
   - `agentPublicKey`
 
-这样浏览器和 agent 就建立了同一条设备范围的端到端密钥关系。
+这样浏览器和 agent 就建立了同一条设备范围的密钥关系。
 
 ## 3. relay 可见与不可见的数据
 
@@ -54,7 +54,7 @@ relay 当前不可见的会话内容包括：
 - 终端输出
 - replay 缓冲
 
-这些内容都只保留在 agent 所在电脑，并以密文形式经过 relay。
+这些内容都只保留在 agent 所在电脑，并以加密信封方式经过 relay。
 
 ## 4. WebSocket 消息分层
 
@@ -94,9 +94,9 @@ relay 仍会直接发送少量系统消息：
 - `payload.iv`：AES-GCM IV
 - `payload.ciphertext`：浏览器或 agent 加密后的业务消息
 
-relay 只根据 `deviceId` 和 `accessToken` 做路由，不解析密文里的业务字段。
+relay 只根据 `deviceId` 和 `accessToken` 做路由，不解析加密载荷里的业务字段。
 
-## 5. 端到端业务消息
+## 5. 业务消息
 
 解密之后，浏览器与 agent 之间仍然使用统一的 `session.*` 业务消息：
 
@@ -219,4 +219,4 @@ replay 行为：
 - 输出同步仍是快照替换，不是字节流终端协议
 - relay 仍然是中心路由点，但不再承载会话主数据
 - 使用旧 access token 且缺少本地密钥绑定的 client，需要重新配对
-- 当前 Web UI 仍由 relay 托管，因此 relay 仍属于客户端代码的受信交付路径
+- Web UI 当前由 relay 托管，配对与授权也通过 relay 建立

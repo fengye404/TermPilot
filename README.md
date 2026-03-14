@@ -210,7 +210,7 @@ Common files:
 - `agent-runtime.json`: background agent runtime state
 - `relay-runtime.json`: background relay runtime state
 - `state.json`: local managed session state
-- `device-key.json`: local agent E2EE keypair
+- `device-key.json`: local agent device keypair
 - `agent.log` / `relay.log`: logs
 
 Useful environment variables:
