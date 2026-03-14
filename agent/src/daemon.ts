@@ -311,7 +311,12 @@ export class AgentDaemon {
 
     let plaintext: string;
     try {
-      plaintext = await decryptFromPeer(message.payload, this.deviceKeyPair.privateKey, clientPublicKey);
+      plaintext = await decryptFromPeer(message.payload, this.deviceKeyPair.privateKey, clientPublicKey, {
+        channel: "client",
+        deviceId: message.deviceId,
+        accessToken,
+        reqId: message.reqId,
+      });
     } catch {
       await this.sendEncryptedError(accessToken, message.reqId, "E2EE_DECRYPT_FAILED", "无法解密当前请求，请重新配对。");
       return;
@@ -480,7 +485,17 @@ export class AgentDaemon {
       }
     }
 
-    const payload = await encryptForPeer(JSON.stringify(message), this.deviceKeyPair.privateKey, clientPublicKey);
+    const payload = await encryptForPeer(
+      JSON.stringify(message),
+      this.deviceKeyPair.privateKey,
+      clientPublicKey,
+      {
+        channel: "agent",
+        deviceId: this.options.deviceId,
+        accessToken,
+        reqId: "reqId" in message ? message.reqId : undefined,
+      },
+    );
     const envelope: SecureAgentEnvelopeMessage = {
       type: "secure.agent",
       reqId: "reqId" in message ? message.reqId : undefined,

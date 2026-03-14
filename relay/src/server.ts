@@ -261,6 +261,10 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
       sendError(client.socket, "E2EE_REQUIRED", "当前客户端未绑定端到端密钥，请重新配对后再访问会话。", message.reqId, message.deviceId);
       return;
     }
+    if (message.accessToken && message.accessToken !== client.accessToken) {
+      sendError(client.socket, "AUTH_FAILED", "消息里的访问令牌与当前连接不匹配。", message.reqId, message.deviceId);
+      return;
+    }
 
     const forwarded: RelayToAgentMessage = {
       ...message,

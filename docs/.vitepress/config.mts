@@ -25,6 +25,7 @@ export default defineConfig({
       { text: "部署与运维", link: "/operations-guide" },
       { text: "架构", link: "/architecture" },
       { text: "协议", link: "/protocol" },
+      { text: "安全设计", link: "/security-design" },
       { text: "持续改进", link: "/roadmap" },
     ],
     sidebar: [
@@ -41,6 +42,7 @@ export default defineConfig({
         items: [
           { text: "CLI 参考", link: "/cli-reference" },
           { text: "部署与运维指南", link: "/operations-guide" },
+          { text: "安全设计", link: "/security-design" },
         ],
       },
       {

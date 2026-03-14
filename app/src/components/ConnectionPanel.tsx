@@ -10,6 +10,7 @@ interface ConnectionPanelProps {
   pairingCode: string;
   pairingMessage: string;
   pairingPending: boolean;
+  agentFingerprint?: string;
   connectionPhase: "idle" | "connecting" | "connected" | "reconnecting";
   notificationsEnabled: boolean;
   onWsUrlChange: (value: string) => void;
@@ -44,8 +45,17 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
               value={props.clientToken}
               onChange={props.onClientTokenChange}
               placeholder="首次配对后会自动写入"
+              type="password"
+              autoComplete="off"
             />
             <Field label="设备 ID" value={props.deviceId} onChange={props.onDeviceIdChange} disabled={!props.deviceIdEditable} />
+            {props.agentFingerprint ? (
+              <div className="rounded-[16px] border border-[var(--tp-border-soft)] bg-[var(--tp-surface-2)] px-3 py-3">
+                <p className="tp-label">设备指纹</p>
+                <p className="mt-2 text-sm font-medium tracking-[0.18em] text-white">{props.agentFingerprint}</p>
+                <p className="mt-2 text-xs text-[var(--tp-text-soft)]">配对或复核设备身份时，请和电脑端输出的指纹进行核对。</p>
+              </div>
+            ) : null}
           </>
         ) : null}
         {showPairingSection ? (

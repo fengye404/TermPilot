@@ -11,7 +11,7 @@
 TermPilot 是一个面向长期任务的终端会话连续性工具。你可以离开工位，在手机浏览器里继续查看和控制那条已经在电脑上运行的会话。
 
 > [!TIP]
-> 文档站: [TermPilot Docs](https://fengye404.top/TermPilot/) · [快速开始](https://fengye404.top/TermPilot/getting-started) · [CLI 参考](https://fengye404.top/TermPilot/cli-reference) · [部署与运维](https://fengye404.top/TermPilot/operations-guide) · [架构](https://fengye404.top/TermPilot/architecture) · [协议](https://fengye404.top/TermPilot/protocol)
+> 文档站: [TermPilot Docs](https://fengye404.top/TermPilot/) · [快速开始](https://fengye404.top/TermPilot/getting-started) · [CLI 参考](https://fengye404.top/TermPilot/cli-reference) · [部署与运维](https://fengye404.top/TermPilot/operations-guide) · [安全设计](https://fengye404.top/TermPilot/security-design) · [架构](https://fengye404.top/TermPilot/architecture) · [协议](https://fengye404.top/TermPilot/protocol)
 
 > [!IMPORTANT]
 > TermPilot 不会自动导入任意 Terminal 或 iTerm 标签页。只有由 TermPilot 创建或管理的会话，才能在手机端继续访问。

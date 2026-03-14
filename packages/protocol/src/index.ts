@@ -109,6 +109,13 @@ export interface SecureEnvelopePayload {
   ciphertext: string;
 }
 
+export interface SecureEnvelopeContext {
+  channel: "client" | "agent";
+  deviceId: string;
+  accessToken?: string;
+  reqId?: string;
+}
+
 export interface SecureClientEnvelopeMessage {
   type: "secure.client";
   reqId?: string;
@@ -324,6 +331,18 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function buildEnvelopeAad(context?: SecureEnvelopeContext): ArrayBuffer | undefined {
+  if (!context) {
+    return undefined;
+  }
+  return toArrayBuffer(textEncoder().encode(JSON.stringify({
+    channel: context.channel,
+    deviceId: context.deviceId,
+    accessToken: context.accessToken ?? "",
+    reqId: context.reqId ?? "",
+  })));
+}
+
 async function importPrivateKey(pkcs8Base64: string): Promise<CryptoKey> {
   return getSubtle().importKey(
     "pkcs8",
@@ -396,6 +415,7 @@ export async function encryptForPeer(
   plaintext: string,
   privateKeyPkcs8: string,
   publicKeySpki: string,
+  context?: SecureEnvelopeContext,
 ): Promise<SecureEnvelopePayload> {
   const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -403,6 +423,7 @@ export async function encryptForPeer(
     {
       name: "AES-GCM",
       iv: toArrayBuffer(iv),
+      additionalData: buildEnvelopeAad(context),
     },
     key,
     toArrayBuffer(textEncoder().encode(plaintext)),
@@ -417,12 +438,14 @@ export async function decryptFromPeer(
   payload: SecureEnvelopePayload,
   privateKeyPkcs8: string,
   publicKeySpki: string,
+  context?: SecureEnvelopeContext,
 ): Promise<string> {
   const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
   const plaintext = await getSubtle().decrypt(
     {
       name: "AES-GCM",
       iv: toArrayBuffer(fromBase64(payload.iv)),
+      additionalData: buildEnvelopeAad(context),
     },
     key,
     toArrayBuffer(fromBase64(payload.ciphertext)),

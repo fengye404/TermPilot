@@ -641,11 +641,12 @@ async function runGrants(argv: string[]): Promise<void> {
   }
 
   console.table(
-    payload.grants.map((grant) => ({
-      token: grant.accessToken,
+    await Promise.all(payload.grants.map(async (grant) => ({
+      token: `${grant.accessToken.slice(0, 8)}...`,
+      fingerprint: grant.clientPublicKey ? await getPublicKeyFingerprint(grant.clientPublicKey) : "(unknown)",
       createdAt: grant.createdAt,
       lastUsedAt: grant.lastUsedAt,
-    })),
+    }))),
   );
 }
 

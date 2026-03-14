@@ -107,6 +107,7 @@ export default function App() {
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
+  const clientTokenRef = useRef(DEFAULT_CLIENT_TOKEN);
   const clientKeyPairRef = useRef<E2EEKeyPair | null>(null);
   const agentPublicKeyRef = useRef("");
   const suppressMobileAutoSelectRef = useRef(false);
@@ -119,6 +120,7 @@ export default function App() {
   const [clientToken, setClientToken] = useState(DEFAULT_CLIENT_TOKEN);
   const [clientKeyPair, setClientKeyPair] = useState<E2EEKeyPair | null>(null);
   const [agentPublicKey, setAgentPublicKey] = useState("");
+  const [agentFingerprint, setAgentFingerprint] = useState("");
   const [deviceId, setDeviceId] = useState(DEFAULT_DEVICE_ID);
   const [deviceIdLocked, setDeviceIdLocked] = useState(false);
   const [connectionPhase, setConnectionPhase] = useState<ConnectionPhase>("idle");
@@ -196,11 +198,29 @@ export default function App() {
   }, [deviceId]);
 
   useEffect(() => {
+    clientTokenRef.current = clientToken;
+  }, [clientToken]);
+
+  useEffect(() => {
     clientKeyPairRef.current = clientKeyPair;
   }, [clientKeyPair]);
 
   useEffect(() => {
     agentPublicKeyRef.current = agentPublicKey;
+  }, [agentPublicKey]);
+
+  useEffect(() => {
+    if (!agentPublicKey.trim()) {
+      setAgentFingerprint("");
+      return;
+    }
+    void getPublicKeyFingerprint(agentPublicKey)
+      .then((fingerprint) => {
+        setAgentFingerprint(fingerprint);
+      })
+      .catch(() => {
+        setAgentFingerprint("");
+      });
   }, [agentPublicKey]);
 
   useEffect(() => {
@@ -441,16 +461,27 @@ export default function App() {
     }
     const keyPair = clientKeyPairRef.current;
     const peerPublicKey = agentPublicKeyRef.current.trim();
-    if (!clientToken.trim() || !keyPair || !peerPublicKey) {
+    const accessToken = clientTokenRef.current.trim();
+    if (!accessToken || !keyPair || !peerPublicKey) {
       handleSecureBindingMissing();
       return;
     }
-
-    const payload = await encryptForPeer(JSON.stringify(message), keyPair.privateKey, peerPublicKey);
+    const payload = await encryptForPeer(
+      JSON.stringify(message),
+      keyPair.privateKey,
+      peerPublicKey,
+      {
+        channel: "client",
+        deviceId: message.deviceId,
+        accessToken,
+        reqId: "reqId" in message ? message.reqId : undefined,
+      },
+    );
     socket.send(JSON.stringify({
       type: "secure.client",
       reqId: "reqId" in message ? message.reqId : undefined,
       deviceId: message.deviceId,
+      accessToken,
       payload,
     } satisfies ClientToRelayMessage));
   }
@@ -574,6 +605,7 @@ export default function App() {
     setClientToken("");
     setClientKeyPair(null);
     setAgentPublicKey("");
+    setAgentFingerprint("");
     setDeviceId(DEFAULT_DEVICE_ID);
     setDeviceIdLocked(false);
     setActiveSid(null);
@@ -707,7 +739,12 @@ export default function App() {
             if (!keyPair || !peerPublicKey || message.deviceId !== deviceIdRef.current || message.accessToken !== effectiveToken) {
               return;
             }
-            void decryptFromPeer(message.payload, keyPair.privateKey, peerPublicKey)
+            void decryptFromPeer(message.payload, keyPair.privateKey, peerPublicKey, {
+              channel: "agent",
+              deviceId: message.deviceId,
+              accessToken: message.accessToken,
+              reqId: message.reqId,
+            })
               .then((plaintext) => {
                 const inner = parseJsonMessage<AgentBusinessMessage>(plaintext);
                 if (inner) {
@@ -715,7 +752,7 @@ export default function App() {
                 }
               })
               .catch(() => {
-                showNotice("error", "收到了一条无法解密的设备消息，请重新配对。");
+                showNotice("error", "收到了一条无法解密或校验的设备消息，请重新配对。");
               });
           }
           return;
@@ -1144,6 +1181,7 @@ export default function App() {
                   pairingCode={pairingCode}
                   pairingMessage={pairingMessage}
                   pairingPending={pairingPending}
+                  agentFingerprint={agentFingerprint}
                   connectionPhase={connectionPhase}
                   notificationsEnabled={notificationsEnabled}
                   onWsUrlChange={setWsUrl}
@@ -1331,6 +1369,7 @@ export default function App() {
                 pairingCode={pairingCode}
                 pairingMessage={pairingMessage}
                 pairingPending={pairingPending}
+                agentFingerprint={agentFingerprint}
                 connectionPhase={connectionPhase}
                 notificationsEnabled={notificationsEnabled}
                 onWsUrlChange={setWsUrl}

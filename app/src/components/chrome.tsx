@@ -22,16 +22,20 @@ export function Field(props: {
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  type?: "text" | "password";
+  autoComplete?: string;
 }) {
   return (
     <label className="block">
       <span className="tp-label">{props.label}</span>
       <input
         className="tp-input disabled:opacity-50"
+        type={props.type ?? "text"}
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
         disabled={props.disabled}
+        autoComplete={props.autoComplete}
       />
     </label>
   );

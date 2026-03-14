@@ -6,6 +6,7 @@
 - [CLI 参考](./cli-reference.md)
 - [快速开始](./getting-started.md)
 - [部署与运维指南](./operations-guide.md)
+- [安全设计](./security-design.md)
 - [代码架构](./architecture.md)
 - [协议说明](./protocol.md)
 - [持续改进计划](./roadmap.md)

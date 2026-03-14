@@ -11,7 +11,7 @@ Keep one managed terminal session available across desktop and mobile.
 TermPilot is a terminal session continuity tool for long-running work. It lets you leave your desk, open your phone browser, and keep watching or controlling the same session that is already running on your computer.
 
 > [!TIP]
-> Documentation site: [TermPilot Docs](https://fengye404.top/TermPilot/) · [Quick Start](https://fengye404.top/TermPilot/getting-started) · [CLI Reference](https://fengye404.top/TermPilot/cli-reference) · [Operations Guide](https://fengye404.top/TermPilot/operations-guide) · [Architecture](https://fengye404.top/TermPilot/architecture) · [Protocol](https://fengye404.top/TermPilot/protocol)
+> Documentation site: [TermPilot Docs](https://fengye404.top/TermPilot/) · [Quick Start](https://fengye404.top/TermPilot/getting-started) · [CLI Reference](https://fengye404.top/TermPilot/cli-reference) · [Operations Guide](https://fengye404.top/TermPilot/operations-guide) · [Security Design](https://fengye404.top/TermPilot/security-design) · [Architecture](https://fengye404.top/TermPilot/architecture) · [Protocol](https://fengye404.top/TermPilot/protocol)
 
 > [!IMPORTANT]
 > TermPilot does not import arbitrary Terminal or iTerm tabs. A session must be created or managed by TermPilot to be available on mobile.
