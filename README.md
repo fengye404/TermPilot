@@ -78,7 +78,7 @@ The current implementation is already coherent as a product: relay, pairing, man
   - pairing codes
   - scoped access grants
   - audit events
-- Trust boundary: this protects session content from relay-side storage and routine inspection, but a relay-hosted web UI is still part of the trusted delivery path. For a stronger threat model, the web client must be delivered from a separately trusted origin.
+- Deployment assumption: the relay serves the web client, handles pairing and routes encrypted envelopes, while session content remains on the agent host.
 - If you redeploy or migrate from an older binding without local keys, re-pair the device.
 
 ## Quick Start
