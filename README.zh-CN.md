@@ -11,7 +11,7 @@
 TermPilot 是一个面向长期任务的终端会话连续性工具。你可以离开工位，在手机浏览器里继续查看和控制那条已经在电脑上运行的会话。
 
 > [!TIP]
-> 文档站: [TermPilot Docs](https://fengye404.top/TermPilot/) · [快速开始](https://fengye404.top/TermPilot/getting-started) · [部署与运维](https://fengye404.top/TermPilot/operations-guide) · [架构](https://fengye404.top/TermPilot/architecture) · [协议](https://fengye404.top/TermPilot/protocol) · [演进路线图](https://fengye404.top/TermPilot/roadmap)
+> 文档站: [TermPilot Docs](https://fengye404.top/TermPilot/) · [快速开始](https://fengye404.top/TermPilot/getting-started) · [CLI 参考](https://fengye404.top/TermPilot/cli-reference) · [部署与运维](https://fengye404.top/TermPilot/operations-guide) · [架构](https://fengye404.top/TermPilot/architecture) · [协议](https://fengye404.top/TermPilot/protocol)
 
 > [!IMPORTANT]
 > TermPilot 不会自动导入任意 Terminal 或 iTerm 标签页。只有由 TermPilot 创建或管理的会话，才能在手机端继续访问。
@@ -133,19 +133,24 @@ termpilot agent
 termpilot claude code
 ```
 
-如果你主要跑 OpenCode:
+如果你要跑其他托管命令:
 
 ```bash
-termpilot open code
+termpilot run -- opencode
 ```
 
-如果你要创建一个通用管理会话:
+如果你想先创建一条普通 shell 会话:
 
 ```bash
 termpilot create --name my-task --cwd /path/to/project
 ```
 
-当前终端会直接附着到这条会话上，手机看到的也是同一条会话状态和输出。
+然后再显式接入它:
+
+```bash
+termpilot list
+termpilot attach --sid <sid>
+```
 
 ## CLI 参考
 
@@ -170,7 +175,7 @@ termpilot revoke --token <accessToken>
 termpilot doctor
 
 termpilot claude code
-termpilot open code
+termpilot run -- <command>
 ```
 
 ## 配置
@@ -281,9 +286,10 @@ pnpm test:isolation
 - [文档站](https://fengye404.top/TermPilot/)
 - [Why TermPilot](./docs/why-termpilot.md)
 - [快速开始](./docs/getting-started.md)
+- [CLI 参考](./docs/cli-reference.md)
 - [部署与运维指南](./docs/operations-guide.md)
 - [当前架构](./docs/architecture.md)
 - [协议说明](./docs/protocol.md)
-- [产品演进路线图](./docs/roadmap.md)
+- [持续改进计划](./docs/roadmap.md)
 - [开发文档](./docs/development.md)
 - [技术选型记录（2026）](./docs/tech-selection-2026.md)

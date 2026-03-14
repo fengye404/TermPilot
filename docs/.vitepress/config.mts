@@ -25,7 +25,7 @@ export default defineConfig({
       { text: "部署与运维", link: "/operations-guide" },
       { text: "架构", link: "/architecture" },
       { text: "协议", link: "/protocol" },
-      { text: "演进路线图", link: "/roadmap" },
+      { text: "持续改进", link: "/roadmap" },
     ],
     sidebar: [
       {
@@ -54,9 +54,9 @@ export default defineConfig({
         ],
       },
       {
-        text: "长期方向",
+        text: "项目信息",
         items: [
-          { text: "产品演进路线图", link: "/roadmap" },
+          { text: "持续改进计划", link: "/roadmap" },
         ],
       },
     ],
@@ -75,7 +75,7 @@ export default defineConfig({
       label: "本页目录",
     },
     footer: {
-      message: "当前实现以代码为准，长期目标见路线图。",
+      message: "文档先描述当前实现，持续改进围绕现有主路径展开。",
       copyright: "Copyright © 2026 Fengye",
     },
   },

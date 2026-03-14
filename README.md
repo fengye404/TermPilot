@@ -11,7 +11,7 @@ Keep the same terminal session alive across desktop and mobile.
 TermPilot is a terminal session continuity tool for long-running work. It lets you leave your desk, open your phone browser, and keep watching or controlling the same session that is already running on your computer.
 
 > [!TIP]
-> Documentation site: [TermPilot Docs](https://fengye404.top/TermPilot/) · [Quick Start](https://fengye404.top/TermPilot/getting-started) · [Operations Guide](https://fengye404.top/TermPilot/operations-guide) · [Architecture](https://fengye404.top/TermPilot/architecture) · [Protocol](https://fengye404.top/TermPilot/protocol) · [Roadmap](https://fengye404.top/TermPilot/roadmap)
+> Documentation site: [TermPilot Docs](https://fengye404.top/TermPilot/) · [Quick Start](https://fengye404.top/TermPilot/getting-started) · [CLI Reference](https://fengye404.top/TermPilot/cli-reference) · [Operations Guide](https://fengye404.top/TermPilot/operations-guide) · [Architecture](https://fengye404.top/TermPilot/architecture) · [Protocol](https://fengye404.top/TermPilot/protocol)
 
 > [!IMPORTANT]
 > TermPilot does not import arbitrary Terminal or iTerm tabs. A session must be created or managed by TermPilot to be available on mobile.
@@ -133,19 +133,24 @@ For Claude Code:
 termpilot claude code
 ```
 
-For OpenCode:
+For any other managed command:
 
 ```bash
-termpilot open code
+termpilot run -- opencode
 ```
 
-For a generic managed session:
+If you want to create a plain shell session first:
 
 ```bash
 termpilot create --name my-task --cwd /path/to/project
 ```
 
-Your current terminal attaches to that managed session. The phone sees the same session state and output.
+Then attach it explicitly:
+
+```bash
+termpilot list
+termpilot attach --sid <sid>
+```
 
 ## CLI Reference
 
@@ -170,7 +175,7 @@ termpilot revoke --token <accessToken>
 termpilot doctor
 
 termpilot claude code
-termpilot open code
+termpilot run -- <command>
 ```
 
 ## Configuration
@@ -281,9 +286,10 @@ pnpm test:isolation
 - [Docs site](https://fengye404.top/TermPilot/)
 - [Why TermPilot](./docs/why-termpilot.md)
 - [Getting started](./docs/getting-started.md)
+- [CLI reference](./docs/cli-reference.md)
 - [Operations guide](./docs/operations-guide.md)
 - [Architecture](./docs/architecture.md)
 - [Protocol](./docs/protocol.md)
-- [Roadmap](./docs/roadmap.md)
+- [Improvement plan](./docs/roadmap.md)
 - [Development](./docs/development.md)
 - [Tech selection (2026)](./docs/tech-selection-2026.md)
