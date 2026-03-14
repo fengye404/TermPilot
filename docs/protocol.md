@@ -210,7 +210,6 @@ replay 行为：
 返回当前 relay 健康状态。当前与安全相关的关键字段包括：
 
 - `storeMode`
-- `adminClientTokenEnabled`
 - `security.relayStoresSessionContent`
 - `security.endToEndEncryptionRequiredForPairedClients`
 
@@ -220,3 +219,4 @@ replay 行为：
 - 输出同步仍是快照替换，不是字节流终端协议
 - relay 仍然是中心路由点，但不再承载会话主数据
 - 使用旧 access token 且缺少本地密钥绑定的 client，需要重新配对
+- 当前 Web UI 仍由 relay 托管，因此 relay 仍属于客户端代码的受信交付路径

@@ -165,14 +165,13 @@ your-domain.com {
 - `HOST`：默认 `0.0.0.0`
 - `PORT`：默认 `8787`
 - `TERMPILOT_AGENT_TOKEN`：agent 连接 relay 和调用管理 API 时使用
-- `TERMPILOT_CLIENT_TOKEN`：可选的全局 client 管理令牌
 - `DATABASE_URL`：启用 PostgreSQL 持久化
 - `TERMPILOT_PAIRING_TTL_MINUTES`：一次性配对码 TTL，默认 `10`
 
 一个重要细节：
 
-- 如果 `TERMPILOT_CLIENT_TOKEN` 仍然是默认的 `demo-client-token`，relay 会自动禁用全局客户端访问令牌
-- 这时 `adminClientTokenEnabled` 会在 `/health` 里显示为 `false`
+- `TERMPILOT_CLIENT_TOKEN` 旧模式已停用
+- 当前安全模型要求通过设备配对建立 access token 和端到端密钥
 
 ### agent 侧
 
@@ -223,7 +222,6 @@ curl http://127.0.0.1:8787/health
 - `agentsOnline`
 - `clientsOnline`
 - `webUiReady`
-- `adminClientTokenEnabled`
 - `security.relayStoresSessionContent`
 - `security.endToEndEncryptionRequiredForPairedClients`
 
@@ -266,6 +264,7 @@ termpilot agent --pair
 
 - `agent --pair` 默认会复用已运行的后台 agent
 - 它不会强制重启已有 agent
+- 电脑端会同时打印设备指纹；浏览器配对时应核对该指纹
 - 如果你升级到了新的安全实现，但当前本地绑定还是旧 token，请先清除绑定并重新配对
 
 ### 查看当前设备 grants
@@ -389,8 +388,8 @@ termpilot agent --foreground
 
 - 公网环境优先使用域名 + HTTPS/WSS
 - 显式设置自己的 `TERMPILOT_AGENT_TOKEN`
-- 如果要启用全局 client 管理令牌，显式设置非默认的 `TERMPILOT_CLIENT_TOKEN`
 - 不要长期共享手机端 access token
+- 配对时核对浏览器显示的设备指纹与电脑端是否一致
 - 换手机或共享设备后，及时执行 `termpilot revoke`
 - 如果你希望 relay 重启后还保留授权和审计，配置 PostgreSQL
 

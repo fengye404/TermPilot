@@ -40,7 +40,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
           <>
             <Field label="WebSocket 地址" value={props.wsUrl} onChange={props.onWsUrlChange} />
             <Field
-              label="访问令牌"
+              label="设备访问令牌"
               value={props.clientToken}
               onChange={props.onClientTokenChange}
               placeholder="首次配对后会自动写入"
@@ -52,7 +52,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
           <div className="tp-card-muted p-3">
             <p className="text-sm font-medium text-white">设备配对</p>
             <p className="mt-1 text-xs text-[var(--tp-text-soft)]">
-              电脑上执行 `termpilot agent --relay 你的 relay 地址`。命令会直接启动后台 agent 并打印一次性配对码。
+              电脑上执行 `termpilot agent --relay 你的 relay 地址`。命令会直接启动后台 agent，并打印一次性配对码和设备指纹。
             </p>
             <div className="mt-3 flex gap-3">
               <input
@@ -113,7 +113,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
               {props.notificationsEnabled ? "关闭浏览器提醒" : "开启浏览器提醒"}
             </button>
             <p className="text-xs text-[var(--tp-text-soft)]">
-              断线后会自动重连。连接参数、访问令牌和最近查看的会话会保存在本机浏览器里。
+              断线后会自动重连。连接参数、设备访问令牌和最近查看的会话会保存在本机浏览器里。
             </p>
           </>
         ) : null}

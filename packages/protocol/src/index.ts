@@ -320,6 +320,10 @@ function textDecoder(): TextDecoder {
   return new TextDecoder();
 }
 
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function importPrivateKey(pkcs8Base64: string): Promise<CryptoKey> {
   return getSubtle().importKey(
     "pkcs8",
@@ -424,4 +428,10 @@ export async function decryptFromPeer(
     toArrayBuffer(fromBase64(payload.ciphertext)),
   );
   return textDecoder().decode(plaintext);
+}
+
+export async function getPublicKeyFingerprint(publicKeySpki: string): Promise<string> {
+  const digest = await getSubtle().digest("SHA-256", toArrayBuffer(fromBase64(publicKeySpki)));
+  const hex = toHex(new Uint8Array(digest)).toUpperCase();
+  return `${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}`;
 }

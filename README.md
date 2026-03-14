@@ -71,12 +71,14 @@ The current implementation is already coherent as a product: relay, pairing, man
 ## Security Model
 
 - Paired clients exchange public keys during pairing and receive an access token scoped to one device.
+- The agent prints a device fingerprint during pairing; compare it with the fingerprint shown in the browser before accepting the binding.
 - Session messages travel as encrypted envelopes between the browser and the agent.
 - Sensitive session data stays on the computer running the agent: titles, cwd, shell, status details, and terminal output.
 - The relay keeps only the minimum server-side metadata required to operate:
   - pairing codes
   - scoped access grants
   - audit events
+- Trust boundary: this protects session content from relay-side storage and routine inspection, but a relay-hosted web UI is still part of the trusted delivery path. For a stronger threat model, the web client must be delivered from a separately trusted origin.
 - If you redeploy or migrate from an older binding without local keys, re-pair the device.
 
 ## Quick Start
@@ -220,7 +222,6 @@ Useful environment variables:
 - `TERMPILOT_RELAY_URL`
 - `TERMPILOT_DEVICE_ID`
 - `TERMPILOT_AGENT_TOKEN`
-- `TERMPILOT_CLIENT_TOKEN`
 - `HOST`
 - `PORT`
 - `DATABASE_URL`

@@ -4,7 +4,7 @@ import { cwd as processCwd } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { DEFAULT_DEVICE_ID } from "@termpilot/protocol";
+import { DEFAULT_DEVICE_ID, getPublicKeyFingerprint } from "@termpilot/protocol";
 
 import { createDaemonFromEnv } from "./daemon";
 import { createPairingCode, listAuditEvents, listDeviceGrants, resolveDeviceId, resolvePreferredRelayUrl, revokeDeviceGrant } from "./relay-admin";
@@ -454,6 +454,8 @@ async function runStart(argv: string[]): Promise<void> {
       if (shouldPair) {
         const pairing = await waitForPairingCode(deviceId);
         if (pairing) {
+          const deviceKeyPair = await getOrCreateDeviceKeyPairAsync();
+          console.log(`设备指纹: ${await getPublicKeyFingerprint(deviceKeyPair.publicKey)}`);
           console.log(`配对码: ${pairing.pairingCode}`);
           console.log(`有效期至: ${pairing.expiresAt}`);
         } else {
@@ -507,6 +509,8 @@ async function runStart(argv: string[]): Promise<void> {
   if (shouldPair || source !== "saved") {
     const pairing = await waitForPairingCode(deviceId);
     if (pairing) {
+      const deviceKeyPair = await getOrCreateDeviceKeyPairAsync();
+      console.log(`设备指纹: ${await getPublicKeyFingerprint(deviceKeyPair.publicKey)}`);
       console.log(`配对码: ${pairing.pairingCode}`);
       console.log(`有效期至: ${pairing.expiresAt}`);
       console.log("手机端直接打开 relay 页面并输入这个配对码即可。");
@@ -619,6 +623,7 @@ async function runPair(argv: string[]): Promise<void> {
   const payload = await createPairingCode(deviceId, deviceKeyPair.publicKey);
   persistMigratedRelayUrl(deviceId);
   console.log(`设备: ${payload.deviceId}`);
+  console.log(`设备指纹: ${await getPublicKeyFingerprint(deviceKeyPair.publicKey)}`);
   console.log(`配对码: ${payload.pairingCode}`);
   console.log(`有效期至: ${payload.expiresAt}`);
   console.log("请在手机端输入这个配对码，换取设备访问令牌。");

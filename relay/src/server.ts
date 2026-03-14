@@ -113,6 +113,9 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   if ((process.env.TERMPILOT_CLIENT_TOKEN ?? "").trim() === DEFAULT_CLIENT_TOKEN) {
     app.log.warn("检测到 TERMPILOT_CLIENT_TOKEN 仍为默认 demo-client-token。出于隔离安全考虑，relay 已自动禁用全局客户端访问令牌。");
   }
+  if (config.clientToken) {
+    app.log.warn("TERMPILOT_CLIENT_TOKEN 已不再支持。当前安全模型要求通过设备配对建立端到端密钥。");
+  }
 
   const storesPromise: Promise<{ authStore: AuthStore; auditStore: AuditStore }> = (async () => {
     if (!config.databaseUrl) {
@@ -292,7 +295,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     agentsOnline: agents.size,
     clientsOnline: clients.size,
     webUiReady: existsSync(webDir),
-    adminClientTokenEnabled: Boolean(config.clientToken),
+    adminClientTokenEnabled: false,
     security: {
       relayStoresSessionContent: false,
       endToEndEncryptionRequiredForPairedClients: true,
@@ -473,10 +476,9 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
       void (async () => {
         let client: ClientConnection | null = null;
         if (config.clientToken && token === config.clientToken) {
-          client = {
-            socket,
-            deviceScope: "*",
-          };
+          sendError(socket, "AUTH_FAILED", "全局 client token 已停用，请改用设备配对建立访问令牌。");
+          socket.close();
+          return;
         } else if (token) {
           const { authStore } = await storesPromise;
           const grant = await authStore.getGrantByAccessToken(token);

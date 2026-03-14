@@ -9,7 +9,7 @@ import type {
   RelayToClientMessage,
   SessionRecord,
 } from "@termpilot/protocol";
-import { createReqId, decryptFromPeer, encryptForPeer, generateE2EEKeyPair, parseJsonMessage } from "@termpilot/protocol";
+import { createReqId, decryptFromPeer, encryptForPeer, generateE2EEKeyPair, getPublicKeyFingerprint, parseJsonMessage } from "@termpilot/protocol";
 import { ConnectionPanel } from "./components/ConnectionPanel";
 import { CreateSessionPanel } from "./components/CreateSessionPanel";
 import { SessionListPanel } from "./components/SessionListPanel";
@@ -160,7 +160,8 @@ export default function App() {
     () => sessions.filter((session) => session.status === "exited").length,
     [sessions],
   );
-  const isPaired = clientToken.trim().length > 0;
+  const hasSecureBinding = clientToken.trim().length > 0 && Boolean(clientKeyPair) && agentPublicKey.trim().length > 0;
+  const isPaired = hasSecureBinding;
   const connected = connectionPhase === "connected";
   const canControlDevice = connected && deviceOnline;
   const parsedWsUrl = useMemo(() => tryParseUrl(wsUrl), [wsUrl]);
@@ -250,7 +251,8 @@ export default function App() {
       }
       const parsed = JSON.parse(raw) as Partial<StoredState>;
       if (parsed.wsUrl) setWsUrl(parsed.wsUrl);
-      if (parsed.clientToken) setClientToken(parsed.clientToken);
+      const storedToken = typeof parsed.clientToken === "string" ? parsed.clientToken : "";
+      if (storedToken) setClientToken(storedToken);
       if (typeof parsed.deviceId === "string" && parsed.deviceId.trim()) {
         setDeviceId(parsed.deviceId.trim());
       }
@@ -262,6 +264,9 @@ export default function App() {
       }
       if (typeof parsed.agentPublicKey === "string") {
         setAgentPublicKey(parsed.agentPublicKey);
+      }
+      if (storedToken && !(parsed.clientKeyPair && typeof parsed.clientKeyPair.publicKey === "string" && typeof parsed.clientKeyPair.privateKey === "string" && typeof parsed.agentPublicKey === "string" && parsed.agentPublicKey.trim())) {
+        setPairingMessage("检测到旧版绑定。为启用当前安全模型，请重新配对一次。");
       }
     } catch {
       // ignore malformed local state
@@ -341,18 +346,14 @@ export default function App() {
   }, [activeSid, connected]);
 
   useEffect(() => {
-    if (!clientToken.trim() || parsedWsUrl === null) {
-      return;
-    }
-    if (!clientKeyPair || !agentPublicKey.trim()) {
-      setPairingMessage("当前绑定缺少端到端密钥，请清除绑定后重新配对。");
+    if (!hasSecureBinding || parsedWsUrl === null) {
       return;
     }
     if (socketRef.current || connectionPhase !== "idle" || manuallyDisconnectedRef.current) {
       return;
     }
     connect(false);
-  }, [agentPublicKey, clientKeyPair, clientToken, connectionPhase, parsedWsUrl]);
+  }, [connectionPhase, hasSecureBinding, parsedWsUrl]);
 
   useEffect(() => {
     const existing = new Set(sessions.map((session) => session.sid));
@@ -770,6 +771,8 @@ export default function App() {
         throw new Error(message);
       }
 
+      const agentFingerprint = await getPublicKeyFingerprint(payload.agentPublicKey);
+
       setSessions([]);
       setBuffers({});
       setActiveSid(null);
@@ -779,7 +782,7 @@ export default function App() {
       setAgentPublicKey(payload.agentPublicKey);
       setPairingCode("");
       setPairingMessage("");
-      showNotice("success", `已绑定设备 ${payload.deviceId}。`);
+      showNotice("success", `已绑定设备 ${payload.deviceId}。请核对电脑端设备指纹 ${agentFingerprint}。`);
       connect(true, payload.accessToken);
     } catch (error) {
       const message = error instanceof Error ? error.message : "配对失败";

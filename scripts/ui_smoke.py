@@ -11,6 +11,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path("/Users/fengye/workspace/TermPilot")
 APP_URL = os.environ.get("TERMPILOT_APP_URL", "http://127.0.0.1:8787")
 RELAY_URL = os.environ.get("TERMPILOT_RELAY_URL", "ws://127.0.0.1:8787/ws")
+APP_STORAGE_KEY = "termpilot-app-state"
 SMOKE_HOME = Path(tempfile.mkdtemp(prefix="termpilot-ui-smoke-"))
 
 
@@ -145,9 +146,21 @@ def main() -> None:
             goto_with_retry(page, APP_URL)
             page.get_by_placeholder("ABC-234").fill(pairing_code)
             page.get_by_role("button", name="配对").click()
-            token_input = page.get_by_label("访问令牌")
             for _ in range(30):
-                if token_input.input_value() != "":
+                stored = page.evaluate(
+                    """(storageKey) => {
+                        const raw = window.localStorage.getItem(storageKey);
+                        if (!raw) return "";
+                        try {
+                            const parsed = JSON.parse(raw);
+                            return typeof parsed.clientToken === "string" ? parsed.clientToken : "";
+                        } catch {
+                            return "";
+                        }
+                    }""",
+                    APP_STORAGE_KEY,
+                )
+                if stored != "":
                     break
                 time.sleep(0.5)
             else:
@@ -179,7 +192,20 @@ def main() -> None:
             page.locator("summary", has_text="连接与设备设置").click()
             page.get_by_role("button", name="清除本机绑定").click()
             page.get_by_text("已清除本机保存的访问令牌", exact=False).wait_for(timeout=10000)
-            if token_input.input_value() != "":
+            stored = page.evaluate(
+                """(storageKey) => {
+                    const raw = window.localStorage.getItem(storageKey);
+                    if (!raw) return "";
+                    try {
+                        const parsed = JSON.parse(raw);
+                        return typeof parsed.clientToken === "string" ? parsed.clientToken : "";
+                    } catch {
+                        return "";
+                    }
+                }""",
+                APP_STORAGE_KEY,
+            )
+            if stored != "":
                 raise RuntimeError("清除本机绑定后，访问令牌没有被清空")
 
             page.screenshot(path="/tmp/termpilot-ui-smoke.png", full_page=True)

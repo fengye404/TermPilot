@@ -71,12 +71,14 @@ TermPilot 解决的是一个更具体的问题:
 ## 安全模型
 
 - 已配对客户端会在配对阶段与 agent 交换公钥，并获得单设备范围的 access token。
+- 配对时 agent 会打印设备指纹；在浏览器确认绑定前，应核对这个指纹是否一致。
 - 会话相关消息都以加密信封在浏览器与 agent 之间传递。
 - 敏感会话信息保留在 agent 所在电脑本地，包括会话标题、cwd、shell、状态细节和终端输出。
 - relay 只保留最小必要的服务端元数据：
   - 一次性配对码
   - 设备范围 access grants
   - 审计事件
+- 信任边界：当前模型可以避免 relay 持久化或常规读取会话内容，但 relay 托管的 Web UI 仍属于受信交付链路。若要进一步收紧威胁模型，需要把 Web 客户端放到独立可信来源。
 - 如果你是从旧版本升级、且本地绑定里还没有端到端密钥，需要重新配对一次。
 
 ## 快速开始
@@ -220,7 +222,6 @@ termpilot run -- <command>
 - `TERMPILOT_RELAY_URL`
 - `TERMPILOT_DEVICE_ID`
 - `TERMPILOT_AGENT_TOKEN`
-- `TERMPILOT_CLIENT_TOKEN`
 - `HOST`
 - `PORT`
 - `DATABASE_URL`
