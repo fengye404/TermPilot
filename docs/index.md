@@ -88,12 +88,33 @@ TermPilot 面向的是一个明确场景：
 
 ## 文档入口
 
-主要文档如下：
-
-- [快速开始](./getting-started.md)
-- [CLI 参考](./cli-reference.md)
-- [部署与运维指南](./operations-guide.md)
-- [安全设计](./security-design.md)
-- [代码架构](./architecture.md)
-- [协议说明](./protocol.md)
-- [持续改进计划](./roadmap.md)
+<div class="tp-doc-links">
+  <a class="tp-doc-link" href="./getting-started.md">
+    <span class="tp-doc-link-title">快速开始</span>
+    <span class="tp-doc-link-body">用当前主路径完成 relay、agent、配对和第一条受管理会话。</span>
+  </a>
+  <a class="tp-doc-link" href="./cli-reference.md">
+    <span class="tp-doc-link-title">CLI 参考</span>
+    <span class="tp-doc-link-body">查看命令面、退出语义、配对命令和会话管理入口。</span>
+  </a>
+  <a class="tp-doc-link" href="./operations-guide.md">
+    <span class="tp-doc-link-title">部署与运维</span>
+    <span class="tp-doc-link-body">部署 relay、管理 agent、本地状态、授权和常见排障路径。</span>
+  </a>
+  <a class="tp-doc-link" href="./security-design.md">
+    <span class="tp-doc-link-title">安全设计</span>
+    <span class="tp-doc-link-body">查看当前安全模型、数据归属、密钥绑定和 relay 职责边界。</span>
+  </a>
+  <a class="tp-doc-link" href="./architecture.md">
+    <span class="tp-doc-link-title">代码架构</span>
+    <span class="tp-doc-link-body">理解当前仓库结构、数据流、状态持久化和运行模型。</span>
+  </a>
+  <a class="tp-doc-link" href="./protocol.md">
+    <span class="tp-doc-link-title">协议说明</span>
+    <span class="tp-doc-link-body">查看配对流程、WebSocket 消息、加密信封和 HTTP 接口。</span>
+  </a>
+  <a class="tp-doc-link" href="./roadmap.md">
+    <span class="tp-doc-link-title">持续改进计划</span>
+    <span class="tp-doc-link-body">了解围绕现有主路径的稳定性、体验、运维与安全强化方向。</span>
+  </a>
+</div>
