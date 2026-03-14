@@ -41,40 +41,18 @@ The system has three runtime pieces:
 - `agent`: daemon running on your computer, managing local sessions and keeping session content on-device
 - `app`: mobile web UI served by the relay
 
-## At a Glance
+## Current Model
 
 - Unified CLI package for relay, agent, and session commands
-- Local-first session model with titles, state, and output kept on the agent host
-- Device-scoped pairing, access grants, and encrypted browser-to-agent messaging
-- Mobile web UI for viewing, light input, and shortcut controls on the same session
+- `tmux`-backed managed sessions with output replay served by the agent
+- Local-first session state: titles, cwd, status details, and terminal output stay on the agent host
+- Device-scoped pairing, access grants, and encrypted browser-to-agent session messages
+- Relay persistence limited to pairing, grant, and audit metadata, with optional PostgreSQL via `DATABASE_URL`
+- Mobile web UI focused on viewing, light input, and shortcut controls on the same session
 
 This is a deliberately narrow scope. TermPilot is built for session continuity, not for desktop remoting or generic server administration.
 
-## Current Implementation
-
-These details are based on the current codebase:
-
-- Session backend: `tmux`
-- Relay transport: HTTP + WebSocket on the same service
-- Mobile client: React app with PWA support, served by the relay
-- Output sync: snapshot replacement from `tmux capture-pane`, with replay served by the agent
-- Paired access: per-device pairing with encrypted browser-to-agent session messages
-- Relay persistence: pairing/grant metadata and audit events only; no session titles, cwd, or terminal output
-- Persistence: in-memory by default, optional PostgreSQL via `DATABASE_URL` for relay metadata only
-
-The current implementation is intentionally compact: relay, pairing, managed sessions, mobile viewing, and light terminal control are all part of one working path.
-
-## Security Model
-
-- Session data is local-first: titles, cwd, shell, status details, and terminal output remain on the computer running the agent.
-- Paired clients exchange public keys during pairing and receive a device-scoped access token.
-- The agent prints a device fingerprint during pairing, and the browser shows the same fingerprint after binding for verification.
-- Session messages travel as encrypted envelopes between the browser and the agent.
-- The relay keeps only the minimum server-side metadata required to operate:
-  - pairing codes
-  - scoped access grants
-  - audit events
-- If you redeploy or migrate from an older binding without local keys, re-pair the device.
+If you redeploy or migrate from an older binding without local keys, re-pair the device.
 
 ## Quick Start
 
