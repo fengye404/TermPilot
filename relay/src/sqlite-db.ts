@@ -4,7 +4,7 @@ import path from "node:path";
 
 type DatabaseSync = import("node:sqlite").DatabaseSync;
 
-const require = createRequire(path.join(process.cwd(), "package.json"));
+const require = createRequire(process.execPath);
 
 export function openRelaySqliteDatabase(filePath: string): DatabaseSync {
   const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");

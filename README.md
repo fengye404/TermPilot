@@ -249,14 +249,14 @@ your-domain.com {
 
 ### Relay Binary
 
-Build a single relay executable for the current platform:
+Build a relay-only executable bundle for the current platform:
 
 ```bash
 pnpm build:relay-bin
 ./dist/termpilot-relay run
 ```
 
-The generated executable keeps the same defaults as the npm-installed CLI, including SQLite at `~/.termpilot/relay.db`.
+The generated executable keeps the same defaults as the npm-installed CLI, including SQLite at `~/.termpilot/relay.db`. It requires Node 22+ on the target machine.
 
 ### Relay Docker Image
 

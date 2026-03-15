@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
@@ -26,6 +26,7 @@ import { DEFAULT_CLIENT_TOKEN, parseJsonMessage } from "@termpilot/protocol";
 import { MemoryAuthStore, PostgresAuthStore, SqliteAuthStore, type AuthStore } from "./auth-store.js";
 import { MemoryAuditStore, PostgresAuditStore, SqliteAuditStore, type AuditStore } from "./audit-store.js";
 import { loadConfig, type RelayConfig } from "./config.js";
+import { getRelayRuntimeModuleUrl } from "./runtime-path.js";
 import { openRelaySqliteDatabase } from "./sqlite-db.js";
 
 type ClientSocket = import("ws").WebSocket;
@@ -109,7 +110,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   const app = Fastify({ logger: true });
   const agents = new Map<string, AgentConnection>();
   const clients = new Set<ClientConnection>();
-  const webDir = options.webDir ?? resolveDefaultWebDir(pathToFileURL(process.argv[1] ?? process.cwd()).href);
+  const webDir = options.webDir ?? resolveDefaultWebDir(getRelayRuntimeModuleUrl());
   const storeMode = config.storeMode;
   let pool: Pool | null = null;
   let sqliteDatabase: DatabaseSync | null = null;

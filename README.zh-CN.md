@@ -249,14 +249,14 @@ your-domain.com {
 
 ### relay 可执行文件
 
-为当前平台构建一个单文件 relay 可执行物:
+为当前平台构建一个 relay 专用可执行 bundle:
 
 ```bash
 pnpm build:relay-bin
 ./dist/termpilot-relay run
 ```
 
-这个可执行物沿用和 npm CLI 一致的默认值，包括 `~/.termpilot/relay.db` 这条 SQLite 路径。
+这个可执行物沿用和 npm CLI 一致的默认值，包括 `~/.termpilot/relay.db` 这条 SQLite 路径；目标机器需要有 Node 22+。
 
 ### relay Docker 镜像
 

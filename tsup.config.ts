@@ -21,7 +21,7 @@ export default defineConfig([
     entry: {
       "relay-bin": "relay/src/relay-bin.ts",
     },
-    format: ["cjs"],
+    format: ["esm"],
     platform: "node",
     target: "node22",
     clean: false,
@@ -29,8 +29,8 @@ export default defineConfig([
     sourcemap: false,
     splitting: false,
     shims: false,
-    outExtension() {
-      return { js: ".cjs" };
+    banner: {
+      js: "#!/usr/bin/env node",
     },
   },
 ]);

@@ -186,7 +186,7 @@ pnpm build:relay-bin
 ./termpilot-relay run
 ```
 
-这条可执行物沿用与 CLI 相同的默认行为，包括 SQLite 持久化到 `~/.termpilot/relay.db`。
+这条可执行物沿用与 CLI 相同的默认行为，包括 SQLite 持久化到 `~/.termpilot/relay.db`；目标机需要 Node 22+。
 
 ### Docker 方式
 

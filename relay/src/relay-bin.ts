@@ -3,7 +3,8 @@ import { runRelayCli } from "./cli.js";
 function getRelayArgv(): string[] {
   const args = process.argv.slice(1);
   const first = args[0] ?? "";
-  if (first.endsWith(".js") || first.endsWith(".mjs") || first.endsWith(".cjs")) {
+  const knownCommands = new Set(["start", "run", "daemon", "relay-daemon", "stop"]);
+  if (!knownCommands.has(first)) {
     return args.slice(1);
   }
   return args;
