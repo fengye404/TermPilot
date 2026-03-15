@@ -52,6 +52,12 @@ interface NoticeState {
   text: string;
 }
 
+interface SecureBindingResetOptions {
+  message: string;
+  notice?: NoticeState;
+  resetDeviceId?: boolean;
+}
+
 type LockableScreenOrientation = ScreenOrientation & {
   lock?: (orientation: "landscape" | "portrait") => Promise<void>;
   unlock?: () => void;
@@ -352,21 +358,38 @@ export default function App() {
       const parsed = JSON.parse(raw) as Partial<StoredState>;
       if (parsed.wsUrl) setWsUrl(parsed.wsUrl);
       const storedToken = typeof parsed.clientToken === "string" ? parsed.clientToken : "";
-      if (storedToken) setClientToken(storedToken);
+      const storedKeyPair = parsed.clientKeyPair && typeof parsed.clientKeyPair.publicKey === "string" && typeof parsed.clientKeyPair.privateKey === "string"
+        ? parsed.clientKeyPair
+        : null;
+      const storedAgentPublicKey = typeof parsed.agentPublicKey === "string" ? parsed.agentPublicKey.trim() : "";
+      const hasValidStoredBinding = Boolean(storedToken && storedKeyPair && storedAgentPublicKey);
+
+      if (hasValidStoredBinding) {
+        setClientToken(storedToken);
+        setClientKeyPair(storedKeyPair);
+        setAgentPublicKey(storedAgentPublicKey);
+      } else if (storedToken) {
+        setPairingMessage("检测到旧版绑定，已自动清理失效凭据。请重新配对。");
+      }
       if (typeof parsed.deviceId === "string" && parsed.deviceId.trim()) {
         setDeviceId(parsed.deviceId.trim());
       }
-      if (typeof parsed.activeSid === "string" || parsed.activeSid === null) setActiveSid(parsed.activeSid ?? null);
+      if (hasValidStoredBinding && (typeof parsed.activeSid === "string" || parsed.activeSid === null)) {
+        setActiveSid(parsed.activeSid ?? null);
+      }
       if (Array.isArray(parsed.pinnedSids)) setPinnedSids(parsed.pinnedSids.filter((value): value is string => typeof value === "string"));
       if (typeof parsed.notificationsEnabled === "boolean") setNotificationsEnabled(parsed.notificationsEnabled);
-      if (parsed.clientKeyPair && typeof parsed.clientKeyPair.publicKey === "string" && typeof parsed.clientKeyPair.privateKey === "string") {
-        setClientKeyPair(parsed.clientKeyPair);
-      }
-      if (typeof parsed.agentPublicKey === "string") {
-        setAgentPublicKey(parsed.agentPublicKey);
-      }
-      if (storedToken && !(parsed.clientKeyPair && typeof parsed.clientKeyPair.publicKey === "string" && typeof parsed.clientKeyPair.privateKey === "string" && typeof parsed.agentPublicKey === "string" && parsed.agentPublicKey.trim())) {
-        setPairingMessage("检测到旧版绑定。为启用当前安全模型，请重新配对一次。");
+      if (!hasValidStoredBinding && storedToken) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          wsUrl: parsed.wsUrl || wsUrl,
+          clientToken: "",
+          deviceId: typeof parsed.deviceId === "string" && parsed.deviceId.trim() ? parsed.deviceId.trim() : DEFAULT_DEVICE_ID,
+          activeSid: null,
+          pinnedSids: Array.isArray(parsed.pinnedSids) ? parsed.pinnedSids.filter((value): value is string => typeof value === "string") : [],
+          notificationsEnabled: typeof parsed.notificationsEnabled === "boolean" ? parsed.notificationsEnabled : false,
+          clientKeyPair: null,
+          agentPublicKey: "",
+        } satisfies StoredState));
       }
     } catch {
       // ignore malformed local state
@@ -529,9 +552,34 @@ export default function App() {
     }, 4000);
   }
 
+  function resetSecureBinding(options: SecureBindingResetOptions): void {
+    disconnect();
+    setClientToken("");
+    setClientKeyPair(null);
+    pairingKeyDraftRef.current = null;
+    setAgentPublicKey("");
+    setAgentFingerprint("");
+    setDeviceIdLocked(false);
+    if (options.resetDeviceId) {
+      setDeviceId(DEFAULT_DEVICE_ID);
+    }
+    setActiveSid(null);
+    setSessions([]);
+    setBuffers({});
+    setPairingMessage(options.message);
+    previousDeviceOnlineRef.current = false;
+    previousSessionStatusRef.current = {};
+    bootstrappedNotificationsRef.current = false;
+    if (options.notice) {
+      showNotice(options.notice.kind, options.notice.text);
+    }
+  }
+
   function handleSecureBindingMissing(): void {
-    setPairingMessage("当前绑定缺少端到端密钥，请清除绑定后重新配对。");
-    showNotice("error", "当前绑定缺少端到端密钥，请重新配对。");
+    resetSecureBinding({
+      message: "当前绑定已失效，已自动清理本地凭据。请重新配对。",
+      notice: { kind: "error", text: "当前绑定缺少端到端密钥，已自动清理，请重新配对。" },
+    });
   }
 
   async function sendSecureMessage(message: ClientBusinessMessage): Promise<void> {
@@ -681,22 +729,11 @@ export default function App() {
   }
 
   function clearBinding(): void {
-    disconnect();
-    setClientToken("");
-    setClientKeyPair(null);
-    pairingKeyDraftRef.current = null;
-    setAgentPublicKey("");
-    setAgentFingerprint("");
-    setDeviceId(DEFAULT_DEVICE_ID);
-    setDeviceIdLocked(false);
-    setActiveSid(null);
-    setSessions([]);
-    setBuffers({});
-    setPairingMessage("已清除本机保存的访问令牌，请重新配对。");
-    showNotice("info", "已清除本机绑定。");
-    previousDeviceOnlineRef.current = false;
-    previousSessionStatusRef.current = {};
-    bootstrappedNotificationsRef.current = false;
+    resetSecureBinding({
+      message: "已清除本机保存的访问令牌，请重新配对。",
+      notice: { kind: "info", text: "已清除本机绑定。" },
+      resetDeviceId: true,
+    });
   }
 
   function togglePinnedSession(sid: string): void {
@@ -842,10 +879,13 @@ export default function App() {
             stopReconnectLoop();
             setConnectionPhase("idle");
             setDeviceOnline(false);
-            if (message.code === "AUTH_REVOKED") {
-              setClientToken("");
-              setClientKeyPair(null);
-              setAgentPublicKey("");
+          if (message.code === "AUTH_REVOKED") {
+              resetSecureBinding({
+                message: message.message,
+                notice: { kind: "error", text: message.message },
+              });
+              socket.close();
+              return;
             }
             setPairingMessage(message.message);
             showNotice("error", message.message);
@@ -891,8 +931,12 @@ export default function App() {
       setActiveSid(null);
       setDeviceId(payload.deviceId);
       setClientToken(payload.accessToken);
+      clientTokenRef.current = payload.accessToken;
       setClientKeyPair(nextClientKeyPair);
+      clientKeyPairRef.current = nextClientKeyPair;
+      pairingKeyDraftRef.current = nextClientKeyPair;
       setAgentPublicKey(payload.agentPublicKey);
+      agentPublicKeyRef.current = payload.agentPublicKey;
       setPairingCode("");
       setPairingMessage("");
       showNotice("success", `已绑定设备 ${payload.deviceId}。请核对电脑端设备指纹 ${agentFingerprint}。`);
