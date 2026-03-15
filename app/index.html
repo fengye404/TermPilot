@@ -3,8 +3,57 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
     <meta name="theme-color" content="#f4f7f5" />
     <title>TermPilot</title>
+    <script>
+      (function () {
+        if (!("serviceWorker" in navigator)) {
+          return;
+        }
+
+        const host = window.location.host;
+        const staleCachePrefixes = [
+          "workbox-",
+          "vite-pwa-",
+          "termpilot-",
+        ];
+
+        window.__termpilotCleanupPromise = Promise.allSettled([
+          navigator.serviceWorker.getRegistrations().then((registrations) => Promise.allSettled(
+            registrations
+              .filter((registration) => registration.scope.includes(host))
+              .map(async (registration) => {
+                try {
+                  const activeUrl = registration.active?.scriptURL ?? "";
+                  const waitingUrl = registration.waiting?.scriptURL ?? "";
+                  const installingUrl = registration.installing?.scriptURL ?? "";
+                  if (
+                    activeUrl.endsWith("/sw.js")
+                    || activeUrl.endsWith("/service-worker.js")
+                    || waitingUrl.endsWith("/sw.js")
+                    || waitingUrl.endsWith("/service-worker.js")
+                    || installingUrl.endsWith("/sw.js")
+                    || installingUrl.endsWith("/service-worker.js")
+                  ) {
+                    await registration.unregister();
+                  }
+                } catch {
+                  // ignore
+                }
+              }),
+          )),
+          ("caches" in window)
+            ? caches.keys().then((keys) => Promise.allSettled(
+              keys
+                .filter((key) => staleCachePrefixes.some((prefix) => key.startsWith(prefix)))
+                .map((key) => caches.delete(key)),
+            ))
+            : Promise.resolve(),
+        ]);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

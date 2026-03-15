@@ -59,9 +59,8 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(31, 122, 83, 0.12), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(31, 122, 83, 0.08), transparent 24%),
-    linear-gradient(180deg, var(--tp-bg), var(--tp-bg-elevated) 42%, var(--tp-bg));
+    radial-gradient(circle at top left, rgba(31, 122, 83, 0.08), transparent 22%),
+    linear-gradient(180deg, var(--tp-bg), var(--tp-bg-elevated) 46%, var(--tp-bg));
   color: var(--tp-text);
   font-family: "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
 }
@@ -105,17 +104,13 @@ select {
 .tp-card {
   border: 1px solid var(--tp-border);
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0)),
-    var(--tp-panel);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(12px);
+  background: var(--tp-panel);
 }
 
 .tp-card-muted {
   border: 1px solid var(--tp-border);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--tp-panel-strong) 82%, transparent);
+  background: var(--tp-surface-sunk);
 }
 
 .tp-panel-title {
@@ -148,7 +143,7 @@ select {
 .tp-stat-card {
   border: 1px solid var(--tp-border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--tp-panel-strong) 72%, transparent);
+  background: var(--tp-surface-sunk);
   padding: 12px 14px;
 }
 
@@ -227,7 +222,7 @@ details[open] > .tp-disclosure-summary::after {
   min-height: 44px;
   border: 1px solid var(--tp-border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--tp-panel-strong) 82%, transparent);
+  background: var(--tp-panel-strong);
   padding: 0.75rem 0.875rem;
   color: var(--tp-text);
 }
@@ -272,7 +267,7 @@ summary:focus-visible {
 
 .tp-button-secondary {
   border-color: var(--tp-border-strong);
-  background: color-mix(in srgb, var(--tp-panel-strong) 78%, transparent);
+  background: var(--tp-panel-strong);
   color: var(--tp-text);
 }
 
@@ -362,7 +357,7 @@ summary:focus-visible {
 .tp-terminal-shell {
   border: 1px solid var(--tp-border);
   border-radius: 16px;
-  background: var(--tp-panel-strong);
+  background: var(--tp-surface-2);
 }
 
 .tp-terminal-frame {
@@ -399,8 +394,6 @@ summary:focus-visible {
   color: var(--tp-text);
   font-size: 12px;
   font-weight: 600;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(10px);
 }
 
 .tp-mobile-focus-fab:hover:not(:disabled) {

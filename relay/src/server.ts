@@ -539,7 +539,13 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   app.get("/*", async (request, reply) => {
     const filePath = createStaticPath(webDir, request.raw.url ?? "/");
     if (!filePath) {
+      reply.raw.setHeader("cache-control", "no-store");
       return reply.code(404).send({ message: "Not Found" });
+    }
+    if (path.extname(filePath).toLowerCase() === ".html") {
+      reply.raw.setHeader("cache-control", "no-store, must-revalidate");
+    } else {
+      reply.raw.setHeader("cache-control", "public, max-age=31536000, immutable");
     }
     reply.header("content-type", getMimeType(filePath));
     return reply.send(createReadStream(filePath));
