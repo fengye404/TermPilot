@@ -1,27 +1,48 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
-  --tp-bg: #0b0f12;
-  --tp-bg-elevated: #10161b;
-  --tp-panel: rgba(17, 23, 29, 0.92);
-  --tp-panel-strong: rgba(12, 18, 24, 0.96);
-  --tp-border: rgba(79, 97, 110, 0.28);
-  --tp-border-strong: rgba(102, 124, 140, 0.42);
-  --tp-text: #e6edf2;
-  --tp-text-muted: #9aa8b4;
-  --tp-text-soft: #70808d;
+  color-scheme: light;
+  --tp-bg: #f4f7f5;
+  --tp-bg-elevated: #eef3f0;
+  --tp-panel: rgba(255, 255, 255, 0.86);
+  --tp-panel-strong: rgba(249, 251, 250, 0.94);
+  --tp-border: rgba(56, 74, 86, 0.16);
+  --tp-border-strong: rgba(56, 74, 86, 0.24);
+  --tp-text: #12202a;
+  --tp-text-muted: #536272;
+  --tp-text-soft: #738290;
   --tp-accent: #1f7a53;
   --tp-accent-strong: #2c9a6a;
   --tp-accent-soft: rgba(31, 122, 83, 0.14);
   --tp-accent-ring: rgba(31, 122, 83, 0.2);
-  --tp-danger: #cc6856;
-  --tp-danger-soft: rgba(204, 104, 86, 0.12);
+  --tp-danger: #bf5a49;
+  --tp-danger-soft: rgba(191, 90, 73, 0.12);
   --tp-warning: #c6912f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --tp-bg: #0b0f12;
+    --tp-bg-elevated: #10161b;
+    --tp-panel: rgba(17, 23, 29, 0.92);
+    --tp-panel-strong: rgba(12, 18, 24, 0.96);
+    --tp-border: rgba(79, 97, 110, 0.28);
+    --tp-border-strong: rgba(102, 124, 140, 0.42);
+    --tp-text: #e6edf2;
+    --tp-text-muted: #9aa8b4;
+    --tp-text-soft: #70808d;
+    --tp-danger: #cc6856;
+    --tp-danger-soft: rgba(204, 104, 86, 0.12);
+  }
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  background: var(--tp-bg);
 }
 
 body {
@@ -30,7 +51,7 @@ body {
   background:
     radial-gradient(circle at top left, rgba(31, 122, 83, 0.12), transparent 28%),
     radial-gradient(circle at bottom right, rgba(31, 122, 83, 0.08), transparent 24%),
-    linear-gradient(180deg, #0b0f12, #0f1419 42%, #0b0f12);
+    linear-gradient(180deg, var(--tp-bg), var(--tp-bg-elevated) 42%, var(--tp-bg));
   color: var(--tp-text);
   font-family: "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
 }
@@ -75,20 +96,20 @@ select {
   border: 1px solid var(--tp-border);
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0)),
     var(--tp-panel);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.16);
   backdrop-filter: blur(12px);
 }
 
 .tp-card-muted {
   border: 1px solid var(--tp-border);
   border-radius: 16px;
-  background: rgba(10, 15, 18, 0.72);
+  background: color-mix(in srgb, var(--tp-panel-strong) 82%, transparent);
 }
 
 .tp-panel-title {
-  color: #f7fbfd;
+  color: var(--tp-text);
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: -0.015em;
@@ -117,7 +138,7 @@ select {
 .tp-stat-card {
   border: 1px solid var(--tp-border);
   border-radius: 14px;
-  background: rgba(8, 13, 17, 0.66);
+  background: color-mix(in srgb, var(--tp-panel-strong) 72%, transparent);
   padding: 12px 14px;
 }
 
@@ -131,7 +152,7 @@ select {
 
 .tp-stat-value {
   margin-top: 6px;
-  color: #f7fbfd;
+  color: var(--tp-text);
   font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.04em;
@@ -196,7 +217,7 @@ details[open] > .tp-disclosure-summary::after {
   min-height: 44px;
   border: 1px solid var(--tp-border);
   border-radius: 14px;
-  background: rgba(8, 13, 17, 0.86);
+  background: color-mix(in srgb, var(--tp-panel-strong) 82%, transparent);
   padding: 0.75rem 0.875rem;
   color: var(--tp-text);
 }
@@ -241,13 +262,13 @@ summary:focus-visible {
 
 .tp-button-secondary {
   border-color: var(--tp-border-strong);
-  background: rgba(13, 18, 24, 0.78);
+  background: color-mix(in srgb, var(--tp-panel-strong) 78%, transparent);
   color: var(--tp-text);
 }
 
 .tp-button-secondary:hover:not(:disabled) {
   border-color: rgba(31, 122, 83, 0.4);
-  color: #ffffff;
+  color: var(--tp-text);
 }
 
 .tp-button-danger {

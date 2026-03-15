@@ -348,7 +348,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
       return reply.code(400).send({ message: "pairingCode 不能为空" });
     }
     if (!clientPublicKey) {
-      return reply.code(400).send({ message: "clientPublicKey 不能为空" });
+      return reply.code(400).send({ message: "浏览器未初始化本地配对密钥，请刷新页面后重试。" });
     }
 
     const { authStore } = await storesPromise;

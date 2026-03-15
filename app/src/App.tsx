@@ -99,6 +99,30 @@ function detectTouchDevice(): boolean {
   return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 }
 
+function getAppThemeColor(): string {
+  if (typeof window === "undefined") {
+    return "#f4f7f5";
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "#0b0f12" : "#f4f7f5";
+}
+
+async function generateValidatedClientKeyPair(): Promise<E2EEKeyPair> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const next = await generateE2EEKeyPair();
+    if (next.publicKey.trim() && next.privateKey.trim()) {
+      return next;
+    }
+  }
+  throw new Error("浏览器未能初始化本地配对密钥，请刷新页面后重试。");
+}
+
+function normalizePairingError(message: string): string {
+  if (message.includes("clientPublicKey")) {
+    return "浏览器未能初始化本地配对密钥，请刷新页面后重试。";
+  }
+  return message;
+}
+
 export default function App() {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -234,6 +258,27 @@ export default function App() {
     window.addEventListener("resize", handleResize);
     return () => {
       window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const applyThemeColor = () => {
+      if (meta) {
+        meta.setAttribute("content", getAppThemeColor());
+      }
+    };
+
+    applyThemeColor();
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const listener = () => applyThemeColor();
+    media.addEventListener("change", listener);
+    return () => {
+      media.removeEventListener("change", listener);
     };
   }, []);
 
@@ -790,7 +835,7 @@ export default function App() {
     setPairingPending(true);
     setPairingMessage("");
     try {
-      const nextClientKeyPair = await generateE2EEKeyPair();
+      const nextClientKeyPair = await generateValidatedClientKeyPair();
       const response = await fetch(`${relayHttpBaseUrl}/api/pairings/redeem`, {
         method: "POST",
         headers: {
@@ -822,7 +867,7 @@ export default function App() {
       showNotice("success", `已绑定设备 ${payload.deviceId}。请核对电脑端设备指纹 ${agentFingerprint}。`);
       connect(true, payload.accessToken);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "配对失败";
+      const message = normalizePairingError(error instanceof Error ? error.message : "配对失败");
       setPairingMessage(message);
       showNotice("error", message);
     } finally {
