@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { existsSync, openSync } from "node:fs";
 import { cwd as processCwd } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as delay } from "node:timers/promises";
@@ -14,6 +14,7 @@ import {
   getAgentConfigFilePath,
   getAgentHome,
   getAgentLogFilePath,
+  getDeviceKeyFilePath,
   getOrCreateDeviceKeyPairAsync,
   getOrCreateGeneratedDeviceId,
   getStateFilePath,
@@ -386,6 +387,14 @@ function readRuntimeStatus() {
   return { runtime, alive };
 }
 
+function needsSecurePairingRepair(): boolean {
+  return !existsSync(getDeviceKeyFilePath());
+}
+
+function isMissingAgentPublicKeyError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("agentPublicKey 不能为空");
+}
+
 async function waitForPairingCode(deviceId: string): Promise<Awaited<ReturnType<typeof createPairingCode>> | null> {
   const deviceKeyPair = await getOrCreateDeviceKeyPairAsync();
   let lastError: unknown = null;
@@ -452,7 +461,29 @@ async function runStart(argv: string[]): Promise<void> {
     } else {
       printRuntimeStatus(existing.runtime);
       if (shouldPair) {
-        const pairing = await waitForPairingCode(deviceId);
+        if (needsSecurePairingRepair()) {
+          console.log("检测到后台 agent 缺少设备密钥，正在自动重启以完成兼容修复。");
+          await runStop();
+          await runStart(argv);
+          return;
+        }
+
+        let pairing = await waitForPairingCode(deviceId);
+        if (!pairing) {
+          const deviceKeyPair = await getOrCreateDeviceKeyPairAsync();
+          try {
+            pairing = await createPairingCode(deviceId, deviceKeyPair.publicKey);
+            persistMigratedRelayUrl(deviceId);
+          } catch (error) {
+            if (isMissingAgentPublicKeyError(error)) {
+              console.log("检测到后台 agent 仍在使用旧配对状态，正在自动重启后重试。");
+              await runStop();
+              await runStart(argv);
+              return;
+            }
+            throw error;
+          }
+        }
         if (pairing) {
           const deviceKeyPair = await getOrCreateDeviceKeyPairAsync();
           console.log(`设备指纹: ${await getPublicKeyFingerprint(deviceKeyPair.publicKey)}`);
