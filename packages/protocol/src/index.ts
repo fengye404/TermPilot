@@ -1,3 +1,7 @@
+import { gcm } from "@noble/ciphers/aes.js";
+import { p256 } from "@noble/curves/nist.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+
 export const DEFAULT_DEVICE_ID = "pc-main";
 export const DEFAULT_AGENT_TOKEN = "demo-agent-token";
 export const DEFAULT_CLIENT_TOKEN = "demo-client-token";
@@ -284,6 +288,17 @@ export function parseJsonMessage<T>(raw: string): T | null {
   }
 }
 
+const RAW_P256_PUBLIC_PREFIX = "tp-p256-public:";
+const RAW_P256_PRIVATE_PREFIX = "tp-p256-private:";
+const P256_SPKI_PREFIX = Uint8Array.from([
+  0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,
+  0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
+]);
+
+function hasWebCryptoSubtle(): boolean {
+  return Boolean(globalThis.crypto?.subtle);
+}
+
 function getSubtle(): SubtleCrypto {
   const maybeCrypto = globalThis.crypto;
   if (!maybeCrypto?.subtle) {
@@ -331,6 +346,18 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function buildEnvelopeAad(context?: SecureEnvelopeContext): ArrayBuffer | undefined {
   if (!context) {
     return undefined;
@@ -341,6 +368,50 @@ function buildEnvelopeAad(context?: SecureEnvelopeContext): ArrayBuffer | undefi
     accessToken: context.accessToken ?? "",
     reqId: context.reqId ?? "",
   })));
+}
+
+function buildEnvelopeAadBytes(context?: SecureEnvelopeContext): Uint8Array | undefined {
+  const aad = buildEnvelopeAad(context);
+  return aad ? new Uint8Array(aad) : undefined;
+}
+
+function decodeRawKey(value: string, prefix: string): Uint8Array | null {
+  if (!value.startsWith(prefix)) {
+    return null;
+  }
+  return fromBase64(value.slice(prefix.length));
+}
+
+function spkiToRawPublic(spkiBase64: string): Uint8Array {
+  const bytes = fromBase64(spkiBase64);
+  if (bytes.length === 33 || bytes.length === 65) {
+    return bytes;
+  }
+  if (bytes.length >= P256_SPKI_PREFIX.length + 33 && bytesEqual(bytes.slice(0, P256_SPKI_PREFIX.length), P256_SPKI_PREFIX)) {
+    return bytes.slice(P256_SPKI_PREFIX.length);
+  }
+  throw new Error("无法解析对端公钥。");
+}
+
+function pkcs8ToRawPrivate(pkcs8Base64: string): Uint8Array {
+  const bytes = fromBase64(pkcs8Base64);
+  if (bytes.length === 32) {
+    return bytes;
+  }
+  for (let index = 0; index <= bytes.length - 34; index += 1) {
+    if (bytes[index] === 0x04 && bytes[index + 1] === 0x20) {
+      return bytes.slice(index + 2, index + 34);
+    }
+  }
+  throw new Error("无法解析本地私钥。");
+}
+
+function normalizePublicKeyToRaw(publicKeySpki: string): Uint8Array {
+  return decodeRawKey(publicKeySpki, RAW_P256_PUBLIC_PREFIX) ?? spkiToRawPublic(publicKeySpki);
+}
+
+function normalizePrivateKeyToRaw(privateKeyPkcs8: string): Uint8Array {
+  return decodeRawKey(privateKeyPkcs8, RAW_P256_PRIVATE_PREFIX) ?? pkcs8ToRawPrivate(privateKeyPkcs8);
 }
 
 async function importPrivateKey(pkcs8Base64: string): Promise<CryptoKey> {
@@ -369,6 +440,18 @@ async function importPublicKey(spkiBase64: string): Promise<CryptoKey> {
   );
 }
 
+function shouldUsePureJsCrypto(privateKeyPkcs8: string, publicKeySpki: string): boolean {
+  return !hasWebCryptoSubtle()
+    || privateKeyPkcs8.startsWith(RAW_P256_PRIVATE_PREFIX)
+    || publicKeySpki.startsWith(RAW_P256_PUBLIC_PREFIX);
+}
+
+function deriveSharedKeyBytesPureJs(privateKeyPkcs8: string, publicKeySpki: string): Uint8Array {
+  const privateKey = normalizePrivateKeyToRaw(privateKeyPkcs8);
+  const publicKey = normalizePublicKeyToRaw(publicKeySpki);
+  return p256.getSharedSecret(privateKey, publicKey).slice(1);
+}
+
 async function deriveSharedKey(privateKeyPkcs8: string, publicKeySpki: string): Promise<CryptoKey> {
   const privateKey = await importPrivateKey(privateKeyPkcs8);
   const publicKey = await importPublicKey(publicKeySpki);
@@ -395,6 +478,13 @@ export interface E2EEKeyPair {
 }
 
 export async function generateE2EEKeyPair(): Promise<E2EEKeyPair> {
+  if (!hasWebCryptoSubtle()) {
+    const { secretKey, publicKey } = p256.keygen();
+    return {
+      publicKey: `${RAW_P256_PUBLIC_PREFIX}${toBase64(publicKey)}`,
+      privateKey: `${RAW_P256_PRIVATE_PREFIX}${toBase64(secretKey)}`,
+    };
+  }
   const keyPair = await getSubtle().generateKey(
     {
       name: "ECDH",
@@ -417,6 +507,15 @@ export async function encryptForPeer(
   publicKeySpki: string,
   context?: SecureEnvelopeContext,
 ): Promise<SecureEnvelopePayload> {
+  if (shouldUsePureJsCrypto(privateKeyPkcs8, publicKeySpki)) {
+    const key = deriveSharedKeyBytesPureJs(privateKeyPkcs8, publicKeySpki);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = gcm(key, iv, buildEnvelopeAadBytes(context)).encrypt(textEncoder().encode(plaintext));
+    return {
+      iv: toBase64(iv),
+      ciphertext: toBase64(ciphertext),
+    };
+  }
   const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await getSubtle().encrypt(
@@ -440,6 +539,11 @@ export async function decryptFromPeer(
   publicKeySpki: string,
   context?: SecureEnvelopeContext,
 ): Promise<string> {
+  if (shouldUsePureJsCrypto(privateKeyPkcs8, publicKeySpki)) {
+    const key = deriveSharedKeyBytesPureJs(privateKeyPkcs8, publicKeySpki);
+    const plaintext = gcm(key, fromBase64(payload.iv), buildEnvelopeAadBytes(context)).decrypt(fromBase64(payload.ciphertext));
+    return textDecoder().decode(plaintext);
+  }
   const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
   const plaintext = await getSubtle().decrypt(
     {
@@ -454,7 +558,10 @@ export async function decryptFromPeer(
 }
 
 export async function getPublicKeyFingerprint(publicKeySpki: string): Promise<string> {
-  const digest = await getSubtle().digest("SHA-256", toArrayBuffer(fromBase64(publicKeySpki)));
-  const hex = toHex(new Uint8Array(digest)).toUpperCase();
+  const publicKeyBytes = normalizePublicKeyToRaw(publicKeySpki);
+  const digest = hasWebCryptoSubtle()
+    ? new Uint8Array(await getSubtle().digest("SHA-256", toArrayBuffer(publicKeyBytes)))
+    : sha256(publicKeyBytes);
+  const hex = toHex(digest).toUpperCase();
   return `${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}`;
 }
