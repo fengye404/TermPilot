@@ -45,7 +45,7 @@ import {
 
 const DEFAULT_RELAY_URL = "ws://127.0.0.1:8787/ws";
 const OUTPUT_FRAME_LIMIT = 40;
-const GRANT_REFRESH_INTERVAL_MS = 10_000;
+const GRANT_REFRESH_INTERVAL_MS = 1_000;
 
 interface DaemonOptions {
   relayUrl: string;
@@ -165,7 +165,8 @@ export class AgentDaemon {
   }
 
   private async syncSession(session: SessionRecord): Promise<void> {
-    const runtimeState = this.runtimeState.get(session.sid) ?? {
+    const existingRuntimeState = this.runtimeState.get(session.sid);
+    const runtimeState = existingRuntimeState ?? {
       lastRenderedBuffer: "",
       lastStatus: session.status,
       layoutNormalized: false,
@@ -227,6 +228,17 @@ export class AgentDaemon {
 
     const buffer = await captureSession(session);
     if (buffer === runtimeState.lastRenderedBuffer && runtimeState.lastStatus === session.status) {
+      if (!existingRuntimeState) {
+        this.runtimeState.set(session.sid, runtimeState);
+        await this.broadcastBusinessMessage({
+          type: "session.state",
+          deviceId: this.options.deviceId,
+          sid: session.sid,
+          payload: {
+            session,
+          },
+        });
+      }
       return;
     }
 
@@ -507,7 +519,14 @@ export class AgentDaemon {
   }
 
   private async broadcastBusinessMessage(message: AgentBusinessMessage): Promise<void> {
-    const accessTokens = Array.from(this.grantPublicKeys.keys());
+    let accessTokens = Array.from(this.grantPublicKeys.keys());
+    if (accessTokens.length === 0) {
+      await this.refreshGrantPublicKeys(true);
+      accessTokens = Array.from(this.grantPublicKeys.keys());
+    } else {
+      await this.refreshGrantPublicKeys();
+      accessTokens = Array.from(this.grantPublicKeys.keys());
+    }
     for (const accessToken of accessTokens) {
       await this.sendBusinessMessageToClient(accessToken, message);
     }
