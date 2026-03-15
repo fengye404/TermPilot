@@ -12,11 +12,13 @@ interface SessionListPanelProps {
   pinnedSids: string[];
   sessionQuery: string;
   statusFilter: SessionStatusFilter;
+  suspectedOrphanedCount: number;
   onSessionQueryChange: (value: string) => void;
   onStatusFilterChange: (value: SessionStatusFilter) => void;
   onTogglePinnedSession: (sid: string) => void;
   onSelectSession: (sid: string) => void;
   onKillSession: (sid: string) => void;
+  onCleanupSuspectedSessions: () => void;
 }
 
 const FILTER_OPTIONS: Array<{ value: SessionStatusFilter; label: string }> = [
@@ -76,6 +78,24 @@ export function SessionListPanel(props: SessionListPanelProps) {
         <p className="text-xs text-[var(--tp-text-soft)]">
           当前显示 {props.filteredSessions.length} / {props.sessions.length} 个会话。置顶会话会始终排在最前面。
         </p>
+        {props.suspectedOrphanedCount > 0 ? (
+          <div className="tp-card-muted flex items-center justify-between gap-3 px-3 py-3">
+            <div>
+              <p className="text-sm font-medium text-[var(--tp-text)]">发现疑似残留会话</p>
+              <p className="mt-1 text-xs text-[var(--tp-text-soft)]">
+                当前有 {props.suspectedOrphanedCount} 条托管命令会话已无人附着且长时间无输出。
+              </p>
+            </div>
+            <button
+              className={`${BUTTON_DANGER} min-h-10 px-4 py-2 text-xs`}
+              type="button"
+              disabled={!props.canControl}
+              onClick={props.onCleanupSuspectedSessions}
+            >
+              一键清理
+            </button>
+          </div>
+        ) : null}
         {props.filteredSessions.length === 0 ? (
           <p className="text-sm text-[var(--tp-text-muted)]">
             {props.sessions.length === 0 ? "当前没有会话。" : "没有匹配当前搜索或筛选条件的会话。"}
@@ -95,6 +115,16 @@ export function SessionListPanel(props: SessionListPanelProps) {
                 <div>
                   <p className="font-medium text-[var(--tp-text)]">{session.name}</p>
                   <p className="mt-1 text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
+                  {session.launchMode === "command" && session.status === "running" ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(session.attachedClientCount ?? 0) === 0 ? (
+                        <span className="tp-chip tp-chip-warning min-h-0 px-2.5 py-1 text-[11px]">无人附着</span>
+                      ) : null}
+                      {session.suspectedOrphaned ? (
+                        <span className="tp-chip tp-chip-danger min-h-0 px-2.5 py-1 text-[11px]">疑似残留</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <span className={`tp-chip min-h-0 px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>
                   {session.status === "running" ? "运行中" : "已退出"}

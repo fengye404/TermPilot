@@ -103,6 +103,10 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
     startedAt,
     lastSeq: 0,
     lastActivityAt: startedAt,
+    lastOutputAt: startedAt,
+    attachedClientCount: 0,
+    detachedAt: startedAt,
+    suspectedOrphaned: false,
     tmuxSessionName,
   };
 
@@ -124,6 +128,16 @@ export async function hasSession(tmuxSessionName: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function getAttachedClientCount(session: SessionRecord): Promise<number> {
+  try {
+    const output = await runTmux(["display-message", "-p", "-t", session.tmuxSessionName, "#{session_attached}"]);
+    const parsed = Number.parseInt(output.trim(), 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -195,6 +209,8 @@ export async function killSession(sid: string): Promise<SessionRecord> {
     ...current,
     status: "exited",
     lastActivityAt: now(),
+    attachedClientCount: 0,
+    suspectedOrphaned: false,
   }));
 
   const nextSession = nextState.sessions.find((item) => item.sid === sid);
@@ -209,6 +225,8 @@ export function markSessionExited(sid: string): SessionRecord | undefined {
     ...current,
     status: "exited",
     lastActivityAt: now(),
+    attachedClientCount: 0,
+    suspectedOrphaned: false,
   }));
 
   return nextState.sessions.find((session) => session.sid === sid);
@@ -219,6 +237,22 @@ export function bumpSessionSeq(sid: string): SessionRecord | undefined {
     ...current,
     lastSeq: current.lastSeq + 1,
     lastActivityAt: now(),
+    lastOutputAt: now(),
+    suspectedOrphaned: false,
+  }));
+
+  return nextState.sessions.find((session) => session.sid === sid);
+}
+
+export function syncSessionRuntimeMetadata(
+  sid: string,
+  metadata: Pick<SessionRecord, "attachedClientCount" | "detachedAt" | "suspectedOrphaned">,
+): SessionRecord | undefined {
+  const nextState = updateSession(sid, (current) => ({
+    ...current,
+    attachedClientCount: metadata.attachedClientCount,
+    detachedAt: metadata.detachedAt,
+    suspectedOrphaned: metadata.suspectedOrphaned,
   }));
 
   return nextState.sessions.find((session) => session.sid === sid);

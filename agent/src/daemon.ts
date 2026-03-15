@@ -33,12 +33,14 @@ import {
   captureSession,
   createSession,
   ensureTmuxAvailable,
+  getAttachedClientCount,
   getSessionBySid,
   hasSession,
   killSession,
   listSessions,
   markSessionExited,
   normalizeSessionWindow,
+  syncSessionRuntimeMetadata,
   resizeSession,
   sendInput,
 } from "./tmux-backend";
@@ -46,12 +48,16 @@ import {
 const DEFAULT_RELAY_URL = "ws://127.0.0.1:8787/ws";
 const OUTPUT_FRAME_LIMIT = 40;
 const GRANT_REFRESH_INTERVAL_MS = 1_000;
+const ORPHAN_WARNING_MS = 60 * 60 * 1000;
+const ORPHAN_CLEANUP_MS = 12 * 60 * 60 * 1000;
 
 interface DaemonOptions {
   relayUrl: string;
   agentToken: string;
   deviceId: string;
   pollIntervalMs: number;
+  orphanWarningMs: number;
+  orphanCleanupMs: number;
 }
 
 interface SessionRuntimeState {
@@ -226,8 +232,66 @@ export class AgentDaemon {
       this.runtimeState.set(session.sid, runtimeState);
     }
 
+    const attachedClientCount = await getAttachedClientCount(session);
+    const previousAttachedClientCount = session.attachedClientCount ?? 0;
+    const nowIso = new Date().toISOString();
+    const detachedAt = attachedClientCount === 0
+      ? (previousAttachedClientCount > 0 ? nowIso : (session.detachedAt ?? nowIso))
+      : null;
+    const lastOutputAt = session.lastOutputAt ?? session.startedAt;
+    const idleSince = Math.max(
+      Date.parse(lastOutputAt) || 0,
+      detachedAt ? (Date.parse(detachedAt) || 0) : 0,
+    );
+    const isManagedDetached = session.launchMode === "command" && attachedClientCount === 0;
+    const suspectedOrphaned = isManagedDetached && Date.now() - idleSince >= this.options.orphanWarningMs;
+    const shouldAutoCleanup = isManagedDetached && Date.now() - idleSince >= this.options.orphanCleanupMs;
+
+    let nextSession = session;
+    const metadataChanged = previousAttachedClientCount !== attachedClientCount
+      || (session.detachedAt ?? null) !== detachedAt
+      || Boolean(session.suspectedOrphaned) !== suspectedOrphaned;
+
+    if (metadataChanged) {
+      const updated = syncSessionRuntimeMetadata(session.sid, {
+        attachedClientCount,
+        detachedAt,
+        suspectedOrphaned,
+      });
+      if (updated) {
+        nextSession = updated;
+      }
+    }
+
+    if (shouldAutoCleanup) {
+      const exitedSession = await killSession(session.sid);
+      const exitMessage: SessionExitMessage = {
+        type: "session.exit",
+        deviceId: this.options.deviceId,
+        sid: exitedSession.sid,
+        payload: {
+          reason: "无人附着且长时间无输出，已自动清理",
+          exitCode: null,
+        },
+      };
+      await this.broadcastBusinessMessage(exitMessage);
+      await this.broadcastBusinessMessage({
+        type: "session.state",
+        deviceId: this.options.deviceId,
+        sid: exitedSession.sid,
+        payload: {
+          session: exitedSession,
+        },
+      });
+      this.runtimeState.set(session.sid, {
+        ...runtimeState,
+        lastStatus: "exited",
+      });
+      return;
+    }
+
     const buffer = await captureSession(session);
-    if (buffer === runtimeState.lastRenderedBuffer && runtimeState.lastStatus === session.status) {
+    if (buffer === runtimeState.lastRenderedBuffer && runtimeState.lastStatus === nextSession.status && !metadataChanged) {
       if (!existingRuntimeState) {
         this.runtimeState.set(session.sid, runtimeState);
         await this.broadcastBusinessMessage({
@@ -235,16 +299,32 @@ export class AgentDaemon {
           deviceId: this.options.deviceId,
           sid: session.sid,
           payload: {
-            session,
+            session: nextSession,
           },
         });
       }
       return;
     }
 
-    const nextSession = bumpSessionSeq(session.sid);
-    if (!nextSession) {
-      return;
+    if (buffer !== runtimeState.lastRenderedBuffer || runtimeState.lastStatus !== nextSession.status) {
+      const bumpedSession = bumpSessionSeq(session.sid);
+      if (!bumpedSession) {
+        return;
+      }
+      nextSession = bumpedSession;
+
+      const outputMessage: SessionOutputMessage = {
+        type: "session.output",
+        deviceId: this.options.deviceId,
+        sid: session.sid,
+        seq: nextSession.lastSeq,
+        payload: {
+          data: buffer,
+          mode: "replace",
+        },
+      };
+      this.pushOutputFrame(outputMessage);
+      await this.broadcastBusinessMessage(outputMessage);
     }
 
     this.runtimeState.set(session.sid, {
@@ -252,18 +332,6 @@ export class AgentDaemon {
       lastStatus: nextSession.status,
       layoutNormalized: runtimeState.layoutNormalized,
     });
-
-    const outputMessage: SessionOutputMessage = {
-      type: "session.output",
-      deviceId: this.options.deviceId,
-      sid: session.sid,
-      seq: nextSession.lastSeq,
-      payload: {
-        data: buffer,
-        mode: "replace",
-      },
-    };
-    this.pushOutputFrame(outputMessage);
 
     const stateMessage: AgentBusinessMessage = {
       type: "session.state",
@@ -274,7 +342,6 @@ export class AgentDaemon {
       },
     };
 
-    await this.broadcastBusinessMessage(outputMessage);
     await this.broadcastBusinessMessage(stateMessage);
   }
 
@@ -546,5 +613,7 @@ export function createDaemonFromEnv(): AgentDaemon {
     agentToken: process.env.TERMPILOT_AGENT_TOKEN ?? DEFAULT_AGENT_TOKEN,
     deviceId: process.env.TERMPILOT_DEVICE_ID ?? DEFAULT_DEVICE_ID,
     pollIntervalMs: Number(process.env.TERMPILOT_POLL_INTERVAL_MS ?? 500),
+    orphanWarningMs: Number(process.env.TERMPILOT_ORPHAN_WARNING_MS ?? ORPHAN_WARNING_MS),
+    orphanCleanupMs: Number(process.env.TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS ?? ORPHAN_CLEANUP_MS),
   });
 }

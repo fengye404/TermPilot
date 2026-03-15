@@ -197,6 +197,10 @@ export default function App() {
     () => sessions.filter((session) => session.status === "exited").length,
     [sessions],
   );
+  const suspectedOrphanedSessions = useMemo(
+    () => sessions.filter((session) => session.status === "running" && session.suspectedOrphaned),
+    [sessions],
+  );
   const hasSecureBinding = clientToken.trim().length > 0 && Boolean(clientKeyPair) && agentPublicKey.trim().length > 0;
   const isPaired = hasSecureBinding;
   const connected = connectionPhase === "connected";
@@ -1145,6 +1149,24 @@ export default function App() {
     showNotice("info", "已发送关闭会话请求。");
   }
 
+  function handleCleanupSuspectedSessions(): void {
+    const sessionsToCleanup = suspectedOrphanedSessions;
+    if (sessionsToCleanup.length === 0) {
+      showNotice("info", "当前没有可清理的疑似残留会话。");
+      return;
+    }
+
+    for (const session of sessionsToCleanup) {
+      void sendSecureMessage({
+        type: "session.kill",
+        reqId: createReqId("cleanup"),
+        deviceId,
+        sid: session.sid,
+      });
+    }
+    showNotice("info", `已发送 ${sessionsToCleanup.length} 条清理请求。`);
+  }
+
   function revealWorkspace(): void {
     if (!workspaceRef.current || typeof window === "undefined") {
       return;
@@ -1391,6 +1413,7 @@ export default function App() {
                   pinnedSids={pinnedSids}
                   sessionQuery={sessionQuery}
                   statusFilter={statusFilter}
+                  suspectedOrphanedCount={suspectedOrphanedSessions.length}
                   onSessionQueryChange={setSessionQuery}
                   onStatusFilterChange={setStatusFilter}
                   onTogglePinnedSession={togglePinnedSession}
@@ -1400,6 +1423,7 @@ export default function App() {
                     void requestReplay(sid, deviceIdRef.current);
                   }}
                   onKillSession={handleKillSession}
+                  onCleanupSuspectedSessions={handleCleanupSuspectedSessions}
                 />
               </div>
 
@@ -1475,6 +1499,7 @@ export default function App() {
                     pinnedSids={pinnedSids}
                     sessionQuery={sessionQuery}
                     statusFilter={statusFilter}
+                    suspectedOrphanedCount={suspectedOrphanedSessions.length}
                     onSessionQueryChange={setSessionQuery}
                     onStatusFilterChange={setStatusFilter}
                     onTogglePinnedSession={togglePinnedSession}
@@ -1485,6 +1510,7 @@ export default function App() {
                       revealWorkspace();
                     }}
                     onKillSession={handleKillSession}
+                    onCleanupSuspectedSessions={handleCleanupSuspectedSessions}
                   />
 
                   <details className="tp-card px-4 py-4 sm:px-5">

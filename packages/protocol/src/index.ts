@@ -40,6 +40,10 @@ export interface SessionRecord {
   startedAt: string;
   lastSeq: number;
   lastActivityAt: string;
+  lastOutputAt?: string;
+  attachedClientCount?: number;
+  detachedAt?: string | null;
+  suspectedOrphaned?: boolean;
   tmuxSessionName: string;
 }
 
