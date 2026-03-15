@@ -146,6 +146,7 @@ termpilot run -- python -m http.server
 - 退出当前程序本身，会话就会一起结束
 - 多数前台程序可以直接 `Ctrl+C`
 - 如果只是把本地终端窗口关掉，会话本体仍会留在 `tmux` 中；托管命令残留会话会在长期无人附着且无输出时被自动清理
+- 默认会在 1 小时后标记为疑似残留，在 12 小时后自动清理；需要调整时可在 agent 侧配置 `TERMPILOT_ORPHAN_WARNING_MS` 和 `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`
 
 ### shell 会话
 

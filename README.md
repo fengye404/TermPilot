@@ -196,10 +196,17 @@ Useful environment variables:
 - `TERMPILOT_RELAY_URL`
 - `TERMPILOT_DEVICE_ID`
 - `TERMPILOT_AGENT_TOKEN`
+- `TERMPILOT_ORPHAN_WARNING_MS`
+- `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`
 - `HOST`
 - `PORT`
 - `DATABASE_URL`
 - `TERMPILOT_PAIRING_TTL_MINUTES`
+
+Managed command cleanup defaults:
+
+- `TERMPILOT_ORPHAN_WARNING_MS`: detached and idle warning threshold, default `3600000` (1 hour)
+- `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`: detached and idle auto-clean threshold, default `43200000` (12 hours)
 
 Examples:
 

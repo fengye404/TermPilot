@@ -13,6 +13,7 @@ interface SessionListPanelProps {
   sessionQuery: string;
   statusFilter: SessionStatusFilter;
   suspectedOrphanedCount: number;
+  cleanupPending: boolean;
   onSessionQueryChange: (value: string) => void;
   onStatusFilterChange: (value: SessionStatusFilter) => void;
   onTogglePinnedSession: (sid: string) => void;
@@ -83,16 +84,16 @@ export function SessionListPanel(props: SessionListPanelProps) {
             <div>
               <p className="text-sm font-medium text-[var(--tp-text)]">发现疑似残留会话</p>
               <p className="mt-1 text-xs text-[var(--tp-text-soft)]">
-                当前有 {props.suspectedOrphanedCount} 条托管命令会话已无人附着且长时间无输出。
+                当前有 {props.suspectedOrphanedCount} 条托管命令会话已无人附着且长时间无输出，默认会在 12 小时后自动回收。
               </p>
             </div>
             <button
               className={`${BUTTON_DANGER} min-h-10 px-4 py-2 text-xs`}
               type="button"
-              disabled={!props.canControl}
+              disabled={!props.canControl || props.cleanupPending}
               onClick={props.onCleanupSuspectedSessions}
             >
-              一键清理
+              {props.cleanupPending ? "正在清理…" : `一键清理 ${props.suspectedOrphanedCount} 条`}
             </button>
           </div>
         ) : null}

@@ -169,6 +169,7 @@ export default function App() {
   const [pairingCode, setPairingCode] = useState("");
   const [pairingMessage, setPairingMessage] = useState("");
   const [pairingPending, setPairingPending] = useState(false);
+  const [cleanupPending, setCleanupPending] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [command, setCommand] = useState("");
@@ -1149,22 +1150,29 @@ export default function App() {
     showNotice("info", "已发送关闭会话请求。");
   }
 
-  function handleCleanupSuspectedSessions(): void {
+  async function handleCleanupSuspectedSessions(): Promise<void> {
     const sessionsToCleanup = suspectedOrphanedSessions;
     if (sessionsToCleanup.length === 0) {
       showNotice("info", "当前没有可清理的疑似残留会话。");
       return;
     }
 
-    for (const session of sessionsToCleanup) {
-      void sendSecureMessage({
+    if (!canControlDevice || cleanupPending) {
+      return;
+    }
+
+    setCleanupPending(true);
+    try {
+      await Promise.all(sessionsToCleanup.map((session) => sendSecureMessage({
         type: "session.kill",
         reqId: createReqId("cleanup"),
         deviceId,
         sid: session.sid,
-      });
+      })));
+      showNotice("success", `已发送 ${sessionsToCleanup.length} 条清理请求，列表状态会在设备确认后自动更新。`);
+    } finally {
+      setCleanupPending(false);
     }
-    showNotice("info", `已发送 ${sessionsToCleanup.length} 条清理请求。`);
   }
 
   function revealWorkspace(): void {
@@ -1414,6 +1422,7 @@ export default function App() {
                   sessionQuery={sessionQuery}
                   statusFilter={statusFilter}
                   suspectedOrphanedCount={suspectedOrphanedSessions.length}
+                  cleanupPending={cleanupPending}
                   onSessionQueryChange={setSessionQuery}
                   onStatusFilterChange={setStatusFilter}
                   onTogglePinnedSession={togglePinnedSession}
@@ -1500,6 +1509,7 @@ export default function App() {
                     sessionQuery={sessionQuery}
                     statusFilter={statusFilter}
                     suspectedOrphanedCount={suspectedOrphanedSessions.length}
+                    cleanupPending={cleanupPending}
                     onSessionQueryChange={setSessionQuery}
                     onStatusFilterChange={setStatusFilter}
                     onTogglePinnedSession={togglePinnedSession}

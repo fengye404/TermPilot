@@ -179,6 +179,8 @@ your-domain.com {
 - `TERMPILOT_DEVICE_ID`：显式指定设备 ID
 - `TERMPILOT_AGENT_TOKEN`：agent 调 relay 时携带的 token
 - `TERMPILOT_POLL_INTERVAL_MS`：输出轮询间隔，默认 `500`
+- `TERMPILOT_ORPHAN_WARNING_MS`：托管命令会话 detached 且无输出时标记为疑似残留的阈值，默认 `3600000`（1 小时）
+- `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`：托管命令会话 detached 且无输出时自动清理的阈值，默认 `43200000`（12 小时）
 
 ## 6. 状态目录与日志
 
@@ -238,6 +240,7 @@ termpilot run -- python -m http.server
 
 这类会话退出时，当前程序结束，会话也一起结束。
 如果本地终端窗口只是被关掉、但会话本体仍留在 `tmux` 中，当前实现会在长期无人附着且无输出时自动回收托管命令残留会话。
+如果你要调整治理节奏，可以在启动 agent 前配置 `TERMPILOT_ORPHAN_WARNING_MS` 和 `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`。
 
 ### 创建并手动接入一条 shell 会话
 
