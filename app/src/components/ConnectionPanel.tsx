@@ -50,9 +50,9 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
             />
             <Field label="设备 ID" value={props.deviceId} onChange={props.onDeviceIdChange} disabled={!props.deviceIdEditable} />
             {props.agentFingerprint ? (
-              <div className="rounded-[16px] border border-[var(--tp-border-soft)] bg-[var(--tp-surface-2)] px-3 py-3">
+              <div className="rounded-[16px] border border-[var(--tp-border-soft)] bg-[color:var(--tp-surface-2)] px-3 py-3">
                 <p className="tp-label">设备指纹</p>
-                <p className="mt-2 text-sm font-medium tracking-[0.18em] text-white">{props.agentFingerprint}</p>
+                <p className="mt-2 text-sm font-medium tracking-[0.18em] text-[var(--tp-text)]">{props.agentFingerprint}</p>
                 <p className="mt-2 text-xs text-[var(--tp-text-soft)]">配对或复核设备身份时，请和电脑端输出的指纹进行核对。</p>
               </div>
             ) : null}
@@ -60,7 +60,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
         ) : null}
         {showPairingSection ? (
           <div className="tp-card-muted p-3">
-            <p className="text-sm font-medium text-white">设备配对</p>
+            <p className="text-sm font-medium text-[var(--tp-text)]">设备配对</p>
             <p className="mt-1 text-xs text-[var(--tp-text-soft)]">
               电脑上执行 `termpilot agent --relay 你的 relay 地址`。命令会直接启动后台 agent，并打印一次性配对码和设备指纹。
             </p>

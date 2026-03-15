@@ -6,8 +6,13 @@
   --tp-bg-elevated: #eef3f0;
   --tp-panel: rgba(255, 255, 255, 0.86);
   --tp-panel-strong: rgba(249, 251, 250, 0.94);
+  --tp-surface-sunk: rgba(241, 245, 242, 0.88);
+  --tp-surface-2: rgba(247, 249, 248, 0.94);
+  --tp-terminal-bg: #f7faf8;
+  --tp-chip-bg: rgba(237, 242, 239, 0.92);
   --tp-border: rgba(56, 74, 86, 0.16);
   --tp-border-strong: rgba(56, 74, 86, 0.24);
+  --tp-border-soft: rgba(56, 74, 86, 0.12);
   --tp-text: #12202a;
   --tp-text-muted: #536272;
   --tp-text-soft: #738290;
@@ -27,8 +32,13 @@
     --tp-bg-elevated: #10161b;
     --tp-panel: rgba(17, 23, 29, 0.92);
     --tp-panel-strong: rgba(12, 18, 24, 0.96);
+    --tp-surface-sunk: rgba(9, 14, 18, 0.82);
+    --tp-surface-2: rgba(16, 22, 28, 0.94);
+    --tp-terminal-bg: #071014;
+    --tp-chip-bg: rgba(10, 15, 18, 0.82);
     --tp-border: rgba(79, 97, 110, 0.28);
     --tp-border-strong: rgba(102, 124, 140, 0.42);
+    --tp-border-soft: rgba(79, 97, 110, 0.18);
     --tp-text: #e6edf2;
     --tp-text-muted: #9aa8b4;
     --tp-text-soft: #70808d;
@@ -289,7 +299,7 @@ summary:focus-visible {
 
 .tp-button-subtle:hover:not(:disabled) {
   border-color: var(--tp-border-strong);
-  color: #ffffff;
+  color: var(--tp-text);
 }
 
 .tp-chip {
@@ -297,7 +307,7 @@ summary:focus-visible {
   border: 1px solid var(--tp-border);
   border-radius: 999px;
   padding: 0.5rem 0.8rem;
-  background: rgba(10, 15, 18, 0.82);
+  background: var(--tp-chip-bg);
   color: var(--tp-text-muted);
   font-size: 0.75rem;
   font-weight: 600;
@@ -325,7 +335,7 @@ summary:focus-visible {
   width: 100%;
   border: 1px solid var(--tp-border);
   border-radius: 16px;
-  background: rgba(10, 15, 18, 0.72);
+  background: var(--tp-surface-sunk);
   padding: 0.9rem 1rem;
   text-align: left;
   transition:
@@ -355,10 +365,18 @@ summary:focus-visible {
   background: var(--tp-panel-strong);
 }
 
+.tp-terminal-frame {
+  overflow: auto;
+  border: 1px solid var(--tp-border);
+  border-radius: 14px;
+  background: var(--tp-terminal-bg);
+  padding: 0.75rem;
+}
+
 .tp-ansi-snapshot {
   margin: 0;
   min-width: max-content;
-  color: #e6edf2;
+  color: var(--tp-text);
   font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
   font-size: 13px;
   line-height: 1.35;
@@ -376,9 +394,9 @@ summary:focus-visible {
   min-height: 40px;
   border: 1px solid rgba(31, 122, 83, 0.42);
   border-radius: 999px;
-  background: rgba(8, 13, 17, 0.92);
+  background: color-mix(in srgb, var(--tp-panel-strong) 88%, transparent);
   padding: 0 14px;
-  color: #f3faf7;
+  color: var(--tp-text);
   font-size: 12px;
   font-weight: 600;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
@@ -387,19 +405,49 @@ summary:focus-visible {
 
 .tp-mobile-focus-fab:hover:not(:disabled) {
   border-color: rgba(31, 122, 83, 0.58);
-  background: rgba(15, 24, 20, 0.96);
+  background: color-mix(in srgb, var(--tp-panel-strong) 94%, transparent);
 }
 
 .tp-empty-state {
   border: 1px dashed var(--tp-border-strong);
   border-radius: 16px;
-  background: rgba(10, 15, 18, 0.5);
+  background: color-mix(in srgb, var(--tp-panel-strong) 72%, transparent);
 }
 
 .tp-empty-grid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tp-control-button {
+  border: 1px solid var(--tp-border);
+  border-radius: 14px;
+  background: var(--tp-surface-sunk);
+  color: var(--tp-text);
+}
+
+.tp-control-button:hover:not(:disabled) {
+  border-color: var(--tp-border-strong);
+}
+
+.tp-control-button-primary {
+  border-color: rgba(31, 122, 83, 0.42);
+  background: rgba(31, 122, 83, 0.12);
+  color: #d8f3e6;
+}
+
+.tp-control-button-danger {
+  border-color: rgba(204, 104, 86, 0.34);
+  background: rgba(204, 104, 86, 0.12);
+  color: #ffd8d2;
+}
+
+.tp-keycap {
+  border: 1px solid var(--tp-border-soft);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tp-panel-strong) 88%, transparent);
+  color: var(--tp-text);
 }
 
 @media (prefers-reduced-motion: reduce) {

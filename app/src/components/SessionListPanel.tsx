@@ -93,7 +93,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-medium text-white">{session.name}</p>
+                  <p className="font-medium text-[var(--tp-text)]">{session.name}</p>
                   <p className="mt-1 text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
                 </div>
                 <span className={`tp-chip min-h-0 px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>

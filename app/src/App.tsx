@@ -123,6 +123,10 @@ function normalizePairingError(message: string): string {
   return message;
 }
 
+function isValidKeyPair(value: E2EEKeyPair | null | undefined): value is E2EEKeyPair {
+  return Boolean(value?.publicKey.trim() && value?.privateKey.trim());
+}
+
 export default function App() {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -133,6 +137,7 @@ export default function App() {
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const clientTokenRef = useRef(DEFAULT_CLIENT_TOKEN);
   const clientKeyPairRef = useRef<E2EEKeyPair | null>(null);
+  const pairingKeyDraftRef = useRef<E2EEKeyPair | null>(null);
   const agentPublicKeyRef = useRef("");
   const suppressMobileAutoSelectRef = useRef(false);
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
@@ -230,6 +235,12 @@ export default function App() {
   }, [clientKeyPair]);
 
   useEffect(() => {
+    if (clientKeyPair) {
+      pairingKeyDraftRef.current = clientKeyPair;
+    }
+  }, [clientKeyPair]);
+
+  useEffect(() => {
     agentPublicKeyRef.current = agentPublicKey;
   }, [agentPublicKey]);
 
@@ -281,6 +292,30 @@ export default function App() {
       media.removeEventListener("change", listener);
     };
   }, []);
+
+  useEffect(() => {
+    if (hasSecureBinding) {
+      return;
+    }
+    let cancelled = false;
+    void ensurePairingKeyPair()
+      .then(() => {
+        if (cancelled) {
+          return;
+        }
+        setPairingMessage((current) => (
+          current.includes("本地配对密钥")
+            ? ""
+            : current
+        ));
+      })
+      .catch(() => {
+        // ignore warmup failures and surface them only on explicit pairing
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasSecureBinding]);
 
   useEffect(() => {
     const normalizedDeviceId = deviceId.trim() || DEFAULT_DEVICE_ID;
@@ -649,6 +684,7 @@ export default function App() {
     disconnect();
     setClientToken("");
     setClientKeyPair(null);
+    pairingKeyDraftRef.current = null;
     setAgentPublicKey("");
     setAgentFingerprint("");
     setDeviceId(DEFAULT_DEVICE_ID);
@@ -835,22 +871,17 @@ export default function App() {
     setPairingPending(true);
     setPairingMessage("");
     try {
-      const nextClientKeyPair = await generateValidatedClientKeyPair();
-      const response = await fetch(`${relayHttpBaseUrl}/api/pairings/redeem`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          pairingCode: code,
-          clientPublicKey: nextClientKeyPair.publicKey,
-        }),
-      });
-
-      const payload = await response.json().catch(() => null) as PairingRedeemResponse | { message?: string } | null;
-      if (!response.ok || !payload || !("accessToken" in payload)) {
-        const message = payload && "message" in payload && payload.message ? payload.message : "配对失败";
-        throw new Error(message);
+      let nextClientKeyPair = await ensurePairingKeyPair();
+      let payload: PairingRedeemResponse;
+      try {
+        payload = await redeemPairingCode(code, nextClientKeyPair);
+      } catch (error) {
+        const message = normalizePairingError(error instanceof Error ? error.message : "配对失败");
+        if (!message.includes("本地配对密钥")) {
+          throw error;
+        }
+        nextClientKeyPair = await ensurePairingKeyPair(true);
+        payload = await redeemPairingCode(code, nextClientKeyPair);
       }
 
       const agentFingerprint = await getPublicKeyFingerprint(payload.agentPublicKey);
@@ -896,6 +927,47 @@ export default function App() {
     });
     setCreateName("");
     showNotice("success", "已发送创建会话请求。");
+  }
+
+  async function ensurePairingKeyPair(forceRefresh = false): Promise<E2EEKeyPair> {
+    if (!forceRefresh) {
+      if (isValidKeyPair(clientKeyPairRef.current)) {
+        return clientKeyPairRef.current;
+      }
+      if (isValidKeyPair(pairingKeyDraftRef.current)) {
+        return pairingKeyDraftRef.current;
+      }
+    }
+    const next = await generateValidatedClientKeyPair();
+    pairingKeyDraftRef.current = next;
+    return next;
+  }
+
+  async function redeemPairingCode(code: string, clientKeyPairValue: E2EEKeyPair): Promise<PairingRedeemResponse> {
+    const response = await fetch(`${relayHttpBaseUrl}/api/pairings/redeem`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        pairingCode: code,
+        clientPublicKey: clientKeyPairValue.publicKey,
+      }),
+    });
+
+    const payload = await response.json().catch(() => null) as PairingRedeemResponse | { message?: string } | null;
+    if (!response.ok || !payload || !("accessToken" in payload)) {
+      const message = payload && "message" in payload && payload.message ? payload.message : "配对失败";
+      throw new Error(message);
+    }
+    return payload;
+  }
+
+  function handlePairingCodeChange(value: string): void {
+    setPairingCode(value);
+    if (pairingMessage) {
+      setPairingMessage("");
+    }
   }
 
   function handleSendCommand(event: React.FormEvent<HTMLFormElement>): void {
@@ -1098,7 +1170,7 @@ export default function App() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--tp-accent-strong)]">TermPilot</p>
-            <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-white">
+            <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--tp-text)]">
               {isPaired ? "会话面板" : "先绑定你的电脑"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--tp-text-muted)]">
@@ -1121,7 +1193,7 @@ export default function App() {
           <div className="mt-4 tp-stat-grid">
             <div className="tp-stat-card">
               <div className="tp-stat-label">当前设备</div>
-              <div className="mt-2 text-sm font-medium text-white">{deviceId}</div>
+              <div className="mt-2 text-sm font-medium text-[var(--tp-text)]">{deviceId}</div>
             </div>
             <div className="tp-stat-card">
               <div className="tp-stat-label">运行中</div>
@@ -1133,7 +1205,7 @@ export default function App() {
             </div>
             <div className="tp-stat-card">
               <div className="tp-stat-label">当前查看</div>
-              <div className="mt-2 text-sm font-medium text-white">{activeSession?.name ?? "未选择"}</div>
+              <div className="mt-2 text-sm font-medium text-[var(--tp-text)]">{activeSession?.name ?? "未选择"}</div>
             </div>
           </div>
         ) : null}
@@ -1158,7 +1230,7 @@ export default function App() {
           <div className="tp-card flex flex-col justify-between px-5 py-5 sm:px-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--tp-accent-strong)]">Onboarding</p>
-              <h2 className="mt-3 max-w-xl text-[34px] font-semibold tracking-[-0.04em] text-white">
+              <h2 className="mt-3 max-w-xl text-[34px] font-semibold tracking-[-0.04em] text-[var(--tp-text)]">
                 先把你的电脑接入，再在手机上继续同一条终端会话。
               </h2>
               <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--tp-text-muted)]">
@@ -1169,17 +1241,17 @@ export default function App() {
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <div className="tp-card-muted px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--tp-text-soft)]">01</p>
-                <p className="mt-2 text-sm font-medium text-white">启动 relay</p>
+                <p className="mt-2 text-sm font-medium text-[var(--tp-text)]">启动 relay</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">在服务器或一台可访问机器上执行 `termpilot relay`。</p>
               </div>
               <div className="tp-card-muted px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--tp-text-soft)]">02</p>
-                <p className="mt-2 text-sm font-medium text-white">启动 agent</p>
+                <p className="mt-2 text-sm font-medium text-[var(--tp-text)]">启动 agent</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">在电脑上执行 `termpilot agent --relay 你的 relay 地址`。</p>
               </div>
               <div className="tp-card-muted px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--tp-text-soft)]">03</p>
-                <p className="mt-2 text-sm font-medium text-white">输入配对码</p>
+                <p className="mt-2 text-sm font-medium text-[var(--tp-text)]">输入配对码</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">把终端打印出的一次性配对码填到右侧面板。</p>
               </div>
             </div>
@@ -1194,7 +1266,7 @@ export default function App() {
                 <input
                   className="tp-input flex-1 text-base uppercase md:text-sm"
                   value={pairingCode}
-                  onChange={(event) => setPairingCode(event.target.value)}
+                  onChange={(event) => handlePairingCodeChange(event.target.value)}
                   placeholder="ABC-234"
                 />
                 <button
@@ -1213,7 +1285,7 @@ export default function App() {
 
             <details className="tp-card px-4 py-4 sm:px-5">
               <summary className="tp-disclosure-summary list-none">
-                <span className="block text-sm font-medium text-white">高级设置</span>
+                <span className="block text-sm font-medium text-[var(--tp-text)]">高级设置</span>
               </summary>
               <div className="mt-4">
                 <ConnectionPanel
@@ -1232,7 +1304,7 @@ export default function App() {
                   onWsUrlChange={setWsUrl}
                   onClientTokenChange={setClientToken}
                   onDeviceIdChange={setDeviceId}
-                  onPairingCodeChange={setPairingCode}
+                  onPairingCodeChange={handlePairingCodeChange}
                   onRedeemPairingCode={() => {
                     void handleRedeemPairingCode();
                   }}
@@ -1373,7 +1445,7 @@ export default function App() {
 
                   <details className="tp-card px-4 py-4 sm:px-5">
                     <summary className="tp-disclosure-summary list-none">
-                      <span className="block text-sm font-medium text-white">新建会话</span>
+                      <span className="block text-sm font-medium text-[var(--tp-text)]">新建会话</span>
                     </summary>
                     <div className="mt-4">
                       <CreateSessionPanel
@@ -1396,7 +1468,7 @@ export default function App() {
           <details className="tp-card px-4 py-4 sm:px-5">
             <summary className="tp-disclosure-summary list-none">
               <span>
-                <span className="block text-sm font-medium text-white">连接与设备设置</span>
+                <span className="block text-sm font-medium text-[var(--tp-text)]">连接与设备设置</span>
                 <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">不常用的连接信息和设备管理项放在这里。</span>
               </span>
             </summary>
@@ -1420,7 +1492,7 @@ export default function App() {
                 onWsUrlChange={setWsUrl}
                 onClientTokenChange={setClientToken}
                 onDeviceIdChange={setDeviceId}
-                onPairingCodeChange={setPairingCode}
+                onPairingCodeChange={handlePairingCodeChange}
                 onRedeemPairingCode={() => {
                   void handleRedeemPairingCode();
                 }}
