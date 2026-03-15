@@ -49,6 +49,7 @@ The system has three runtime pieces:
 - Device-scoped pairing, access grants, and encrypted browser-to-agent session messages
 - Relay persistence limited to pairing, grant, and audit metadata, with optional PostgreSQL via `DATABASE_URL`
 - Mobile web UI focused on viewing, light input, and shortcut controls on the same session
+- Managed command sessions include lightweight stale-session governance for long-detached, no-output leftovers
 
 This is a deliberately narrow scope. TermPilot is built for session continuity, not for desktop remoting or generic server administration.
 
