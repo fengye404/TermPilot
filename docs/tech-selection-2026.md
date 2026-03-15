@@ -29,11 +29,13 @@
 
 - Fastify
 - `@fastify/websocket`
+- SQLite（默认）
 - PostgreSQL（可选）
 
 对应策略是：
 
-- 默认无 `DATABASE_URL` 时使用内存存储
+- 默认使用本地 SQLite 持久化 relay 元数据
+- 显式 `TERMPILOT_RELAY_STORE=memory` 时切到内存模式
 - 设置 `DATABASE_URL` 时切到 PostgreSQL
 
 ## 4. agent

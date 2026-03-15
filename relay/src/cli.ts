@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { loadConfig } from "./config.js";
@@ -58,7 +59,7 @@ async function runForeground(): Promise<void> {
   process.on("exit", () => {
     clearRelayRuntime(process.pid);
   });
-  await startRelayServer({ webDir: resolveDefaultWebDir(import.meta.url), config });
+  await startRelayServer({ webDir: resolveDefaultWebDir(pathToFileURL(process.argv[1] ?? process.cwd()).href), config });
   await new Promise<void>(() => {});
 }
 

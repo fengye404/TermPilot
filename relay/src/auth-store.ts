@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 
 import type { Pool } from "pg";
 import type { ClientGrantRecord } from "@termpilot/protocol";
@@ -281,5 +282,173 @@ export class PostgresAuthStore implements AuthStore {
       [deviceId, accessToken],
     );
     return (result.rowCount ?? 0) > 0;
+  }
+}
+
+export class SqliteAuthStore implements AuthStore {
+  constructor(private readonly database: DatabaseSync) {}
+
+  private normalizeGrantRow(record: {
+    access_token: unknown;
+    device_id: unknown;
+    client_public_key: unknown;
+    created_at: unknown;
+    last_used_at: unknown;
+  }): ClientGrantRecord {
+    return {
+      accessToken: String(record.access_token),
+      deviceId: String(record.device_id),
+      clientPublicKey: typeof record.client_public_key === "string" ? record.client_public_key : undefined,
+      createdAt: String(record.created_at),
+      lastUsedAt: String(record.last_used_at),
+    };
+  }
+
+  async init(): Promise<void> {
+    this.database.exec(`
+      create table if not exists relay_pairing_codes (
+        pairing_code text primary key,
+        device_id text not null,
+        agent_public_key text,
+        expires_at text not null,
+        redeemed_at text,
+        created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+    `);
+    this.database.exec(`
+      create table if not exists relay_client_grants (
+        access_token text primary key,
+        device_id text not null,
+        client_public_key text,
+        created_at text not null,
+        last_used_at text not null
+      );
+    `);
+    this.database.exec(`
+      create index if not exists relay_client_grants_device_id_idx
+      on relay_client_grants (device_id, created_at desc);
+    `);
+  }
+
+  async createPairingCode(deviceId: string, ttlMinutes: number, agentPublicKey = ""): Promise<PairingCodeRecord & { pairingCode: string }> {
+    const pairingCode = createPairingCodeValue();
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+    this.database.prepare(`
+      insert into relay_pairing_codes (pairing_code, device_id, agent_public_key, expires_at)
+      values (?, ?, ?, ?)
+    `).run(pairingCode, deviceId, agentPublicKey, expiresAt);
+    return {
+      deviceId,
+      pairingCode,
+      expiresAt,
+      agentPublicKey,
+    };
+  }
+
+  async redeemPairingCode(pairingCode: string, clientPublicKey: string): Promise<(ClientGrantRecord & { agentPublicKey: string }) | null> {
+    const normalizedClientPublicKey = clientPublicKey.trim();
+    if (!normalizedClientPublicKey) {
+      return null;
+    }
+
+    this.database.exec("begin immediate");
+    try {
+      const record = this.database.prepare(`
+        select device_id, agent_public_key, expires_at, redeemed_at
+        from relay_pairing_codes
+        where pairing_code = ?
+      `).get(pairingCode) as {
+        device_id: unknown;
+        agent_public_key: unknown;
+        expires_at: unknown;
+        redeemed_at: unknown;
+      } | undefined;
+
+      const deviceId = record?.device_id ? String(record.device_id) : "";
+      const agentPublicKey = typeof record?.agent_public_key === "string" ? record.agent_public_key : "";
+      const expiresAt = record?.expires_at ? String(record.expires_at) : "";
+      const redeemedAt = record?.redeemed_at ? String(record.redeemed_at) : "";
+
+      if (!record || redeemedAt || Date.parse(expiresAt) <= Date.now() || !agentPublicKey) {
+        this.database.exec("rollback");
+        return null;
+      }
+
+      const accessToken = createAccessToken();
+      const now = new Date().toISOString();
+      this.database.prepare(`
+        update relay_pairing_codes
+        set redeemed_at = ?
+        where pairing_code = ?
+      `).run(now, pairingCode);
+      this.database.prepare(`
+        insert into relay_client_grants (access_token, device_id, client_public_key, created_at, last_used_at)
+        values (?, ?, ?, ?, ?)
+      `).run(accessToken, deviceId, normalizedClientPublicKey, now, now);
+      this.database.exec("commit");
+      return {
+        accessToken,
+        deviceId,
+        clientPublicKey: normalizedClientPublicKey,
+        createdAt: now,
+        lastUsedAt: now,
+        agentPublicKey,
+      };
+    } catch (error) {
+      this.database.exec("rollback");
+      throw error;
+    }
+  }
+
+  async getGrantByAccessToken(accessToken: string): Promise<ClientGrantRecord | null> {
+    const record = this.database.prepare(`
+      select access_token, device_id, client_public_key, created_at, last_used_at
+      from relay_client_grants
+      where access_token = ?
+    `).get(accessToken) as {
+      access_token: unknown;
+      device_id: unknown;
+      client_public_key: unknown;
+      created_at: unknown;
+      last_used_at: unknown;
+    } | undefined;
+
+    if (!record) {
+      return null;
+    }
+
+    const nextLastUsedAt = new Date().toISOString();
+    this.database.prepare(`
+      update relay_client_grants
+      set last_used_at = ?
+      where access_token = ?
+    `).run(nextLastUsedAt, accessToken);
+
+    return { ...this.normalizeGrantRow(record), lastUsedAt: nextLastUsedAt };
+  }
+
+  async listGrants(deviceId: string): Promise<ClientGrantRecord[]> {
+    const rows = this.database.prepare(`
+      select access_token, device_id, client_public_key, created_at, last_used_at
+      from relay_client_grants
+      where device_id = ?
+      order by created_at desc
+    `).all(deviceId) as Array<{
+      access_token: unknown;
+      device_id: unknown;
+      client_public_key: unknown;
+      created_at: unknown;
+      last_used_at: unknown;
+    }>;
+
+    return rows.map((record) => this.normalizeGrantRow(record));
+  }
+
+  async revokeGrant(deviceId: string, accessToken: string): Promise<boolean> {
+    const result = this.database.prepare(`
+      delete from relay_client_grants
+      where device_id = ? and access_token = ?
+    `).run(deviceId, accessToken);
+    return result.changes > 0;
   }
 }

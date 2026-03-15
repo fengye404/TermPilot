@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 
 import type { Pool } from "pg";
 
@@ -113,6 +114,76 @@ export class PostgresAuditStore implements AuditStore {
     );
 
     return result.rows.map((row) => ({
+      id: row.id,
+      deviceId: row.device_id,
+      action: row.action,
+      actorRole: row.actor_role,
+      detail: row.detail,
+      createdAt: row.created_at,
+    }));
+  }
+}
+
+export class SqliteAuditStore implements AuditStore {
+  constructor(private readonly database: DatabaseSync) {}
+
+  async init(): Promise<void> {
+    this.database.exec(`
+      create table if not exists relay_audit_events (
+        id text primary key,
+        device_id text not null,
+        action text not null,
+        actor_role text not null,
+        detail text not null,
+        created_at text not null
+      );
+    `);
+    this.database.exec(`
+      create index if not exists relay_audit_events_device_id_idx
+      on relay_audit_events (device_id, created_at desc);
+    `);
+  }
+
+  async addEvent(input: {
+    deviceId: string;
+    action: AuditAction;
+    actorRole: AuditActorRole;
+    detail: string;
+  }): Promise<AuditEventRecord> {
+    const event: AuditEventRecord = {
+      id: randomUUID(),
+      deviceId: input.deviceId,
+      action: input.action,
+      actorRole: input.actorRole,
+      detail: input.detail,
+      createdAt: now(),
+    };
+
+    this.database.prepare(`
+      insert into relay_audit_events (id, device_id, action, actor_role, detail, created_at)
+      values (?, ?, ?, ?, ?, ?)
+    `).run(event.id, event.deviceId, event.action, event.actorRole, event.detail, event.createdAt);
+
+    return event;
+  }
+
+  async listEvents(deviceId: string, limit: number): Promise<AuditEventRecord[]> {
+    const rows = this.database.prepare(`
+      select id, device_id, action, actor_role, detail, created_at
+      from relay_audit_events
+      where device_id = ?
+      order by created_at desc
+      limit ?
+    `).all(deviceId, limit) as Array<{
+      id: string;
+      device_id: string;
+      action: AuditAction;
+      actor_role: AuditActorRole;
+      detail: string;
+      created_at: string;
+    }>;
+
+    return rows.map((row) => ({
       id: row.id,
       deviceId: row.device_id,
       action: row.action,

@@ -18,6 +18,8 @@ const RELAY_ENV_FLAGS: EnvFlag[] = [
   { flag: "--host", envName: "HOST" },
   { flag: "--port", envName: "PORT" },
   { flag: "--agent-token", envName: "TERMPILOT_AGENT_TOKEN" },
+  { flag: "--store", envName: "TERMPILOT_RELAY_STORE" },
+  { flag: "--sqlite-path", envName: "TERMPILOT_SQLITE_PATH" },
   { flag: "--client-token", envName: "TERMPILOT_CLIENT_TOKEN" },
   { flag: "--database-url", envName: "DATABASE_URL" },
   { flag: "--pairing-ttl", envName: "TERMPILOT_PAIRING_TTL_MINUTES" },
@@ -30,6 +32,7 @@ function printHelp(): void {
   termpilot relay start
   termpilot relay stop
   termpilot relay run
+  termpilot relay --store sqlite [--sqlite-path /path/to/relay.db]
   termpilot agent [--pair] [--relay ws://127.0.0.1:8787/ws] [--device-id pc-main]
   termpilot agent status
   termpilot agent stop

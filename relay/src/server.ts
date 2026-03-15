@@ -1,10 +1,11 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { Pool } from "pg";
+import type { DatabaseSync } from "node:sqlite";
 
 import type {
   AgentToRelayMessage,
@@ -22,9 +23,10 @@ import type {
 } from "@termpilot/protocol";
 import { DEFAULT_CLIENT_TOKEN, parseJsonMessage } from "@termpilot/protocol";
 
-import { MemoryAuthStore, PostgresAuthStore, type AuthStore } from "./auth-store.js";
-import { MemoryAuditStore, PostgresAuditStore, type AuditStore } from "./audit-store.js";
+import { MemoryAuthStore, PostgresAuthStore, SqliteAuthStore, type AuthStore } from "./auth-store.js";
+import { MemoryAuditStore, PostgresAuditStore, SqliteAuditStore, type AuditStore } from "./audit-store.js";
 import { loadConfig, type RelayConfig } from "./config.js";
+import { openRelaySqliteDatabase } from "./sqlite-db.js";
 
 type ClientSocket = import("ws").WebSocket;
 
@@ -82,7 +84,7 @@ function createStaticPath(webDir: string, urlPath: string): string | null {
   return resolvedPath;
 }
 
-export function resolveDefaultWebDir(moduleUrl = import.meta.url): string {
+export function resolveDefaultWebDir(moduleUrl: string): string {
   const candidates = [
     "../../app/dist",
     "../app/dist",
@@ -107,9 +109,10 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   const app = Fastify({ logger: true });
   const agents = new Map<string, AgentConnection>();
   const clients = new Set<ClientConnection>();
-  const webDir = options.webDir ?? resolveDefaultWebDir(import.meta.url);
-  const storeMode = config.databaseUrl ? "postgres" : "memory";
+  const webDir = options.webDir ?? resolveDefaultWebDir(pathToFileURL(process.argv[1] ?? process.cwd()).href);
+  const storeMode = config.storeMode;
   let pool: Pool | null = null;
+  let sqliteDatabase: DatabaseSync | null = null;
 
   if ((process.env.TERMPILOT_CLIENT_TOKEN ?? "").trim() === DEFAULT_CLIENT_TOKEN) {
     app.log.warn("检测到 TERMPILOT_CLIENT_TOKEN 仍为默认 demo-client-token。出于隔离安全考虑，relay 已自动禁用全局客户端访问令牌。");
@@ -119,12 +122,22 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   }
 
   const storesPromise: Promise<{ authStore: AuthStore; auditStore: AuditStore }> = (async () => {
-    if (!config.databaseUrl) {
-      app.log.warn("未提供 DATABASE_URL，当前 relay 使用内存存储授权与审计元数据。");
+    if (storeMode === "memory") {
+      app.log.warn("当前 relay 使用内存存储授权与审计元数据；重启后服务端元数据会丢失。");
       const authStore = new MemoryAuthStore();
       const auditStore = new MemoryAuditStore();
       await authStore.init();
       await auditStore.init();
+      return { authStore, auditStore };
+    }
+
+    if (storeMode === "sqlite") {
+      sqliteDatabase = openRelaySqliteDatabase(config.sqlitePath!);
+      const authStore = new SqliteAuthStore(sqliteDatabase);
+      const auditStore = new SqliteAuditStore(sqliteDatabase);
+      await authStore.init();
+      await auditStore.init();
+      app.log.info(`relay 已连接 SQLite: ${config.sqlitePath}，当前仅持久化配对、授权与审计元数据。`);
       return { authStore, auditStore };
     }
 
@@ -133,7 +146,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     const auditStore = new PostgresAuditStore(pool);
     await authStore.init();
     await auditStore.init();
-    app.log.info("relay 已连接 PostgreSQL，当前仅存储授权与审计元数据。");
+    app.log.info("relay 已连接 PostgreSQL，当前仅持久化配对、授权与审计元数据。");
     return { authStore, auditStore };
   })();
 
@@ -292,6 +305,7 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     if (pool) {
       await pool.end();
     }
+    sqliteDatabase?.close();
   });
 
   app.get("/health", async () => ({

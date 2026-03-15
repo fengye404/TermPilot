@@ -28,6 +28,10 @@ export function getRelayLogFilePath(): string {
   return path.join(getRelayHome(), "relay.log");
 }
 
+export function getRelayDatabaseFilePath(): string {
+  return path.join(getRelayHome(), "relay.db");
+}
+
 export function loadRelayRuntime(): RelayRuntimeInfo | null {
   ensureRelayHome();
   try {

@@ -47,7 +47,7 @@ TermPilot 围绕一条很明确的主路径设计：
 - 基于 `tmux` 的受管理会话，输出回放由 agent 提供
 - 本地优先的会话状态模型，会话标题、cwd、状态细节和终端输出保留在 agent 所在电脑
 - 设备级配对与授权模型，用于浏览器与 agent 之间的加密通信
-- relay 持久化默认只保留配对、grant 与审计元数据，可通过 `DATABASE_URL` 切换到 PostgreSQL
+- relay 持久化默认只保留配对、grant 与审计元数据，长期运行默认使用 SQLite，也可通过 `DATABASE_URL` 切换到 PostgreSQL
 - 一个面向移动端的 Web UI，聚焦查看、轻输入和快捷控制
 - 托管命令会话带有轻量残留治理，会自动回收长期无人附着且无输出的会话
 
@@ -90,7 +90,7 @@ termpilot relay stop
 termpilot relay run
 ```
 
-默认情况下，relay 会后台启动，监听 `0.0.0.0:8787`，同时提供 Web UI 和 `/ws`。
+默认情况下，relay 会后台启动，监听 `0.0.0.0:8787`，同时提供 Web UI 和 `/ws`，并把 relay 元数据持久化到 `~/.termpilot/relay.db`。
 
 ### 2. 启动 agent
 
@@ -196,6 +196,8 @@ termpilot run -- <command>
 - `TERMPILOT_RELAY_URL`
 - `TERMPILOT_DEVICE_ID`
 - `TERMPILOT_AGENT_TOKEN`
+- `TERMPILOT_RELAY_STORE`
+- `TERMPILOT_SQLITE_PATH`
 - `TERMPILOT_ORPHAN_WARNING_MS`
 - `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`
 - `HOST`
@@ -207,6 +209,11 @@ termpilot run -- <command>
 
 - `TERMPILOT_ORPHAN_WARNING_MS`: detached 且无输出的预警阈值，默认 `3600000`（1 小时）
 - `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`: detached 且无输出的自动清理阈值，默认 `43200000`（12 小时）
+
+relay 存储默认值:
+
+- `TERMPILOT_RELAY_STORE`: 默认 `sqlite`，可显式设成 `memory`
+- `TERMPILOT_SQLITE_PATH`: SQLite 文件路径，默认 `~/.termpilot/relay.db`
 
 示例:
 
@@ -230,6 +237,7 @@ HOST=0.0.0.0 PORT=8787 termpilot relay
 - 前面放一个反向代理
 - 手机上使用 `https://your-domain.com`
 - agent 使用 `wss://your-domain.com/ws`
+- relay 元数据尽量放在 SQLite 或 PostgreSQL 上，而不是易失的内存存储
 
 最小 Caddy 示例:
 
@@ -238,6 +246,38 @@ your-domain.com {
     reverse_proxy 127.0.0.1:8787
 }
 ```
+
+### relay 可执行文件
+
+为当前平台构建一个单文件 relay 可执行物:
+
+```bash
+pnpm build:relay-bin
+./dist/termpilot-relay run
+```
+
+这个可执行物沿用和 npm CLI 一致的默认值，包括 `~/.termpilot/relay.db` 这条 SQLite 路径。
+
+### relay Docker 镜像
+
+构建镜像:
+
+```bash
+docker build -f Dockerfile.relay -t termpilot-relay .
+```
+
+使用持久化卷启动:
+
+```bash
+docker run -d \
+  --name termpilot-relay \
+  -p 8787:8787 \
+  -e TERMPILOT_AGENT_TOKEN=change-me \
+  -v termpilot-relay-data:/var/lib/termpilot \
+  termpilot-relay
+```
+
+容器内默认把 relay 元数据持久化到 `/var/lib/termpilot/relay.db`。
 
 ## 非目标
 

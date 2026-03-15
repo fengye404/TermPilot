@@ -47,7 +47,7 @@ The system has three runtime pieces:
 - `tmux`-backed managed sessions with output replay served by the agent
 - Local-first session state: titles, cwd, status details, and terminal output stay on the agent host
 - Device-scoped pairing, access grants, and encrypted browser-to-agent session messages
-- Relay persistence limited to pairing, grant, and audit metadata, with optional PostgreSQL via `DATABASE_URL`
+- Relay persistence limited to pairing, grant, and audit metadata, with SQLite as the default long-running store and optional PostgreSQL via `DATABASE_URL`
 - Mobile web UI focused on viewing, light input, and shortcut controls on the same session
 - Managed command sessions include lightweight stale-session governance for long-detached, no-output leftovers
 
@@ -90,7 +90,7 @@ termpilot relay stop
 termpilot relay run
 ```
 
-By default, the relay starts in the background, listens on `0.0.0.0:8787`, and serves both the web UI and `/ws`.
+By default, the relay starts in the background, listens on `0.0.0.0:8787`, serves both the web UI and `/ws`, and persists relay metadata to `~/.termpilot/relay.db`.
 
 ### 2. Start the agent
 
@@ -196,6 +196,8 @@ Useful environment variables:
 - `TERMPILOT_RELAY_URL`
 - `TERMPILOT_DEVICE_ID`
 - `TERMPILOT_AGENT_TOKEN`
+- `TERMPILOT_RELAY_STORE`
+- `TERMPILOT_SQLITE_PATH`
 - `TERMPILOT_ORPHAN_WARNING_MS`
 - `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`
 - `HOST`
@@ -207,6 +209,11 @@ Managed command cleanup defaults:
 
 - `TERMPILOT_ORPHAN_WARNING_MS`: detached and idle warning threshold, default `3600000` (1 hour)
 - `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`: detached and idle auto-clean threshold, default `43200000` (12 hours)
+
+Relay store defaults:
+
+- `TERMPILOT_RELAY_STORE`: `sqlite` by default, can be set to `memory`
+- `TERMPILOT_SQLITE_PATH`: SQLite file path, default `~/.termpilot/relay.db`
 
 Examples:
 
@@ -230,6 +237,7 @@ For regular use:
 - put a reverse proxy in front of it
 - use `https://your-domain.com` on mobile
 - use `wss://your-domain.com/ws` for the agent
+- keep relay metadata on SQLite or PostgreSQL instead of volatile memory
 
 Minimal Caddy example:
 
@@ -238,6 +246,38 @@ your-domain.com {
     reverse_proxy 127.0.0.1:8787
 }
 ```
+
+### Relay Binary
+
+Build a single relay executable for the current platform:
+
+```bash
+pnpm build:relay-bin
+./dist/termpilot-relay run
+```
+
+The generated executable keeps the same defaults as the npm-installed CLI, including SQLite at `~/.termpilot/relay.db`.
+
+### Relay Docker Image
+
+Build the image:
+
+```bash
+docker build -f Dockerfile.relay -t termpilot-relay .
+```
+
+Run it with a persistent state volume:
+
+```bash
+docker run -d \
+  --name termpilot-relay \
+  -p 8787:8787 \
+  -e TERMPILOT_AGENT_TOKEN=change-me \
+  -v termpilot-relay-data:/var/lib/termpilot \
+  termpilot-relay
+```
+
+Inside the container, relay metadata persists to `/var/lib/termpilot/relay.db` by default.
 
 ## Non-Goals
 

@@ -27,11 +27,25 @@ TermPilot 当前由三部分组成：
 
 ## 2. relay 存储模式
 
-当前代码支持两种 relay 存储模式：
+当前代码支持三种 relay 存储模式：
 
-### 默认模式：内存存储
+### 默认长期模式：SQLite
 
-不设置 `DATABASE_URL` 时：
+不设置 `DATABASE_URL`，并且不显式把 `TERMPILOT_RELAY_STORE` 设为 `memory` 时：
+
+- relay 会把配对码、设备 grants、审计事件写进本地 SQLite
+- 默认路径是 `~/.termpilot/relay.db`
+- relay 重启后，服务端元数据会保留下来
+
+适合：
+
+- 个人部署
+- 单机长期运行
+- 希望继续保持一条命令启动
+
+### 显式临时模式：内存存储
+
+把 `TERMPILOT_RELAY_STORE=memory` 时：
 
 - 配对码、设备 grants、审计事件存在内存里
 - relay 重启后这些服务端状态都会丢失
@@ -42,7 +56,7 @@ TermPilot 当前由三部分组成：
 - 局域网试用
 - 自己快速验证链路
 
-### 持久化模式：PostgreSQL
+### 外部数据库模式：PostgreSQL
 
 设置 `DATABASE_URL` 后：
 
@@ -81,6 +95,7 @@ termpilot relay
 - 后台启动
 - 默认监听 `0.0.0.0:8787`
 - 日志写入 `~/.termpilot/relay.log`
+- 默认把 relay 元数据写到 `~/.termpilot/relay.db`
 
 常用命令：
 
@@ -157,6 +172,43 @@ your-domain.com {
 - `/api/*`
 - VitePress 之外的内建 Web UI 静态资源
 
+### 本地二进制方式
+
+如果你不想在部署机上保留完整仓库，可以先在构建机上执行：
+
+```bash
+pnpm build:relay-bin
+```
+
+然后把生成的 `dist/termpilot-relay` 拷到目标机，直接运行：
+
+```bash
+./termpilot-relay run
+```
+
+这条可执行物沿用与 CLI 相同的默认行为，包括 SQLite 持久化到 `~/.termpilot/relay.db`。
+
+### Docker 方式
+
+仓库内提供了 relay 专用镜像构建文件：
+
+```bash
+docker build -f Dockerfile.relay -t termpilot-relay .
+```
+
+推荐启动方式：
+
+```bash
+docker run -d \
+  --name termpilot-relay \
+  -p 8787:8787 \
+  -e TERMPILOT_AGENT_TOKEN=change-me \
+  -v termpilot-relay-data:/var/lib/termpilot \
+  termpilot-relay
+```
+
+容器内默认把 SQLite 放在 `/var/lib/termpilot/relay.db`。
+
 ## 5. 环境变量
 
 ### relay 侧
@@ -164,6 +216,8 @@ your-domain.com {
 - `HOST`：默认 `0.0.0.0`
 - `PORT`：默认 `8787`
 - `TERMPILOT_AGENT_TOKEN`：agent 连接 relay 和调用管理 API 时使用
+- `TERMPILOT_RELAY_STORE`：`sqlite` / `memory`；默认 `sqlite`
+- `TERMPILOT_SQLITE_PATH`：SQLite 文件路径，默认 `~/.termpilot/relay.db`
 - `DATABASE_URL`：启用 PostgreSQL 持久化
 - `TERMPILOT_PAIRING_TTL_MINUTES`：一次性配对码 TTL，默认 `10`
 

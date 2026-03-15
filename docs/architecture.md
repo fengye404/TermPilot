@@ -165,7 +165,8 @@ termpilot claude code
 
 当前有两档：
 
-- 无 `DATABASE_URL`：内存存储
+- 默认：SQLite，路径为 `~/.termpilot/relay.db`
+- 显式 `TERMPILOT_RELAY_STORE=memory`：内存存储
 - 有 `DATABASE_URL`：PostgreSQL
 
 当前 relay 只持有最小必要元数据：

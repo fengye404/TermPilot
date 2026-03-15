@@ -1,16 +1,36 @@
 import { defineConfig } from "tsup";
 
-export default defineConfig({
-  entry: ["src/cli.ts"],
-  format: ["esm"],
-  platform: "node",
-  target: "node22",
-  clean: false,
-  outDir: "dist",
-  sourcemap: false,
-  splitting: false,
-  shims: false,
-  banner: {
-    js: "#!/usr/bin/env node",
+export default defineConfig([
+  {
+    entry: {
+      cli: "src/cli.ts",
+    },
+    format: ["esm"],
+    platform: "node",
+    target: "node22",
+    clean: false,
+    outDir: "dist",
+    sourcemap: false,
+    splitting: false,
+    shims: false,
+    banner: {
+      js: "#!/usr/bin/env node",
+    },
   },
-});
+  {
+    entry: {
+      "relay-bin": "relay/src/relay-bin.ts",
+    },
+    format: ["cjs"],
+    platform: "node",
+    target: "node22",
+    clean: false,
+    outDir: "dist",
+    sourcemap: false,
+    splitting: false,
+    shims: false,
+    outExtension() {
+      return { js: ".cjs" };
+    },
+  },
+]);

@@ -23,6 +23,7 @@
   },
   "scripts": {
     "build": "pnpm -r typecheck && tsc --noEmit -p tsconfig.json && pnpm --filter @termpilot/app build && tsup",
+    "build:relay-bin": "pnpm build && node scripts/build-relay-bin.mjs",
     "build:web": "pnpm --filter @termpilot/app build",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
@@ -54,6 +55,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.12.0",
+    "postject": "^1.0.0-alpha.6",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
     "vitepress": "^1.6.4"
