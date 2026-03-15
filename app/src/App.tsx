@@ -1390,7 +1390,7 @@ export default function App() {
                 <div
                   ref={workspaceRef}
                   data-testid="terminal-workspace"
-                  className={mobileTerminalFocusMode ? "fixed inset-0 z-50 overflow-y-auto bg-[rgba(11,15,18,0.98)] px-3 py-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]" : undefined}
+                  className={mobileTerminalFocusMode ? "tp-mobile-focus-shell fixed inset-0 z-50 overflow-y-auto px-3 py-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]" : undefined}
                 >
                   <TerminalWorkspace
                     activeSession={activeSession}

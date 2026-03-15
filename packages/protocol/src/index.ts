@@ -478,26 +478,30 @@ export interface E2EEKeyPair {
 }
 
 export async function generateE2EEKeyPair(): Promise<E2EEKeyPair> {
-  if (!hasWebCryptoSubtle()) {
-    const { secretKey, publicKey } = p256.keygen();
-    return {
-      publicKey: `${RAW_P256_PUBLIC_PREFIX}${toBase64(publicKey)}`,
-      privateKey: `${RAW_P256_PRIVATE_PREFIX}${toBase64(secretKey)}`,
-    };
+  if (hasWebCryptoSubtle()) {
+    try {
+      const keyPair = await getSubtle().generateKey(
+        {
+          name: "ECDH",
+          namedCurve: "P-256",
+        },
+        true,
+        ["deriveBits"],
+      );
+      const publicKey = await getSubtle().exportKey("spki", keyPair.publicKey);
+      const privateKey = await getSubtle().exportKey("pkcs8", keyPair.privateKey);
+      return {
+        publicKey: toBase64(new Uint8Array(publicKey)),
+        privateKey: toBase64(new Uint8Array(privateKey)),
+      };
+    } catch {
+      // Fall through to the pure-JS implementation when subtle exists but ECDH is unavailable.
+    }
   }
-  const keyPair = await getSubtle().generateKey(
-    {
-      name: "ECDH",
-      namedCurve: "P-256",
-    },
-    true,
-    ["deriveBits"],
-  );
-  const publicKey = await getSubtle().exportKey("spki", keyPair.publicKey);
-  const privateKey = await getSubtle().exportKey("pkcs8", keyPair.privateKey);
+  const { secretKey, publicKey } = p256.keygen();
   return {
-    publicKey: toBase64(new Uint8Array(publicKey)),
-    privateKey: toBase64(new Uint8Array(privateKey)),
+    publicKey: `${RAW_P256_PUBLIC_PREFIX}${toBase64(publicKey)}`,
+    privateKey: `${RAW_P256_PRIVATE_PREFIX}${toBase64(secretKey)}`,
   };
 }
 
@@ -516,21 +520,31 @@ export async function encryptForPeer(
       ciphertext: toBase64(ciphertext),
     };
   }
-  const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await getSubtle().encrypt(
-    {
-      name: "AES-GCM",
-      iv: toArrayBuffer(iv),
-      additionalData: buildEnvelopeAad(context),
-    },
-    key,
-    toArrayBuffer(textEncoder().encode(plaintext)),
-  );
-  return {
-    iv: toBase64(iv),
-    ciphertext: toBase64(new Uint8Array(ciphertext)),
-  };
+  try {
+    const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await getSubtle().encrypt(
+      {
+        name: "AES-GCM",
+        iv: toArrayBuffer(iv),
+        additionalData: buildEnvelopeAad(context),
+      },
+      key,
+      toArrayBuffer(textEncoder().encode(plaintext)),
+    );
+    return {
+      iv: toBase64(iv),
+      ciphertext: toBase64(new Uint8Array(ciphertext)),
+    };
+  } catch {
+    const key = deriveSharedKeyBytesPureJs(privateKeyPkcs8, publicKeySpki);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = gcm(key, iv, buildEnvelopeAadBytes(context)).encrypt(textEncoder().encode(plaintext));
+    return {
+      iv: toBase64(iv),
+      ciphertext: toBase64(ciphertext),
+    };
+  }
 }
 
 export async function decryptFromPeer(
@@ -544,24 +558,37 @@ export async function decryptFromPeer(
     const plaintext = gcm(key, fromBase64(payload.iv), buildEnvelopeAadBytes(context)).decrypt(fromBase64(payload.ciphertext));
     return textDecoder().decode(plaintext);
   }
-  const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
-  const plaintext = await getSubtle().decrypt(
-    {
-      name: "AES-GCM",
-      iv: toArrayBuffer(fromBase64(payload.iv)),
-      additionalData: buildEnvelopeAad(context),
-    },
-    key,
-    toArrayBuffer(fromBase64(payload.ciphertext)),
-  );
-  return textDecoder().decode(plaintext);
+  try {
+    const key = await deriveSharedKey(privateKeyPkcs8, publicKeySpki);
+    const plaintext = await getSubtle().decrypt(
+      {
+        name: "AES-GCM",
+        iv: toArrayBuffer(fromBase64(payload.iv)),
+        additionalData: buildEnvelopeAad(context),
+      },
+      key,
+      toArrayBuffer(fromBase64(payload.ciphertext)),
+    );
+    return textDecoder().decode(plaintext);
+  } catch {
+    const key = deriveSharedKeyBytesPureJs(privateKeyPkcs8, publicKeySpki);
+    const plaintext = gcm(key, fromBase64(payload.iv), buildEnvelopeAadBytes(context)).decrypt(fromBase64(payload.ciphertext));
+    return textDecoder().decode(plaintext);
+  }
 }
 
 export async function getPublicKeyFingerprint(publicKeySpki: string): Promise<string> {
   const publicKeyBytes = normalizePublicKeyToRaw(publicKeySpki);
-  const digest = hasWebCryptoSubtle()
-    ? new Uint8Array(await getSubtle().digest("SHA-256", toArrayBuffer(publicKeyBytes)))
-    : sha256(publicKeyBytes);
+  let digest: Uint8Array;
+  if (hasWebCryptoSubtle()) {
+    try {
+      digest = new Uint8Array(await getSubtle().digest("SHA-256", toArrayBuffer(publicKeyBytes)));
+    } catch {
+      digest = sha256(publicKeyBytes);
+    }
+  } else {
+    digest = sha256(publicKeyBytes);
+  }
   const hex = toHex(digest).toUpperCase();
   return `${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}`;
 }

@@ -408,6 +408,10 @@ summary:focus-visible {
   background: color-mix(in srgb, var(--tp-panel-strong) 94%, transparent);
 }
 
+.tp-mobile-focus-shell {
+  background: color-mix(in srgb, var(--tp-bg) 96%, transparent);
+}
+
 .tp-empty-state {
   border: 1px dashed var(--tp-border-strong);
   border-radius: 16px;
