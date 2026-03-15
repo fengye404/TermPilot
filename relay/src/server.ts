@@ -61,22 +61,23 @@ function getMimeType(filePath: string): string {
   return STATIC_CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
-function createStaticPath(webDir: string, urlPath: string): string {
+function createStaticPath(webDir: string, urlPath: string): string | null {
   const requestPath = decodeURIComponent(urlPath.split("?")[0] ?? "/");
   const relativePath = requestPath === "/" ? "index.html" : requestPath.replace(/^\/+/, "");
   const resolvedPath = path.resolve(webDir, relativePath);
+  const hasExplicitExtension = path.extname(relativePath) !== "";
   if (!resolvedPath.startsWith(path.resolve(webDir))) {
-    return path.join(webDir, "index.html");
+    return hasExplicitExtension ? null : path.join(webDir, "index.html");
   }
   if (!existsSync(resolvedPath)) {
-    return path.join(webDir, "index.html");
+    return hasExplicitExtension ? null : path.join(webDir, "index.html");
   }
   try {
     if (statSync(resolvedPath).isDirectory()) {
       return path.join(webDir, "index.html");
     }
   } catch {
-    return path.join(webDir, "index.html");
+    return hasExplicitExtension ? null : path.join(webDir, "index.html");
   }
   return resolvedPath;
 }
@@ -537,6 +538,9 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
 
   app.get("/*", async (request, reply) => {
     const filePath = createStaticPath(webDir, request.raw.url ?? "/");
+    if (!filePath) {
+      return reply.code(404).send({ message: "Not Found" });
+    }
     reply.header("content-type", getMimeType(filePath));
     return reply.send(createReadStream(filePath));
   });
