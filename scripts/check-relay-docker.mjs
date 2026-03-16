@@ -4,7 +4,29 @@ import { setTimeout as delay } from "node:timers/promises";
 const ROOT = "/Users/fengye/workspace/TermPilot";
 const IMAGE = `termpilot-relay:test-${Date.now()}`;
 const CONTAINER = `termpilot-relay-smoke-${Date.now()}`;
-const PORT = 18910;
+
+async function getFreePort() {
+  const { createServer } = await import("node:net");
+  return await new Promise((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("无法获取空闲端口"));
+        return;
+      }
+      const port = address.port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+    server.on("error", reject);
+  });
+}
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -35,8 +57,8 @@ function run(command, args, options = {}) {
   });
 }
 
-async function waitForHealth() {
-  const url = `http://127.0.0.1:${PORT}/health`;
+async function waitForHealth(port) {
+  const url = `http://127.0.0.1:${port}/health`;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       const response = await fetch(url);
@@ -53,6 +75,15 @@ async function waitForHealth() {
 
 async function cleanup() {
   try {
+    const { stdout } = await run("docker", ["ps", "-aq", "--filter", "name=termpilot-relay-smoke-"]);
+    const ids = stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (ids.length > 0) {
+      await run("docker", ["rm", "-f", ...ids]);
+    }
+  } catch {
+    // ignore
+  }
+  try {
     await run("docker", ["rm", "-f", CONTAINER]);
   } catch {
     // ignore
@@ -65,6 +96,7 @@ async function cleanup() {
 }
 
 async function main() {
+  const port = await getFreePort();
   await cleanup();
   await run("docker", ["build", "-f", "Dockerfile.relay", "-t", IMAGE, "."]);
   await run("docker", [
@@ -73,14 +105,14 @@ async function main() {
     "--name",
     CONTAINER,
     "-p",
-    `${PORT}:8787`,
+    `${port}:8787`,
     "-e",
     "TERMPILOT_AGENT_TOKEN=test-agent-token",
     IMAGE,
   ]);
 
   try {
-    const health = await waitForHealth();
+    const health = await waitForHealth(port);
     if (health.storeMode !== "sqlite") {
       throw new Error(`Docker relay 应默认使用 sqlite，实际是 ${health.storeMode}`);
     }

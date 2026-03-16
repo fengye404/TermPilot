@@ -50,27 +50,7 @@ termpilot relay run
 termpilot relay stop
 ```
 
-### 2.2 用 relay 可执行 bundle
-
-如果你不想在部署机上保留完整仓库，可以先在构建机上生成 relay 专用可执行 bundle：
-
-```bash
-pnpm build:relay-bin
-```
-
-然后把生成的 `dist/termpilot-relay` 拷到目标机，直接运行：
-
-```bash
-./termpilot-relay run
-```
-
-这条可执行 bundle 和 npm CLI 的默认行为一致：
-
-- 默认监听 `0.0.0.0:8787`
-- 默认把 relay 元数据写到 `~/.termpilot/relay.db`
-- 目标机需要 `Node.js 22+`
-
-### 2.3 用 Docker
+### 2.2 用 Docker
 
 如果你更希望直接拉现成镜像，推荐直接使用已经发布好的 relay 镜像：
 
@@ -124,27 +104,19 @@ termpilot agent
 
 以后再执行 `termpilot agent`，如果后台 agent 已在运行，它通常只会显示当前状态。
 
-### 3.2 用 agent 可执行 bundle
+### 3.2 交给系统进程管理器托管
 
-如果你不想在目标电脑上保留完整仓库，可以先在构建机上生成 agent 专用可执行 bundle：
-
-```bash
-pnpm build:agent-bin
-```
-
-然后把生成的 `dist/termpilot-agent` 拷到目标机，直接运行：
+如果你希望 agent 常驻，并在电脑重启后自动恢复，推荐让系统进程管理器托管前台模式：
 
 ```bash
-./termpilot-agent start --relay wss://your-domain.com/ws
+termpilot agent --foreground --relay wss://your-domain.com/ws
 ```
 
-常用命令也和 CLI 保持一致：
+适合：
 
-```bash
-./termpilot-agent status
-./termpilot-agent --pair
-./termpilot-agent stop
-```
+- macOS 上的 `launchd`
+- Linux 桌面或用户会话里的 `systemd --user`
+- 其他 supervisor，例如 `supervisord`
 
 ## 4. 在手机完成配对
 

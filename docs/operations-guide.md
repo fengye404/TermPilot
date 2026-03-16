@@ -87,13 +87,11 @@ TermPilot 当前由三部分组成：
 ### relay
 
 - `npm CLI`：最简单，一条命令启动，适合个人部署
-- `relay` 可执行 bundle：适合不想在部署机保留仓库，但能接受目标机安装 Node 22+
 - Docker：适合已有容器部署习惯，希望直接拉官方镜像
 
 ### agent
 
 - `npm CLI`：最直接，适合日常开发机和个人电脑
-- `agent` 可执行 bundle：适合不想保留完整仓库，但希望保留同样命令面
 - `launchd` / `systemd --user` / supervisor：适合希望 agent 常驻并由系统托管
 
 ## 4. relay 部署
@@ -121,23 +119,7 @@ termpilot relay run
 termpilot relay stop
 ```
 
-### 4.2 relay 可执行 bundle
-
-如果你不想在部署机上保留完整仓库，可以先在构建机上执行：
-
-```bash
-pnpm build:relay-bin
-```
-
-然后把生成的 `dist/termpilot-relay` 拷到目标机，直接运行：
-
-```bash
-./termpilot-relay run
-```
-
-这条可执行物沿用与 CLI 相同的默认行为，包括 SQLite 持久化到 `~/.termpilot/relay.db`；目标机需要 Node 22+。
-
-### 4.3 Docker
+### 4.2 Docker
 
 直接使用已经发布好的 relay 镜像：
 
@@ -161,7 +143,7 @@ docker run -d \
 如果你需要固定版本，直接把 `latest` 换成发布 tag，例如 `fengye404/termpilot-relay:0.3.9`。
 如果你确实要自己构建镜像，再使用仓库里的 `Dockerfile.relay`。
 
-### 4.4 公网入口
+### 4.3 公网入口
 
 推荐长期模式：
 
@@ -211,31 +193,7 @@ termpilot agent stop
 termpilot agent --foreground
 ```
 
-### 5.2 agent 可执行 bundle
-
-如果你不想在目标电脑上保留完整仓库，可以先在构建机上执行：
-
-```bash
-pnpm build:agent-bin
-```
-
-然后把生成的 `dist/termpilot-agent` 拷到目标机，直接运行：
-
-```bash
-./termpilot-agent start --relay wss://your-domain.com/ws
-```
-
-常用命令：
-
-```bash
-./termpilot-agent --pair
-./termpilot-agent status
-./termpilot-agent stop
-```
-
-目标机同样需要 Node 22+。
-
-### 5.3 用进程管理器托管 agent
+### 5.2 用进程管理器托管 agent
 
 如果你希望 agent 常驻，并在电脑重启后自动恢复，推荐让系统进程管理器托管前台模式：
 
@@ -252,7 +210,7 @@ termpilot agent --foreground --relay wss://your-domain.com/ws
 或者：
 
 ```bash
-./termpilot-agent start --foreground --relay wss://your-domain.com/ws
+termpilot agent --foreground --relay wss://your-domain.com/ws
 ```
 
 macOS `launchd` 最小示例：
@@ -296,7 +254,7 @@ RestartSec=3
 WantedBy=default.target
 ```
 
-### 5.4 手机接入
+### 5.3 手机接入
 
 手机浏览器打开 relay 对外地址：
 

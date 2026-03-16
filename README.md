@@ -106,11 +106,10 @@ On first run, the agent asks for the relay host and port, then:
 - starts a background daemon
 - prints a one-time pairing code
 
-If you prefer a dedicated agent-only executable bundle, build and run:
+If you want the agent to stay up permanently, let a system process manager run:
 
 ```bash
-pnpm build:agent-bin
-./dist/termpilot-agent start --relay wss://your-domain.com/ws
+termpilot agent --foreground --relay wss://your-domain.com/ws
 ```
 
 ### 3. Pair your phone
@@ -253,17 +252,6 @@ your-domain.com {
     reverse_proxy 127.0.0.1:8787
 }
 ```
-
-### Relay Binary
-
-Build a relay-only executable bundle for the current platform:
-
-```bash
-pnpm build:relay-bin
-./dist/termpilot-relay run
-```
-
-The generated executable keeps the same defaults as the npm-installed CLI, including SQLite at `~/.termpilot/relay.db`. It requires Node 22+ on the target machine.
 
 ### Relay Docker Image
 

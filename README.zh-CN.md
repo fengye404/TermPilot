@@ -106,11 +106,10 @@ termpilot agent
 - 启动后台守护进程
 - 打印一次性配对码
 
-如果你更希望使用 agent 专用可执行 bundle，也可以：
+如果你希望 agent 长期常驻，更推荐交给系统进程管理器托管：
 
 ```bash
-pnpm build:agent-bin
-./dist/termpilot-agent start --relay wss://your-domain.com/ws
+termpilot agent --foreground --relay wss://your-domain.com/ws
 ```
 
 ### 3. 手机完成配对
@@ -253,17 +252,6 @@ your-domain.com {
     reverse_proxy 127.0.0.1:8787
 }
 ```
-
-### relay 可执行文件
-
-为当前平台构建一个 relay 专用可执行 bundle:
-
-```bash
-pnpm build:relay-bin
-./dist/termpilot-relay run
-```
-
-这个可执行物沿用和 npm CLI 一致的默认值，包括 `~/.termpilot/relay.db` 这条 SQLite 路径；目标机器需要有 Node 22+。
 
 ### relay Docker 镜像
 

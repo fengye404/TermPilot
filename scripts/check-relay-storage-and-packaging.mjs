@@ -131,63 +131,10 @@ async function assertMemoryOverride() {
   }
 }
 
-async function assertRelayBinEntry() {
-  const relayHome = mkdtempSync(path.join(tmpdir(), "termpilot-relay-bin-entry-"));
-  const port = await getFreePort();
-  const { child, getLogs } = startRelay("node", ["dist/relay-bin.js", "run"], {
-    HOST: "127.0.0.1",
-    PORT: String(port),
-    TERMPILOT_HOME: relayHome,
-  });
-
-  try {
-    const health = await waitForHealth(port, "relay-bin entry", child, getLogs);
-    if (health.storeMode !== "sqlite") {
-      throw new Error(`relay-bin entry 应默认使用 sqlite，实际是 ${health.storeMode}`);
-    }
-  } finally {
-    await stopChild(child);
-    rmSync(relayHome, { recursive: true, force: true });
-  }
-}
-
-async function assertSeaArtifactBuild() {
-  if (!existsSync(path.join(ROOT, "dist", "termpilot-relay"))) {
-    throw new Error("未找到 dist/termpilot-relay，可执行物未生成");
-  }
-}
-
-async function assertSeaBinaryRuns() {
-  const relayHome = mkdtempSync(path.join(tmpdir(), "termpilot-relay-sea-"));
-  const port = await getFreePort();
-  const executable = path.join(ROOT, "dist", "termpilot-relay");
-  const { child, getLogs } = startRelay(executable, ["run"], {
-    HOST: "127.0.0.1",
-    PORT: String(port),
-    TERMPILOT_HOME: relayHome,
-  });
-
-  try {
-    const health = await waitForHealth(port, "relay SEA binary", child, getLogs);
-    if (health.storeMode !== "sqlite") {
-      throw new Error(`relay SEA binary 应默认使用 sqlite，实际是 ${health.storeMode}`);
-    }
-    if (!existsSync(path.join(relayHome, "relay.db"))) {
-      throw new Error("relay SEA binary 未生成 relay.db");
-    }
-  } finally {
-    await stopChild(child);
-    rmSync(relayHome, { recursive: true, force: true });
-  }
-}
-
 async function main() {
   await assertDefaultSqliteMode();
   await assertMemoryOverride();
-  await assertRelayBinEntry();
-  await assertSeaArtifactBuild();
-  await assertSeaBinaryRuns();
-  console.log("relay storage + packaging checks ok");
+  console.log("relay storage checks ok");
 }
 
 await main();
