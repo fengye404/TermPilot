@@ -1,11 +1,12 @@
 # CLI 参考
 
-这份文档只回答两类问题：
+这份文档回答三类问题：
 
-- `termpilot` 现在有哪些命令
-- 每一类命令执行完之后应该怎么离开
+- `termpilot` 当前有哪些稳定命令
+- 每一类命令分别负责什么
+- 执行完之后应该怎么离开，或者怎样明确把它停掉
 
-下面的内容以当前 `dist/cli.js --help` 和 `src/cli.ts` / `agent/src/cli.ts` 的实现为准。
+下面的内容以当前 CLI 实现为准，重点覆盖主路径和容易混淆的退出语义。
 
 ## 命令总览
 
@@ -35,7 +36,17 @@ termpilot claude code
 termpilot run -- <command> [args...]
 ```
 
-## 1. 服务命令
+## 1. 如何读这份 CLI 参考
+
+TermPilot 的命令可以先按三类理解：
+
+- 服务命令：启动或停止 `relay` / `agent`
+- 会话命令：创建、附着、列出和关闭会话
+- 托管命令：把某个前台程序直接跑成一条受管理会话
+
+先分清你现在在哪一类，后面的行为就会清楚很多。
+
+## 2. 服务命令
 
 ### `termpilot relay`
 
@@ -84,7 +95,7 @@ HOST=0.0.0.0 PORT=8787 termpilot relay
 
 停止后台 agent。
 
-## 2. 会话命令
+## 3. 会话命令
 
 ### `termpilot create`
 
@@ -112,6 +123,7 @@ termpilot create --name deploy --cwd /srv/app
 - 工作目录
 - 对应 tmux 会话名
 - 最近输出序号
+- 是否存在疑似残留治理状态
 
 ### `termpilot attach --sid <sid>`
 
@@ -126,7 +138,7 @@ termpilot create --name deploy --cwd /srv/app
 
 关闭一条会话，并同步把状态标记为 `exited`。
 
-## 3. 托管命令
+## 4. 托管命令
 
 ### `termpilot run -- <command>`
 
@@ -151,7 +163,7 @@ termpilot claude code
 termpilot run -- claude code
 ```
 
-## 4. 配对、授权与审计
+## 5. 配对、授权与审计
 
 ### `termpilot pair`
 
@@ -175,7 +187,7 @@ termpilot run -- claude code
 
 检查本地状态目录与 `tmux` 可用性。
 
-## 5. 退出方式
+## 6. 退出方式
 
 这是最容易混淆的部分。
 
@@ -230,11 +242,16 @@ termpilot run -- claude code
 - 只离开但不关闭会话：`Ctrl+B` 然后按 `D`
 - 彻底结束会话：在里面执行 `exit` / `Ctrl+D`，或者从外部 `termpilot kill --sid <sid>`
 
-## 6. 推荐记忆方式
+## 7. 推荐记忆方式
 
 如果你只记一条规则，记这个就够了：
 
 - `run` / `claude code` 这类“托管命令”，退出当前程序即可离开
 - `attach` 这类“接入现有 tmux 会话”，`Ctrl+B D` 是离开，`exit` 是结束
 
-如果你想先跑通完整链路，再回来看细节，下一步读 [快速开始](./getting-started.md)。如果你在搭服务器，下一步读 [部署与运维指南](./operations-guide.md)。
+## 8. 什么时候读别的文档
+
+- 想先跑通完整链路：读 [快速开始](./getting-started.md)
+- 想部署 relay：读 [部署指南](./deployment-guide.md)
+- 想管理 agent 和本地状态：读 [Agent 运维](./agent-operations.md)
+- 想排查具体问题：读 [故障排查](./troubleshooting.md)
