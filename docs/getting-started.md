@@ -21,6 +21,10 @@ npm install -g @fengye404/termpilot
 
 ## 2. 启动 relay
 
+当前推荐把 `relay` 看成一个独立入口服务。你可以按自己的部署习惯选一种方式启动。
+
+### 2.1 直接用 npm CLI
+
 在服务器上执行：
 
 ```bash
@@ -32,6 +36,7 @@ termpilot relay
 - 后台启动
 - 默认监听 `0.0.0.0:8787`
 - 同时提供 Web UI、`/ws` WebSocket 和 `/api/*` HTTP 接口
+- 默认把 relay 元数据写到 `~/.termpilot/relay.db`
 
 如果你想前台看日志：
 
@@ -45,7 +50,54 @@ termpilot relay run
 termpilot relay stop
 ```
 
+### 2.2 用 relay 可执行 bundle
+
+如果你不想在部署机上保留完整仓库，可以先在构建机上生成 relay 专用可执行 bundle：
+
+```bash
+pnpm build:relay-bin
+```
+
+然后把生成的 `dist/termpilot-relay` 拷到目标机，直接运行：
+
+```bash
+./termpilot-relay run
+```
+
+这条可执行 bundle 和 npm CLI 的默认行为一致：
+
+- 默认监听 `0.0.0.0:8787`
+- 默认把 relay 元数据写到 `~/.termpilot/relay.db`
+- 目标机需要 `Node.js 22+`
+
+### 2.3 用 Docker
+
+如果你更希望直接拉现成镜像，推荐直接使用已经发布好的 relay 镜像：
+
+```bash
+docker pull fengye404/termpilot-relay:latest
+```
+
+推荐启动方式：
+
+```bash
+docker run -d \
+  --name termpilot-relay \
+  -p 8787:8787 \
+  -e TERMPILOT_AGENT_TOKEN=change-me \
+  -v termpilot-relay-data:/var/lib/termpilot \
+  fengye404/termpilot-relay:latest
+```
+
+容器内默认会把 SQLite 文件放到 `/var/lib/termpilot/relay.db`。
+
+如果你想固定版本，也可以把 `latest` 换成具体版本号，例如 `fengye404/termpilot-relay:0.3.9`。
+
 ## 3. 启动 agent
+
+`agent` 更适合直接运行在你自己的电脑上，而不是容器里。当前推荐两种方式。
+
+### 3.1 直接用 npm CLI
 
 在你的电脑上执行：
 
@@ -71,6 +123,28 @@ termpilot agent
 - 打印一次性配对码
 
 以后再执行 `termpilot agent`，如果后台 agent 已在运行，它通常只会显示当前状态。
+
+### 3.2 用 agent 可执行 bundle
+
+如果你不想在目标电脑上保留完整仓库，可以先在构建机上生成 agent 专用可执行 bundle：
+
+```bash
+pnpm build:agent-bin
+```
+
+然后把生成的 `dist/termpilot-agent` 拷到目标机，直接运行：
+
+```bash
+./termpilot-agent start --relay wss://your-domain.com/ws
+```
+
+常用命令也和 CLI 保持一致：
+
+```bash
+./termpilot-agent status
+./termpilot-agent --pair
+./termpilot-agent stop
+```
 
 ## 4. 在手机完成配对
 

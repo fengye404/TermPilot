@@ -24,6 +24,7 @@
   "scripts": {
     "build": "pnpm -r typecheck && tsc --noEmit -p tsconfig.json && pnpm --filter @termpilot/app build && tsup",
     "build:relay-bin": "pnpm build && node scripts/build-relay-bin.mjs",
+    "build:agent-bin": "pnpm build && node scripts/build-agent-bin.mjs",
     "build:web": "pnpm --filter @termpilot/app build",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
@@ -45,6 +46,7 @@
     "check:stability": "pnpm build && node scripts/check-relay-agent-stability.mjs",
     "test:isolation": "pnpm build && node scripts/check-device-isolation.mjs",
     "test:relay-storage": "pnpm build:relay-bin && node scripts/check-relay-storage-and-packaging.mjs",
+    "test:agent-packaging": "pnpm build:agent-bin && node scripts/check-agent-packaging.mjs",
     "test:relay-docker": "node scripts/check-relay-docker.mjs",
     "test:ui-smoke": "pnpm build && TERMPILOT_APP_URL=http://127.0.0.1:18787 TERMPILOT_RELAY_URL=ws://127.0.0.1:18787/ws python3 /Users/fengye/.agents/skills/webapp-testing/scripts/with_server.py --server \"PORT=18787 node dist/cli.js relay\" --port 18787 -- python3 scripts/ui_smoke.py",
     "prepack": "pnpm build"

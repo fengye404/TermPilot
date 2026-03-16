@@ -20,6 +20,7 @@ export default defineConfig([
   {
     entry: {
       "relay-bin": "relay/src/relay-bin.ts",
+      "agent-bin": "agent/src/agent-bin.ts",
     },
     format: ["esm"],
     platform: "node",

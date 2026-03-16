@@ -106,6 +106,13 @@ termpilot agent
 - 启动后台守护进程
 - 打印一次性配对码
 
+如果你更希望使用 agent 专用可执行 bundle，也可以：
+
+```bash
+pnpm build:agent-bin
+./dist/termpilot-agent start --relay wss://your-domain.com/ws
+```
+
 ### 3. 手机完成配对
 
 在手机浏览器打开:
@@ -260,10 +267,10 @@ pnpm build:relay-bin
 
 ### relay Docker 镜像
 
-构建镜像:
+直接使用已经发布好的 relay 镜像:
 
 ```bash
-docker build -f Dockerfile.relay -t termpilot-relay .
+docker pull fengye404/termpilot-relay:latest
 ```
 
 使用持久化卷启动:
@@ -274,10 +281,10 @@ docker run -d \
   -p 8787:8787 \
   -e TERMPILOT_AGENT_TOKEN=change-me \
   -v termpilot-relay-data:/var/lib/termpilot \
-  termpilot-relay
+  fengye404/termpilot-relay:latest
 ```
 
-容器内默认把 relay 元数据持久化到 `/var/lib/termpilot/relay.db`。
+容器内默认把 relay 元数据持久化到 `/var/lib/termpilot/relay.db`。如果你希望固定版本，可以改成 `fengye404/termpilot-relay:0.3.9` 这样的 tag。
 
 ## 非目标
 

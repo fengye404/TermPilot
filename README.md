@@ -106,6 +106,13 @@ On first run, the agent asks for the relay host and port, then:
 - starts a background daemon
 - prints a one-time pairing code
 
+If you prefer a dedicated agent-only executable bundle, build and run:
+
+```bash
+pnpm build:agent-bin
+./dist/termpilot-agent start --relay wss://your-domain.com/ws
+```
+
 ### 3. Pair your phone
 
 Open the relay URL in your phone browser:
@@ -260,10 +267,10 @@ The generated executable keeps the same defaults as the npm-installed CLI, inclu
 
 ### Relay Docker Image
 
-Build the image:
+Use the published relay image directly:
 
 ```bash
-docker build -f Dockerfile.relay -t termpilot-relay .
+docker pull fengye404/termpilot-relay:latest
 ```
 
 Run it with a persistent state volume:
@@ -274,10 +281,10 @@ docker run -d \
   -p 8787:8787 \
   -e TERMPILOT_AGENT_TOKEN=change-me \
   -v termpilot-relay-data:/var/lib/termpilot \
-  termpilot-relay
+  fengye404/termpilot-relay:latest
 ```
 
-Inside the container, relay metadata persists to `/var/lib/termpilot/relay.db` by default.
+Inside the container, relay metadata persists to `/var/lib/termpilot/relay.db` by default. If you want reproducible rollout, pin a version tag such as `fengye404/termpilot-relay:0.3.9`.
 
 ## Non-Goals
 

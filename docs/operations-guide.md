@@ -80,9 +80,25 @@ TermPilot 当前由三部分组成：
 
 这也是为什么 PostgreSQL 模式现在是“元数据持久化”，而不是“会话持久化”。
 
-## 3. 基础部署步骤
+## 3. 部署方式总览
 
-### 3.1 启动 relay
+如果你只是想快速决策，可以直接按这个矩阵选：
+
+### relay
+
+- `npm CLI`：最简单，一条命令启动，适合个人部署
+- `relay` 可执行 bundle：适合不想在部署机保留仓库，但能接受目标机安装 Node 22+
+- Docker：适合已有容器部署习惯，希望直接拉官方镜像
+
+### agent
+
+- `npm CLI`：最直接，适合日常开发机和个人电脑
+- `agent` 可执行 bundle：适合不想保留完整仓库，但希望保留同样命令面
+- `launchd` / `systemd --user` / supervisor：适合希望 agent 常驻并由系统托管
+
+## 4. relay 部署
+
+### 4.1 npm CLI
 
 在服务器上执行：
 
@@ -105,7 +121,73 @@ termpilot relay run
 termpilot relay stop
 ```
 
-### 3.2 启动 agent
+### 4.2 relay 可执行 bundle
+
+如果你不想在部署机上保留完整仓库，可以先在构建机上执行：
+
+```bash
+pnpm build:relay-bin
+```
+
+然后把生成的 `dist/termpilot-relay` 拷到目标机，直接运行：
+
+```bash
+./termpilot-relay run
+```
+
+这条可执行物沿用与 CLI 相同的默认行为，包括 SQLite 持久化到 `~/.termpilot/relay.db`；目标机需要 Node 22+。
+
+### 4.3 Docker
+
+直接使用已经发布好的 relay 镜像：
+
+```bash
+docker pull fengye404/termpilot-relay:latest
+```
+
+推荐启动方式：
+
+```bash
+docker run -d \
+  --name termpilot-relay \
+  -p 8787:8787 \
+  -e TERMPILOT_AGENT_TOKEN=change-me \
+  -v termpilot-relay-data:/var/lib/termpilot \
+  fengye404/termpilot-relay:latest
+```
+
+容器内默认把 SQLite 放在 `/var/lib/termpilot/relay.db`。
+
+如果你需要固定版本，直接把 `latest` 换成发布 tag，例如 `fengye404/termpilot-relay:0.3.9`。
+如果你确实要自己构建镜像，再使用仓库里的 `Dockerfile.relay`。
+
+### 4.4 公网入口
+
+推荐长期模式：
+
+- 服务器上运行 `relay`
+- 前面放反向代理
+- 手机使用 `https://your-domain.com`
+- agent 使用 `wss://your-domain.com/ws`
+
+最小 Caddy 配置：
+
+```caddyfile
+your-domain.com {
+    reverse_proxy 127.0.0.1:8787
+}
+```
+
+这会同时代理：
+
+- `/`
+- `/ws`
+- `/api/*`
+- VitePress 之外的内建 Web UI 静态资源
+
+## 5. agent 部署
+
+### 5.1 npm CLI
 
 在电脑上执行：
 
@@ -129,7 +211,92 @@ termpilot agent stop
 termpilot agent --foreground
 ```
 
-### 3.3 手机接入
+### 5.2 agent 可执行 bundle
+
+如果你不想在目标电脑上保留完整仓库，可以先在构建机上执行：
+
+```bash
+pnpm build:agent-bin
+```
+
+然后把生成的 `dist/termpilot-agent` 拷到目标机，直接运行：
+
+```bash
+./termpilot-agent start --relay wss://your-domain.com/ws
+```
+
+常用命令：
+
+```bash
+./termpilot-agent --pair
+./termpilot-agent status
+./termpilot-agent stop
+```
+
+目标机同样需要 Node 22+。
+
+### 5.3 用进程管理器托管 agent
+
+如果你希望 agent 常驻，并在电脑重启后自动恢复，推荐让系统进程管理器托管前台模式：
+
+- `launchd`：适合 macOS
+- `systemd --user`：适合 Linux 桌面或用户会话
+- 其他 supervisor：例如 `supervisord`
+
+托管命令统一用：
+
+```bash
+termpilot agent --foreground --relay wss://your-domain.com/ws
+```
+
+或者：
+
+```bash
+./termpilot-agent start --foreground --relay wss://your-domain.com/ws
+```
+
+macOS `launchd` 最小示例：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.fengye.termpilot-agent</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/local/bin/termpilot</string>
+      <string>agent</string>
+      <string>--foreground</string>
+      <string>--relay</string>
+      <string>wss://your-domain.com/ws</string>
+    </array>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+  </dict>
+</plist>
+```
+
+Linux `systemd --user` 最小示例：
+
+```ini
+[Unit]
+Description=TermPilot Agent
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/termpilot agent --foreground --relay wss://your-domain.com/ws
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+```
+
+### 5.4 手机接入
 
 手机浏览器打开 relay 对外地址：
 
@@ -139,9 +306,7 @@ termpilot agent --foreground
 输入配对码后，client 会换到该设备对应的访问令牌，并通过 `/ws` 建立 WebSocket。
 同时，浏览器会生成本地密钥对，并与 agent 公钥建立设备级绑定；后续会话消息以加密信封方式经过 relay。
 
-## 4. 推荐公网部署
-
-### 最低成本验证
+## 6. 最低成本验证
 
 - 服务器上直接运行 `termpilot relay`
 - 直接暴露 `8787`
@@ -150,66 +315,7 @@ termpilot agent --foreground
 
 适合先试通链路，不适合长期使用。
 
-### 推荐长期模式
-
-- 服务器上运行 `termpilot relay`
-- 前面放反向代理
-- 手机使用 `https://your-domain.com`
-- agent 使用 `wss://your-domain.com/ws`
-
-最小 Caddy 配置：
-
-```caddyfile
-your-domain.com {
-    reverse_proxy 127.0.0.1:8787
-}
-```
-
-这会同时代理：
-
-- `/`
-- `/ws`
-- `/api/*`
-- VitePress 之外的内建 Web UI 静态资源
-
-### 本地二进制方式
-
-如果你不想在部署机上保留完整仓库，可以先在构建机上执行：
-
-```bash
-pnpm build:relay-bin
-```
-
-然后把生成的 `dist/termpilot-relay` 拷到目标机，直接运行：
-
-```bash
-./termpilot-relay run
-```
-
-这条可执行物沿用与 CLI 相同的默认行为，包括 SQLite 持久化到 `~/.termpilot/relay.db`；目标机需要 Node 22+。
-
-### Docker 方式
-
-仓库内提供了 relay 专用镜像构建文件：
-
-```bash
-docker build -f Dockerfile.relay -t termpilot-relay .
-```
-
-推荐启动方式：
-
-```bash
-docker run -d \
-  --name termpilot-relay \
-  -p 8787:8787 \
-  -e TERMPILOT_AGENT_TOKEN=change-me \
-  -v termpilot-relay-data:/var/lib/termpilot \
-  termpilot-relay
-```
-
-容器内默认把 SQLite 放在 `/var/lib/termpilot/relay.db`。
-
-## 5. 环境变量
+## 7. 环境变量
 
 ### relay 侧
 
@@ -236,7 +342,7 @@ docker run -d \
 - `TERMPILOT_ORPHAN_WARNING_MS`：托管命令会话 detached 且无输出时标记为疑似残留的阈值，默认 `3600000`（1 小时）
 - `TERMPILOT_MANAGED_SESSION_AUTOCLEANUP_MS`：托管命令会话 detached 且无输出时自动清理的阈值，默认 `43200000`（12 小时）
 
-## 6. 状态目录与日志
+## 8. 状态目录与日志
 
 默认状态目录：
 
@@ -262,7 +368,7 @@ TERMPILOT_HOME=/data/termpilot termpilot agent
 TERMPILOT_HOME=/data/termpilot termpilot relay
 ```
 
-## 7. 健康检查
+## 9. 健康检查
 
 relay 提供：
 
@@ -282,7 +388,7 @@ curl http://127.0.0.1:8787/health
 
 这些字段很适合做最小监控和验收。
 
-## 8. 会话运维
+## 10. 会话运维
 
 ### 直接启动一条托管命令
 
@@ -309,7 +415,7 @@ termpilot attach --sid <sid>
 - 临时离开：`Ctrl+B` 然后按 `D`
 - 彻底结束：`exit` / `Ctrl+D` 或 `termpilot kill --sid <sid>`
 
-## 9. 配对、授权与审计
+## 11. 配对、授权与审计
 
 ### 重新生成配对码
 
@@ -352,25 +458,7 @@ termpilot revoke --token <accessToken>
 
 它不是完整的命令级审计日志。
 
-## 10. 进程管理建议
-
-### 简单模式
-
-对个人使用来说，最简单的方式通常已经足够：
-
-- 服务器长期运行 `termpilot relay`
-- 电脑按需执行 `termpilot agent`
-
-### 受进程管理器托管
-
-如果你想交给 `systemd`、`launchd` 或其他 supervisor：
-
-- relay 用 `termpilot relay run`
-- agent 用 `termpilot agent --foreground`
-
-这样前台进程退出时，管理器可以接管拉起、日志和重启策略。
-
-## 11. 故障排查
+## 12. 故障排查
 
 ### 手机上打不开页面
 
@@ -441,16 +529,16 @@ agent：
 termpilot agent --foreground
 ```
 
-## 12. 安全建议
+## 13. 安全建议
 
 - 公网环境优先使用域名 + HTTPS/WSS
 - 显式设置自己的 `TERMPILOT_AGENT_TOKEN`
 - 不要长期共享手机端 access token
 - 配对时核对浏览器显示的设备指纹与电脑端是否一致
 - 换手机或共享设备后，及时执行 `termpilot revoke`
-- 如果你希望 relay 重启后还保留授权和审计，配置 PostgreSQL
+- 如果你希望 relay 重启后还保留授权和审计，默认 SQLite 已足够覆盖单机长期运行；只有你明确需要外部数据库时再上 PostgreSQL
 
-## 13. 建议的阅读顺序
+## 14. 建议的阅读顺序
 
 1. [快速开始](./getting-started.md)
 2. [CLI 参考](./cli-reference.md)
