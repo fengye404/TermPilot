@@ -3,9 +3,13 @@
 如果你在 GitHub 仓库里浏览源码，推荐从下面几个入口开始：
 
 - [文档首页](./index.md)
+- [产品概览](./why-termpilot.md)
 - [CLI 参考](./cli-reference.md)
 - [快速开始](./getting-started.md)
-- [部署与运维指南](./operations-guide.md)
+- [运维总览](./operations-guide.md)
+- [部署指南](./deployment-guide.md)
+- [Agent 运维](./agent-operations.md)
+- [故障排查](./troubleshooting.md)
 - [安全设计](./security-design.md)
 - [代码架构](./architecture.md)
 - [协议说明](./protocol.md)

@@ -11,7 +11,7 @@
 TermPilot 是一个本地优先的终端会话连续性工具。它让你在不把会话内容搬进 relay 的前提下，继续从手机访问电脑上那条已经运行中的受管理会话。
 
 > [!TIP]
-> 文档站: [TermPilot Docs](https://fengye404.top/TermPilot/) · [快速开始](https://fengye404.top/TermPilot/getting-started) · [CLI 参考](https://fengye404.top/TermPilot/cli-reference) · [部署与运维](https://fengye404.top/TermPilot/operations-guide) · [安全设计](https://fengye404.top/TermPilot/security-design) · [架构](https://fengye404.top/TermPilot/architecture) · [协议](https://fengye404.top/TermPilot/protocol)
+> 文档站: [TermPilot Docs](https://fengye404.top/TermPilot/) · [快速开始](https://fengye404.top/TermPilot/getting-started) · [部署指南](https://fengye404.top/TermPilot/deployment-guide) · [Agent 运维](https://fengye404.top/TermPilot/agent-operations) · [故障排查](https://fengye404.top/TermPilot/troubleshooting) · [CLI 参考](https://fengye404.top/TermPilot/cli-reference)
 
 > [!IMPORTANT]
 > TermPilot 不会自动导入任意 Terminal 或 iTerm 标签页。只有由 TermPilot 创建或管理的会话，才能在手机端继续访问。
@@ -56,6 +56,15 @@ TermPilot 围绕一条很明确的主路径设计：
 如果你是从旧版本升级、且本地绑定里还没有本地密钥，需要重新配对一次。
 
 ## 快速开始
+
+如果你更希望按文档站的分层路径阅读，而不是直接从仓库首页一路往下看，可以从这里进入：
+
+- 产品定位： [Why TermPilot](https://fengye404.top/TermPilot/why-termpilot)
+- 第一次跑通： [快速开始](https://fengye404.top/TermPilot/getting-started)
+- relay 部署： [部署指南](https://fengye404.top/TermPilot/deployment-guide)
+- agent 生命周期与会话治理： [Agent 运维](https://fengye404.top/TermPilot/agent-operations)
+- 问题排查： [故障排查](https://fengye404.top/TermPilot/troubleshooting)
+- 运行时设计： [安全设计](https://fengye404.top/TermPilot/security-design)、[架构](https://fengye404.top/TermPilot/architecture)、[协议](https://fengye404.top/TermPilot/protocol)
 
 ### 环境要求
 
@@ -252,6 +261,13 @@ your-domain.com {
     reverse_proxy 127.0.0.1:8787
 }
 ```
+
+如果你想继续看更细的部署、运维和排障文档，可以直接进入：
+
+- [部署指南](./docs/deployment-guide.md)
+- [Agent 运维](./docs/agent-operations.md)
+- [故障排查](./docs/troubleshooting.md)
+- [安全设计](./docs/security-design.md)
 
 ### relay Docker 镜像
 

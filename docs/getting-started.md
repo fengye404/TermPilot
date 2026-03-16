@@ -215,5 +215,7 @@ termpilot run -- python -m http.server
 ## 9. 下一步看什么
 
 - 想系统理解命令面和退出方式：看 [CLI 参考](./cli-reference.md)
-- 想部署到公网长期使用：看 [部署与运维指南](./operations-guide.md)
+- 想部署 relay 到公网长期使用：看 [部署指南](./deployment-guide.md)
+- 想管理 agent、本地状态和会话治理：看 [Agent 运维](./agent-operations.md)
+- 想按症状快速定位问题：看 [故障排查](./troubleshooting.md)
 - 想理解当前代码结构：看 [代码架构](./architecture.md)

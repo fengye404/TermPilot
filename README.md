@@ -11,7 +11,7 @@ Keep one managed terminal session available across desktop and mobile.
 TermPilot is a local-first terminal session continuity tool for long-running work. It keeps the same managed session reachable from your phone without moving session content into the relay.
 
 > [!TIP]
-> Documentation site: [TermPilot Docs](https://fengye404.top/TermPilot/) · [Quick Start](https://fengye404.top/TermPilot/getting-started) · [CLI Reference](https://fengye404.top/TermPilot/cli-reference) · [Operations Guide](https://fengye404.top/TermPilot/operations-guide) · [Security Design](https://fengye404.top/TermPilot/security-design) · [Architecture](https://fengye404.top/TermPilot/architecture) · [Protocol](https://fengye404.top/TermPilot/protocol)
+> Documentation site: [TermPilot Docs](https://fengye404.top/TermPilot/) · [Quick Start](https://fengye404.top/TermPilot/getting-started) · [Deployment Guide](https://fengye404.top/TermPilot/deployment-guide) · [Agent Operations](https://fengye404.top/TermPilot/agent-operations) · [Troubleshooting](https://fengye404.top/TermPilot/troubleshooting) · [CLI Reference](https://fengye404.top/TermPilot/cli-reference)
 
 > [!IMPORTANT]
 > TermPilot does not import arbitrary Terminal or iTerm tabs. A session must be created or managed by TermPilot to be available on mobile.
@@ -56,6 +56,15 @@ This is a deliberately narrow scope. TermPilot is built for session continuity, 
 If you redeploy or migrate from an older binding without local keys, re-pair the device.
 
 ## Quick Start
+
+If you want the structured docs flow instead of reading the repository README top to bottom, use this path:
+
+- Product overview: [Why TermPilot](https://fengye404.top/TermPilot/why-termpilot)
+- First setup: [Quick Start](https://fengye404.top/TermPilot/getting-started)
+- Relay deployment: [Deployment Guide](https://fengye404.top/TermPilot/deployment-guide)
+- Agent lifecycle and session operations: [Agent Operations](https://fengye404.top/TermPilot/agent-operations)
+- Problem diagnosis: [Troubleshooting](https://fengye404.top/TermPilot/troubleshooting)
+- Runtime design: [Security Design](https://fengye404.top/TermPilot/security-design), [Architecture](https://fengye404.top/TermPilot/architecture), [Protocol](https://fengye404.top/TermPilot/protocol)
 
 ### Requirements
 
@@ -252,6 +261,13 @@ your-domain.com {
     reverse_proxy 127.0.0.1:8787
 }
 ```
+
+For deployment and runtime details, continue with:
+
+- [Deployment Guide](./docs/deployment-guide.md)
+- [Agent Operations](./docs/agent-operations.md)
+- [Troubleshooting](./docs/troubleshooting.md)
+- [Security Design](./docs/security-design.md)
 
 ### Relay Docker Image
 
