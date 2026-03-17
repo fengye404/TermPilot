@@ -43,6 +43,9 @@ export interface SessionRecord {
   lastOutputAt?: string;
   attachedClientCount?: number;
   detachedAt?: string | null;
+  idleSince?: string | null;
+  orphanWarningAt?: string | null;
+  autoCleanupAt?: string | null;
   suspectedOrphaned?: boolean;
   tmuxSessionName: string;
 }

@@ -1,4 +1,5 @@
 import type { SessionRecord } from "@termpilot/protocol";
+import { useEffect, useState } from "react";
 
 import { BUTTON_DANGER, BUTTON_SECONDARY, Panel } from "./chrome";
 
@@ -28,10 +29,68 @@ const FILTER_OPTIONS: Array<{ value: SessionStatusFilter; label: string }> = [
   { value: "exited", label: "已退出" },
 ];
 
+function formatRelativeTime(iso: string | null | undefined, nowMs: number): string {
+  if (!iso) {
+    return "未知";
+  }
+  const timestamp = Date.parse(iso);
+  if (!Number.isFinite(timestamp)) {
+    return "未知";
+  }
+  const diffMs = Math.max(0, nowMs - timestamp);
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  if (diffMinutes < 1) {
+    return "刚刚";
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes} 分钟前`;
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} 小时前`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} 天前`;
+}
+
+function formatRemaining(targetIso: string | null | undefined, nowMs: number): string {
+  if (!targetIso) {
+    return "等待计算";
+  }
+  const timestamp = Date.parse(targetIso);
+  if (!Number.isFinite(timestamp)) {
+    return "等待计算";
+  }
+  const diffMs = Math.max(0, timestamp - nowMs);
+  if (diffMs < 60_000) {
+    return "1 分钟内";
+  }
+  const diffMinutes = Math.ceil(diffMs / 60_000);
+  if (diffMinutes < 60) {
+    return `约 ${diffMinutes} 分钟`;
+  }
+  const diffHours = Math.ceil(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `约 ${diffHours} 小时`;
+  }
+  const diffDays = Math.ceil(diffHours / 24);
+  return `约 ${diffDays} 天`;
+}
+
 export function SessionListPanel(props: SessionListPanelProps) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const runningCount = props.sessions.filter((session) => session.status === "running").length;
   const exitedCount = props.sessions.filter((session) => session.status === "exited").length;
   const pinnedCount = props.pinnedSids.length;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
 
   return (
     <Panel title="会话列表">
@@ -117,14 +176,27 @@ export function SessionListPanel(props: SessionListPanelProps) {
                   <p className="font-medium text-[var(--tp-text)]">{session.name}</p>
                   <p className="mt-1 text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
                   {session.launchMode === "command" && session.status === "running" ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {(session.attachedClientCount ?? 0) === 0 ? (
-                        <span className="tp-chip tp-chip-warning min-h-0 px-2.5 py-1 text-[11px]">无人附着</span>
-                      ) : null}
-                      {session.suspectedOrphaned ? (
-                        <span className="tp-chip tp-chip-danger min-h-0 px-2.5 py-1 text-[11px]">疑似残留</span>
-                      ) : null}
-                    </div>
+                    <>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(session.attachedClientCount ?? 0) === 0 ? (
+                          <span className="tp-chip tp-chip-warning min-h-0 px-2.5 py-1 text-[11px]">无人附着</span>
+                        ) : null}
+                        {session.suspectedOrphaned ? (
+                          <span className="tp-chip tp-chip-danger min-h-0 px-2.5 py-1 text-[11px]">疑似残留</span>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 space-y-1 text-[11px] text-[var(--tp-text-soft)]">
+                        <p>上次输出 {formatRelativeTime(session.lastOutputAt ?? session.lastActivityAt, nowMs)}</p>
+                        {(session.attachedClientCount ?? 0) === 0 && session.detachedAt ? (
+                          <p>离开会话 {formatRelativeTime(session.detachedAt, nowMs)}</p>
+                        ) : null}
+                        {(session.attachedClientCount ?? 0) === 0 && session.autoCleanupAt ? (
+                          <p>
+                            {session.suspectedOrphaned ? "预计" : "若持续空闲，预计"} {formatRemaining(session.autoCleanupAt, nowMs)}后自动清理
+                          </p>
+                        ) : null}
+                      </div>
+                    </>
                   ) : null}
                 </div>
                 <span className={`tp-chip min-h-0 px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>

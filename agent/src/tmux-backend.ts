@@ -106,6 +106,9 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
     lastOutputAt: startedAt,
     attachedClientCount: 0,
     detachedAt: startedAt,
+    idleSince: startedAt,
+    orphanWarningAt: null,
+    autoCleanupAt: null,
     suspectedOrphaned: false,
     tmuxSessionName,
   };
@@ -210,6 +213,9 @@ export async function killSession(sid: string): Promise<SessionRecord> {
     status: "exited",
     lastActivityAt: now(),
     attachedClientCount: 0,
+    idleSince: null,
+    orphanWarningAt: null,
+    autoCleanupAt: null,
     suspectedOrphaned: false,
   }));
 
@@ -226,6 +232,9 @@ export function markSessionExited(sid: string): SessionRecord | undefined {
     status: "exited",
     lastActivityAt: now(),
     attachedClientCount: 0,
+    idleSince: null,
+    orphanWarningAt: null,
+    autoCleanupAt: null,
     suspectedOrphaned: false,
   }));
 
@@ -246,12 +255,15 @@ export function bumpSessionSeq(sid: string): SessionRecord | undefined {
 
 export function syncSessionRuntimeMetadata(
   sid: string,
-  metadata: Pick<SessionRecord, "attachedClientCount" | "detachedAt" | "suspectedOrphaned">,
+  metadata: Pick<SessionRecord, "attachedClientCount" | "detachedAt" | "idleSince" | "orphanWarningAt" | "autoCleanupAt" | "suspectedOrphaned">,
 ): SessionRecord | undefined {
   const nextState = updateSession(sid, (current) => ({
     ...current,
     attachedClientCount: metadata.attachedClientCount,
     detachedAt: metadata.detachedAt,
+    idleSince: metadata.idleSince,
+    orphanWarningAt: metadata.orphanWarningAt,
+    autoCleanupAt: metadata.autoCleanupAt,
     suspectedOrphaned: metadata.suspectedOrphaned,
   }));
 

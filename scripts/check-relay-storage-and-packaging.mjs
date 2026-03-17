@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import packageJson from "../package.json" with { type: "json" };
 
 const ROOT = "/Users/fengye/workspace/TermPilot";
 
@@ -98,6 +99,12 @@ async function assertDefaultSqliteMode() {
     if (health.storeMode !== "sqlite") {
       throw new Error(`默认 relay 存储模式应为 sqlite，实际是 ${health.storeMode}`);
     }
+    if (health.appVersion !== packageJson.version) {
+      throw new Error(`默认 relay 的 appVersion 应为 ${packageJson.version}，实际是 ${health.appVersion}`);
+    }
+    if (typeof health.appBuild !== "string" || health.appBuild.trim().length === 0) {
+      throw new Error("默认 relay 未暴露有效的 appBuild");
+    }
     if (!existsSync(path.join(relayHome, "relay.db"))) {
       throw new Error("默认 SQLite relay 未生成 relay.db");
     }
@@ -121,6 +128,9 @@ async function assertMemoryOverride() {
     const health = await waitForHealth(port, "memory relay", child, getLogs);
     if (health.storeMode !== "memory") {
       throw new Error(`显式 memory relay 存储模式应为 memory，实际是 ${health.storeMode}`);
+    }
+    if (health.appVersion !== packageJson.version) {
+      throw new Error(`memory relay 的 appVersion 应为 ${packageJson.version}，实际是 ${health.appVersion}`);
     }
     if (existsSync(path.join(relayHome, "relay.db"))) {
       throw new Error("memory relay 不应生成 relay.db");

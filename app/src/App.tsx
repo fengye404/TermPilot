@@ -16,6 +16,15 @@ import { SessionListPanel } from "./components/SessionListPanel";
 import { NoticeBanner, Panel } from "./components/chrome";
 import { TerminalWorkspace } from "./components/TerminalWorkspace";
 
+declare const __TERMPILOT_APP_VERSION__: string;
+declare const __TERMPILOT_APP_BUILD_ID__: string;
+
+declare global {
+  interface Window {
+    __termpilotCleanupPromise?: Promise<unknown>;
+  }
+}
+
 type SessionMap = Record<string, string>;
 type ConnectionPhase = "idle" | "connecting" | "connected" | "reconnecting";
 type SessionStatusFilter = "all" | "running" | "exited";
@@ -35,6 +44,10 @@ const DEFAULT_WS_URL = "ws://127.0.0.1:8787/ws";
 const DEFAULT_CLIENT_TOKEN = "";
 const DEFAULT_DEVICE_ID = "pc-main";
 const STORAGE_KEY = "termpilot-app-state";
+const APP_BUILD_STORAGE_KEY = "termpilot-app-build";
+const APP_BUILD_RELOAD_MARKER_KEY = "termpilot-app-build-reload";
+const APP_VERSION = __TERMPILOT_APP_VERSION__;
+const APP_BUILD_ID = __TERMPILOT_APP_BUILD_ID__;
 
 interface StoredState {
   wsUrl: string;
@@ -50,6 +63,12 @@ interface StoredState {
 interface NoticeState {
   kind: "info" | "success" | "error";
   text: string;
+}
+
+interface RelayHealthResponse {
+  ok: boolean;
+  appVersion?: string;
+  appBuild?: string;
 }
 
 interface SecureBindingResetOptions {
@@ -112,6 +131,42 @@ function getAppThemeColor(): string {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "#0b0f12" : "#f4f7f5";
 }
 
+async function clearStaleAppCaches(): Promise<void> {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const staleCachePrefixes = [
+    "workbox-",
+    "vite-pwa-",
+    "termpilot-",
+  ];
+
+  await Promise.resolve(window.__termpilotCleanupPromise).catch(() => undefined);
+
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+    } catch {
+      // ignore cleanup failures
+    }
+  }
+
+  if ("caches" in window) {
+    try {
+      const keys = await caches.keys();
+      await Promise.allSettled(
+        keys
+          .filter((key) => staleCachePrefixes.some((prefix) => key.startsWith(prefix)))
+          .map((key) => caches.delete(key)),
+      );
+    } catch {
+      // ignore cleanup failures
+    }
+  }
+}
+
 async function generateValidatedClientKeyPair(): Promise<E2EEKeyPair> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const next = await generateE2EEKeyPair();
@@ -140,6 +195,9 @@ export default function App() {
   const noticeTimerRef = useRef<number | null>(null);
   const manuallyDisconnectedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
+  const cleanupWatchTimerRef = useRef<number | null>(null);
+  const cleanupRequestedSidsRef = useRef<string[] | null>(null);
+  const sessionsRef = useRef<SessionRecord[]>([]);
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const clientTokenRef = useRef(DEFAULT_CLIENT_TOKEN);
   const clientKeyPairRef = useRef<E2EEKeyPair | null>(null);
@@ -282,6 +340,10 @@ export default function App() {
       window.removeEventListener("resize", handleResize);
     };
   }, []);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") {
@@ -457,6 +519,9 @@ export default function App() {
       if (reconnectTimerRef.current !== null) {
         window.clearTimeout(reconnectTimerRef.current);
       }
+      if (cleanupWatchTimerRef.current !== null) {
+        window.clearTimeout(cleanupWatchTimerRef.current);
+      }
       if (noticeTimerRef.current !== null) {
         window.clearTimeout(noticeTimerRef.current);
       }
@@ -545,6 +610,91 @@ export default function App() {
     previousSessionStatusRef.current = nextSessionStatus;
     bootstrappedNotificationsRef.current = true;
   }, [deviceId, deviceOnline, notificationsEnabled, sessions]);
+
+  useEffect(() => {
+    const requested = cleanupRequestedSidsRef.current;
+    if (!requested || requested.length === 0) {
+      return;
+    }
+
+    const stillRunning = requested.filter((sid) => sessions.some((session) => session.sid === sid && session.status === "running"));
+    if (stillRunning.length > 0) {
+      return;
+    }
+
+    cleanupRequestedSidsRef.current = null;
+    if (cleanupWatchTimerRef.current !== null) {
+      window.clearTimeout(cleanupWatchTimerRef.current);
+      cleanupWatchTimerRef.current = null;
+    }
+    setCleanupPending(false);
+    showNotice("success", `已完成 ${requested.length} 条疑似残留会话的清理。`);
+  }, [sessions]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+    if (!relayHttpBaseUrl || relayHttpBaseUrl !== window.location.origin) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const reconcileBuild = async () => {
+      try {
+        const response = await fetch(`${relayHttpBaseUrl}/health`, { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json() as RelayHealthResponse;
+        const serverBuild = payload.appBuild?.trim();
+        const serverVersion = payload.appVersion?.trim() || serverBuild || APP_VERSION;
+
+        window.localStorage.setItem(APP_BUILD_STORAGE_KEY, APP_BUILD_ID);
+        if (!serverBuild || serverBuild === APP_BUILD_ID) {
+          window.sessionStorage.removeItem(APP_BUILD_RELOAD_MARKER_KEY);
+          return;
+        }
+
+        const reloadMarker = `${APP_BUILD_ID}->${serverBuild}`;
+        if (window.sessionStorage.getItem(APP_BUILD_RELOAD_MARKER_KEY) === reloadMarker) {
+          if (!cancelled) {
+            setPairingMessage((current) => current || `检测到 relay 已升级到 ${serverVersion}，请手动刷新页面完成更新。`);
+            showNotice("info", `发现新版本 ${serverVersion}，请刷新页面完成更新。`);
+          }
+          return;
+        }
+
+        window.sessionStorage.setItem(APP_BUILD_RELOAD_MARKER_KEY, reloadMarker);
+        await clearStaleAppCaches();
+        if (cancelled) {
+          return;
+        }
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("v", serverBuild);
+        window.location.replace(nextUrl.toString());
+      } catch {
+        // ignore transient health lookup failures
+      }
+    };
+
+    void reconcileBuild();
+
+    const onForeground = () => {
+      if (document.visibilityState === "visible") {
+        void reconcileBuild();
+      }
+    };
+
+    window.addEventListener("focus", onForeground);
+    document.addEventListener("visibilitychange", onForeground);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onForeground);
+      document.removeEventListener("visibilitychange", onForeground);
+    };
+  }, [relayHttpBaseUrl]);
 
   function showNotice(kind: NoticeState["kind"], text: string): void {
     setNotice({ kind, text });
@@ -1163,15 +1313,47 @@ export default function App() {
 
     setCleanupPending(true);
     try {
+      cleanupRequestedSidsRef.current = sessionsToCleanup.map((session) => session.sid);
+      if (cleanupWatchTimerRef.current !== null) {
+        window.clearTimeout(cleanupWatchTimerRef.current);
+      }
+      cleanupWatchTimerRef.current = window.setTimeout(() => {
+        const requested = cleanupRequestedSidsRef.current;
+        if (!requested || requested.length === 0) {
+          cleanupWatchTimerRef.current = null;
+          return;
+        }
+        const remaining = requested.filter((sid) => sessionsRef.current.some((session) => session.sid === sid && session.status === "running"));
+        const completed = requested.length - remaining.length;
+        cleanupRequestedSidsRef.current = null;
+        cleanupWatchTimerRef.current = null;
+        setCleanupPending(false);
+        if (remaining.length === 0) {
+          showNotice("success", `已完成 ${requested.length} 条疑似残留会话的清理。`);
+          return;
+        }
+        showNotice(
+          "info",
+          completed > 0
+            ? `已完成 ${completed} 条清理，仍有 ${remaining.length} 条等待设备确认。`
+            : `已发送 ${requested.length} 条清理请求，正在等待设备确认。`,
+        );
+      }, 6000);
       await Promise.all(sessionsToCleanup.map((session) => sendSecureMessage({
         type: "session.kill",
         reqId: createReqId("cleanup"),
         deviceId,
         sid: session.sid,
       })));
-      showNotice("success", `已发送 ${sessionsToCleanup.length} 条清理请求，列表状态会在设备确认后自动更新。`);
-    } finally {
+      showNotice("info", `正在清理 ${sessionsToCleanup.length} 条疑似残留会话，设备确认后会自动更新列表。`);
+    } catch {
+      cleanupRequestedSidsRef.current = null;
+      if (cleanupWatchTimerRef.current !== null) {
+        window.clearTimeout(cleanupWatchTimerRef.current);
+        cleanupWatchTimerRef.current = null;
+      }
       setCleanupPending(false);
+      showNotice("error", "清理请求发送失败，请稍后重试。");
     }
   }
 
@@ -1256,6 +1438,7 @@ export default function App() {
           {isPaired ? (
             <div className="flex flex-wrap gap-2">
               <span className="tp-chip">{deviceId}</span>
+              <span className="tp-chip">App {APP_VERSION}</span>
               <span className={`tp-chip ${deviceOnline ? "tp-chip-active" : "tp-chip-danger"}`}>{deviceOnline ? "设备在线" : "设备离线"}</span>
               <span className={`tp-chip ${connected ? "tp-chip-active" : ""}`}>
                 {connected ? "已连上 relay" : connectionPhase === "reconnecting" ? "正在重连 relay" : "relay 未连接"}

@@ -45,7 +45,28 @@ termpilot agent --pair
 
 如果你刚升级过版本，或者本地绑定还是旧 token，最稳的做法通常是清掉旧绑定后重新配对。
 
-## 4. 手机上看不到某条任务
+## 4. 页面已经升级，但浏览器还像在跑旧版本
+
+当前版本会主动做两件事：
+
+- 首页 HTML 使用 `no-store`
+- 浏览器在发现 relay 端构建版本更新时，会尝试清理旧壳并自动刷新
+
+如果你仍然明显看到旧页面，优先检查：
+
+- 当前访问的域名是否就是 relay 对外地址
+- 反向代理是否仍在缓存 HTML
+- 浏览器里是否还保留旧的站点数据或旧 PWA 壳子
+
+最直接的验证方式：
+
+```bash
+curl https://your-domain.com/health
+```
+
+确认返回的 `appVersion` / `appBuild` 是否已经是新版本。
+
+## 5. 手机上看不到某条任务
 
 最常见原因：
 
@@ -64,7 +85,7 @@ termpilot create --name my-task --cwd /path/to/project
 termpilot attach --sid <sid>
 ```
 
-## 5. 真实程序退出了，但网页状态没更新
+## 6. 真实程序退出了，但网页状态没更新
 
 先区分你做的是什么动作：
 
@@ -73,7 +94,7 @@ termpilot attach --sid <sid>
 
 对托管命令会话来说，长期无人附着且无输出时，agent 会自动治理残留会话。
 
-## 6. agent 还连着旧地址
+## 7. agent 还连着旧地址
 
 如果你改过域名或端口，但 agent 还连旧配置：
 
@@ -84,7 +105,7 @@ termpilot agent
 
 如果你用了自定义 `TERMPILOT_HOME`，确认你改的是正确那份状态目录。
 
-## 7. 想直接看实时日志
+## 8. 想直接看实时日志
 
 relay：
 
@@ -105,7 +126,7 @@ tail -f ~/.termpilot/relay.log
 tail -f ~/.termpilot/agent.log
 ```
 
-## 8. Docker relay 起不来
+## 9. Docker relay 起不来
 
 优先检查：
 
@@ -121,7 +142,7 @@ docker logs termpilot-relay
 curl http://127.0.0.1:8787/health
 ```
 
-## 9. 下一步读什么
+## 10. 下一步读什么
 
 - 部署问题：读 [部署指南](./deployment-guide.md)
 - agent 本地问题：读 [Agent 运维](./agent-operations.md)

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import packageJson from "../package.json" with { type: "json" };
 
 const ROOT = "/Users/fengye/workspace/TermPilot";
 const IMAGE = `termpilot-relay:test-${Date.now()}`;
@@ -115,6 +116,12 @@ async function main() {
     const health = await waitForHealth(port);
     if (health.storeMode !== "sqlite") {
       throw new Error(`Docker relay 应默认使用 sqlite，实际是 ${health.storeMode}`);
+    }
+    if (health.appVersion !== packageJson.version) {
+      throw new Error(`Docker relay 的 appVersion 应为 ${packageJson.version}，实际是 ${health.appVersion}`);
+    }
+    if (typeof health.appBuild !== "string" || health.appBuild.trim().length === 0) {
+      throw new Error("Docker relay 未返回有效的 appBuild");
     }
     console.log("relay docker smoke ok");
   } finally {

@@ -152,10 +152,18 @@ pnpm test:ui-smoke
 
 1. 修改根目录 `package.json` 版本号
 2. 执行 `pnpm build`
-3. 执行 `pnpm test:ui-smoke`
-4. 执行 `pnpm check:stability`
-5. 如有需要，执行 `pnpm docs:build`
-6. 执行 `npm publish --access public`
+3. 执行 `pnpm docs:build`
+4. 执行 `pnpm test:relay-storage`
+5. 执行 `pnpm test:app-versioning`
+6. 执行 `pnpm test:ui-smoke`
+7. 推送版本标签，例如 `v0.3.10`
+
+当前仓库已经有 tag 触发的自动发布流程：
+
+- 发布 npm 包
+- 发布 `fengye404/termpilot-relay` Docker 镜像
+
+所以日常发布更推荐走“版本号 + tag”这条路径，而不是手工逐步发布。
 
 ## 7. 开发时最容易忘的几件事
 

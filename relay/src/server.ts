@@ -22,6 +22,7 @@ import type {
   RelayToAgentMessage,
 } from "@termpilot/protocol";
 import { DEFAULT_CLIENT_TOKEN, parseJsonMessage } from "@termpilot/protocol";
+import packageJson from "../../package.json";
 
 import { MemoryAuthStore, PostgresAuthStore, SqliteAuthStore, type AuthStore } from "./auth-store.js";
 import { MemoryAuditStore, PostgresAuditStore, SqliteAuditStore, type AuditStore } from "./audit-store.js";
@@ -111,6 +112,8 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   const clients = new Set<ClientConnection>();
   const webDir = options.webDir ?? resolveDefaultWebDir(import.meta.url);
   const storeMode = config.storeMode;
+  const appVersion = process.env.TERMPILOT_APP_VERSION?.trim() || packageJson.version;
+  const appBuild = process.env.TERMPILOT_APP_BUILD_ID?.trim() || appVersion;
   let pool: Pool | null = null;
   let sqliteDatabase: DatabaseSync | null = null;
 
@@ -310,6 +313,8 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
 
   app.get("/health", async () => ({
     ok: true,
+    appVersion,
+    appBuild,
     storeMode,
     agentsOnline: agents.size,
     clientsOnline: clients.size,

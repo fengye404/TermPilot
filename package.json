@@ -42,6 +42,7 @@
     "agent:revoke": "pnpm --filter @termpilot/agent run revoke",
     "agent:doctor": "pnpm --filter @termpilot/agent run doctor",
     "check:stability": "pnpm build && node scripts/check-relay-agent-stability.mjs",
+    "test:app-versioning": "pnpm build && node scripts/check-app-versioning.mjs",
     "test:isolation": "pnpm build && node scripts/check-device-isolation.mjs",
     "test:relay-storage": "pnpm build && node scripts/check-relay-storage-and-packaging.mjs",
     "test:relay-docker": "node scripts/check-relay-docker.mjs",

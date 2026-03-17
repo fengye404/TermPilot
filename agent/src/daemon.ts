@@ -244,18 +244,27 @@ export class AgentDaemon {
       detachedAt ? (Date.parse(detachedAt) || 0) : 0,
     );
     const isManagedDetached = session.launchMode === "command" && attachedClientCount === 0;
+    const idleSinceIso = isManagedDetached && idleSince > 0 ? new Date(idleSince).toISOString() : null;
+    const orphanWarningAt = idleSinceIso ? new Date(idleSince + this.options.orphanWarningMs).toISOString() : null;
+    const autoCleanupAt = idleSinceIso ? new Date(idleSince + this.options.orphanCleanupMs).toISOString() : null;
     const suspectedOrphaned = isManagedDetached && Date.now() - idleSince >= this.options.orphanWarningMs;
     const shouldAutoCleanup = isManagedDetached && Date.now() - idleSince >= this.options.orphanCleanupMs;
 
     let nextSession = session;
     const metadataChanged = previousAttachedClientCount !== attachedClientCount
       || (session.detachedAt ?? null) !== detachedAt
+      || (session.idleSince ?? null) !== idleSinceIso
+      || (session.orphanWarningAt ?? null) !== orphanWarningAt
+      || (session.autoCleanupAt ?? null) !== autoCleanupAt
       || Boolean(session.suspectedOrphaned) !== suspectedOrphaned;
 
     if (metadataChanged) {
       const updated = syncSessionRuntimeMetadata(session.sid, {
         attachedClientCount,
         detachedAt,
+        idleSince: idleSinceIso,
+        orphanWarningAt,
+        autoCleanupAt,
         suspectedOrphaned,
       });
       if (updated) {

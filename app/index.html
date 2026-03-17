@@ -6,21 +6,33 @@
     <meta http-equiv="Cache-Control" content="no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="theme-color" content="#f4f7f5" />
+    <meta name="termpilot-app-version" content="%VITE_APP_VERSION%" />
+    <meta name="termpilot-app-build" content="%VITE_APP_BUILD_ID%" />
     <title>TermPilot</title>
     <script>
       (function () {
+        const BUILD_KEY = "termpilot-app-build";
         if (!("serviceWorker" in navigator)) {
+          try {
+            const currentBuild = document.querySelector('meta[name="termpilot-app-build"]')?.getAttribute("content") || "";
+            if (currentBuild) {
+              window.localStorage.setItem(BUILD_KEY, currentBuild);
+            }
+          } catch {
+            // ignore
+          }
           return;
         }
 
         const host = window.location.host;
+        const currentBuild = document.querySelector('meta[name="termpilot-app-build"]')?.getAttribute("content") || "";
         const staleCachePrefixes = [
           "workbox-",
           "vite-pwa-",
           "termpilot-",
         ];
 
-        window.__termpilotCleanupPromise = Promise.allSettled([
+        const cleanupPromise = Promise.allSettled([
           navigator.serviceWorker.getRegistrations().then((registrations) => Promise.allSettled(
             registrations
               .filter((registration) => registration.scope.includes(host))
@@ -52,6 +64,20 @@
             ))
             : Promise.resolve(),
         ]);
+
+        window.__termpilotCleanupPromise = cleanupPromise;
+
+        try {
+          const previousBuild = window.localStorage.getItem(BUILD_KEY) || "";
+          if (currentBuild && previousBuild && previousBuild !== currentBuild) {
+            void cleanupPromise;
+          }
+          if (currentBuild) {
+            window.localStorage.setItem(BUILD_KEY, currentBuild);
+          }
+        } catch {
+          // ignore
+        }
       })();
     </script>
   </head>

@@ -176,6 +176,8 @@ curl http://127.0.0.1:8787/health
 当前返回字段包括：
 
 - `ok`
+- `appVersion`
+- `appBuild`
 - `storeMode`
 - `agentsOnline`
 - `clientsOnline`
@@ -186,10 +188,11 @@ curl http://127.0.0.1:8787/health
 最小验收建议：
 
 1. `/health` 返回 `ok: true`
-2. `storeMode` 是你预期的模式
-3. 浏览器能打开首页
-4. 电脑端 agent 能成功连接
-5. 手机能完成一次配对
+2. `appVersion` 和当前发布版本一致
+3. `storeMode` 是你预期的模式
+4. 浏览器能打开首页
+5. 电脑端 agent 能成功连接
+6. 手机能完成一次配对
 
 ## 8. 继续阅读
 
