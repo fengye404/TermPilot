@@ -163,7 +163,11 @@ pnpm test:ui-smoke
 - 发布 npm 包
 - 发布 `fengye404/termpilot-relay` Docker 镜像
 
-所以日常发布更推荐走“版本号 + tag”这条路径，而不是手工逐步发布。
+文档站仍然通过 `main` 分支的 `docs` workflow 发布，所以日常发布更推荐走：
+
+1. 合并需要上线的代码到 `main`
+2. 确认 `docs` workflow 已完成
+3. 再推送版本标签触发 npm 和 Docker 发布
 
 ## 7. 开发时最容易忘的几件事
 

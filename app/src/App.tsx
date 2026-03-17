@@ -635,7 +635,7 @@ export default function App() {
     if (typeof window === "undefined" || typeof document === "undefined") {
       return;
     }
-    if (!relayHttpBaseUrl || relayHttpBaseUrl !== window.location.origin) {
+    if (!relayHttpBaseUrl) {
       return;
     }
 

@@ -112,8 +112,12 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
   const clients = new Set<ClientConnection>();
   const webDir = options.webDir ?? resolveDefaultWebDir(import.meta.url);
   const storeMode = config.storeMode;
-  const appVersion = process.env.TERMPILOT_APP_VERSION?.trim() || packageJson.version;
-  const appBuild = process.env.TERMPILOT_APP_BUILD_ID?.trim() || appVersion;
+  const appVersion = process.env.TERMPILOT_APP_VERSION?.trim()
+    || process.env.VITE_APP_VERSION?.trim()
+    || packageJson.version;
+  const appBuild = process.env.TERMPILOT_APP_BUILD_ID?.trim()
+    || process.env.VITE_APP_BUILD_ID?.trim()
+    || appVersion;
   let pool: Pool | null = null;
   let sqliteDatabase: DatabaseSync | null = null;
 

@@ -95,11 +95,18 @@ async function main() {
   });
 
   try {
-    const health = await waitForHealth(baseUrl, child, getLogs);
-    if (health.appVersion !== packageJson.version) {
-      throw new Error(`relay /health 返回的 appVersion 应为 ${packageJson.version}，实际是 ${health.appVersion}`);
+    const payload = await waitForHealth(baseUrl, child, getLogs);
+    const healthResponse = await fetch(`${baseUrl}/health`, { cache: "no-store" });
+    if (payload.appVersion !== packageJson.version) {
+      throw new Error(`relay /health 返回的 appVersion 应为 ${packageJson.version}，实际是 ${payload.appVersion}`);
     }
-    if (typeof health.appBuild !== "string" || health.appBuild.trim().length === 0) {
+    if (payload.appBuild !== packageJson.version) {
+      throw new Error(`relay /health 返回的 appBuild 应默认与 package 版本一致（${packageJson.version}），实际是 ${payload.appBuild}`);
+    }
+    if (healthResponse.headers.get("access-control-allow-origin") !== "*") {
+      throw new Error("relay /health 没有返回跨域版本探测需要的 access-control-allow-origin: *");
+    }
+    if (typeof payload.appBuild !== "string" || payload.appBuild.trim().length === 0) {
       throw new Error("relay /health 没有返回有效的 appBuild");
     }
 
@@ -110,6 +117,27 @@ async function main() {
     }
     if (!html.includes('name="termpilot-app-build"')) {
       throw new Error("首页 HTML 缺少 termpilot-app-build 元数据");
+    }
+
+    const overridePort = await getFreePort();
+    const overrideBaseUrl = `http://127.0.0.1:${overridePort}`;
+    const overrideBuild = `${packageJson.version}-hotfix`;
+    const overrideHome = mkdtempSync(path.join(tmpdir(), "termpilot-app-versioning-override-"));
+    const overrideRelay = startRelay({
+      HOST: "127.0.0.1",
+      PORT: String(overridePort),
+      TERMPILOT_HOME: overrideHome,
+      TERMPILOT_APP_BUILD_ID: overrideBuild,
+    });
+
+    try {
+      const overrideHealth = await waitForHealth(overrideBaseUrl, overrideRelay.child, overrideRelay.getLogs);
+      if (overrideHealth.appBuild !== overrideBuild) {
+        throw new Error(`relay /health 没有使用显式 TERMPILOT_APP_BUILD_ID，期望 ${overrideBuild}，实际是 ${overrideHealth.appBuild}`);
+      }
+    } finally {
+      await stopChild(overrideRelay.child);
+      rmSync(overrideHome, { recursive: true, force: true });
     }
 
     console.log("app versioning checks ok");
