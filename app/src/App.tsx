@@ -199,6 +199,9 @@ export default function App() {
   const cleanupRequestedSidsRef = useRef<string[] | null>(null);
   const sessionsRef = useRef<SessionRecord[]>([]);
   const bufferSeqsRef = useRef<Record<string, number>>({});
+  const replayRequestRef = useRef<Record<string, { afterSeq: number; targetSeq: number; at: number }>>({});
+  const notificationDedupRef = useRef<Record<string, number>>({});
+  const cleanupReminderTimerRef = useRef<Record<string, number>>({});
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const clientTokenRef = useRef(DEFAULT_CLIENT_TOKEN);
   const clientKeyPairRef = useRef<E2EEKeyPair | null>(null);
@@ -413,6 +416,7 @@ export default function App() {
     setSessions([]);
     setBuffers({});
     setBufferSeqs({});
+    replayRequestRef.current = {};
     setActiveSid(null);
     suppressMobileAutoSelectRef.current = false;
 
@@ -542,7 +546,12 @@ export default function App() {
     if (connected) {
       void requestSessions(deviceIdRef.current);
       if (activeSid) {
-        void requestReplay(activeSid, deviceIdRef.current);
+        const session = sessionsRef.current.find((item) => item.sid === activeSid);
+        if (session) {
+          void requestReplayIfNeeded(session, deviceIdRef.current);
+        } else {
+          void requestReplay(activeSid, deviceIdRef.current);
+        }
       }
     }
   }, [activeSid, connected]);
@@ -591,7 +600,7 @@ export default function App() {
     }
 
     setActiveSid(pickSession.sid);
-    void requestReplay(pickSession.sid, deviceIdRef.current);
+    void requestReplayIfNeeded(pickSession, deviceIdRef.current);
   }, [activeSid, connected, isDesktop, pinnedSids, sessions]);
 
   useEffect(() => {
@@ -603,13 +612,17 @@ export default function App() {
 
     if (bootstrappedNotificationsRef.current) {
       if (previousDeviceOnline && !deviceOnline) {
-        maybeNotify("TermPilot", `设备 ${deviceId} 已离线`);
+        maybeNotify("TermPilot", `设备 ${deviceId} 已离线`, { dedupeKey: `device-offline:${deviceId}` });
       }
 
       for (const session of sessions) {
         if (!previousOrphanedSessions[session.sid] && session.suspectedOrphaned) {
           const remaining = formatRelativeDurationUntil(session.autoCleanupAt);
-          maybeNotify("疑似残留会话", `${session.name} 当前无人附着，若持续空闲将于 ${remaining} 后自动清理。`);
+          maybeNotify(
+            "疑似残留会话",
+            `${session.name} 当前无人附着，若持续空闲将于 ${remaining} 后自动清理。`,
+            { sid: session.sid, dedupeKey: `orphaned:${session.sid}:${session.autoCleanupAt ?? ""}` },
+          );
         }
         if (previousSessionStatus[session.sid] === "running" && session.status === "exited") {
           const exitReason = sessionExitReasonRef.current[session.sid]?.trim() || "";
@@ -617,6 +630,7 @@ export default function App() {
           maybeNotify(
             isAutoCleaned ? "会话已自动清理" : "会话已退出",
             isAutoCleaned ? `${session.name} 因长时间无人附着且无输出被自动回收。` : `${session.name} 已结束。`,
+            { sid: session.sid, dedupeKey: `session-exit:${session.sid}:${session.status}:${exitReason}` },
           );
         }
       }
@@ -627,6 +641,69 @@ export default function App() {
     previousOrphanedSessionsRef.current = nextOrphanedSessions;
     bootstrappedNotificationsRef.current = true;
   }, [deviceId, deviceOnline, sessions]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const nextTimers: Record<string, number> = {};
+    const reminderLeadMs = 5 * 60_000;
+    const now = Date.now();
+
+    for (const session of sessions) {
+      if (session.status !== "running" || !session.suspectedOrphaned || !session.autoCleanupAt) {
+        continue;
+      }
+      const autoCleanupAt = Date.parse(session.autoCleanupAt);
+      if (!Number.isFinite(autoCleanupAt)) {
+        continue;
+      }
+
+      const reminderAt = autoCleanupAt - reminderLeadMs;
+      const dedupeKey = `cleanup-soon:${session.sid}:${session.autoCleanupAt}`;
+      if (reminderAt <= now) {
+        maybeNotify(
+          "会话即将自动清理",
+          `${session.name} 将在 ${formatRelativeDurationUntil(session.autoCleanupAt)} 后自动清理。`,
+          { sid: session.sid, dedupeKey, dedupeWindowMs: reminderLeadMs },
+        );
+        continue;
+      }
+
+      const existingTimer = cleanupReminderTimerRef.current[dedupeKey];
+      if (existingTimer) {
+        nextTimers[dedupeKey] = existingTimer;
+        continue;
+      }
+
+      nextTimers[dedupeKey] = window.setTimeout(() => {
+        maybeNotify(
+          "会话即将自动清理",
+          `${session.name} 将在 ${formatRelativeDurationUntil(session.autoCleanupAt)} 后自动清理。`,
+          { sid: session.sid, dedupeKey, dedupeWindowMs: reminderLeadMs },
+        );
+        delete cleanupReminderTimerRef.current[dedupeKey];
+      }, reminderAt - now);
+    }
+
+    for (const [key, timerId] of Object.entries(cleanupReminderTimerRef.current)) {
+      if (!(key in nextTimers)) {
+        window.clearTimeout(timerId);
+      }
+    }
+    cleanupReminderTimerRef.current = nextTimers;
+
+  }, [sessions, notificationsEnabled]);
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of Object.values(cleanupReminderTimerRef.current)) {
+        window.clearTimeout(timerId);
+      }
+      cleanupReminderTimerRef.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     const requested = cleanupRequestedSidsRef.current;
@@ -724,7 +801,7 @@ export default function App() {
     }, 4000);
   }
 
-  function maybeNotify(title: string, body: string): void {
+  function maybeNotify(title: string, body: string, options?: { sid?: string; dedupeKey?: string; dedupeWindowMs?: number }): void {
     if (
       !notificationsEnabled
       || typeof window === "undefined"
@@ -736,8 +813,34 @@ export default function App() {
       return;
     }
 
+    const dedupeKey = options?.dedupeKey ?? `${title}:${body}`;
+    const dedupeWindowMs = options?.dedupeWindowMs ?? 90_000;
+    const now = Date.now();
+    if (notificationDedupRef.current[dedupeKey] && now - notificationDedupRef.current[dedupeKey] < dedupeWindowMs) {
+      return;
+    }
+    notificationDedupRef.current[dedupeKey] = now;
+
     try {
-      new Notification(title, { body });
+      const notification = new Notification(title, {
+        body,
+        tag: dedupeKey,
+      });
+      if (options?.sid) {
+        notification.onclick = () => {
+          try {
+            window.focus();
+          } catch {
+            // ignore focus failures
+          }
+          suppressMobileAutoSelectRef.current = false;
+          setActiveSid(options.sid ?? null);
+          if (options.sid) {
+            void requestReplay(options.sid, deviceIdRef.current);
+          }
+          notification.close();
+        };
+      }
     } catch {
       // ignore unsupported notification edge cases
     }
@@ -782,6 +885,7 @@ export default function App() {
     setSessions([]);
     setBuffers({});
     setBufferSeqs({});
+    replayRequestRef.current = {};
     setPairingMessage(options.message);
     previousDeviceOnlineRef.current = false;
     previousSessionStatusRef.current = {};
@@ -854,6 +958,10 @@ export default function App() {
             if (typeof current[session.sid] === "number") {
               nextSeqs[session.sid] = current[session.sid];
             }
+            const localSeq = typeof current[session.sid] === "number" ? current[session.sid] : -1;
+            if (localSeq >= session.lastSeq) {
+              delete replayRequestRef.current[session.sid];
+            }
           }
           return nextSeqs;
         });
@@ -862,7 +970,10 @@ export default function App() {
             ? current
             : null;
           if (next) {
-            void requestReplay(next, deviceIdRef.current);
+            const activeSessionRecord = message.payload.sessions.find((session) => session.sid === next);
+            if (activeSessionRecord) {
+              void requestReplayIfNeeded(activeSessionRecord, deviceIdRef.current);
+            }
           }
           return next;
         });
@@ -879,6 +990,11 @@ export default function App() {
           next.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
           return next;
         });
+        if ((bufferSeqsRef.current[session.sid] ?? -1) >= session.lastSeq) {
+          delete replayRequestRef.current[session.sid];
+        } else if (activeSid === session.sid) {
+          void requestReplayIfNeeded(session, deviceIdRef.current);
+        }
         setActiveSid((current) => current ?? session.sid);
         return;
       }
@@ -887,7 +1003,14 @@ export default function App() {
           return;
         }
         setBuffers((current) => ({ ...current, [message.sid]: message.payload.data }));
-        setBufferSeqs((current) => ({ ...current, [message.sid]: message.seq }));
+        setBufferSeqs((current) => {
+          const next = { ...current, [message.sid]: message.seq };
+          const pending = replayRequestRef.current[message.sid];
+          if (pending && message.seq >= pending.targetSeq) {
+            delete replayRequestRef.current[message.sid];
+          }
+          return next;
+        });
         return;
       case "session.exit":
         if (message.deviceId !== deviceIdRef.current) {
@@ -918,15 +1041,42 @@ export default function App() {
   }
 
   async function requestReplay(sid: string, deviceIdOverride?: string): Promise<void> {
+    const afterSeq = bufferSeqsRef.current[sid] ?? -1;
     await sendSecureMessage({
       type: "session.replay",
       reqId: createReqId("replay"),
       deviceId: deviceIdOverride ?? deviceIdRef.current,
       sid,
       payload: {
-        afterSeq: bufferSeqsRef.current[sid] ?? -1,
+        afterSeq,
       },
     });
+  }
+
+  async function requestReplayIfNeeded(session: SessionRecord, deviceIdOverride?: string): Promise<void> {
+    const localSeq = bufferSeqsRef.current[session.sid] ?? -1;
+    if (localSeq >= session.lastSeq) {
+      delete replayRequestRef.current[session.sid];
+      return;
+    }
+
+    const pending = replayRequestRef.current[session.sid];
+    const now = Date.now();
+    if (
+      pending
+      && pending.afterSeq === localSeq
+      && pending.targetSeq >= session.lastSeq
+      && now - pending.at < 1_500
+    ) {
+      return;
+    }
+
+    replayRequestRef.current[session.sid] = {
+      afterSeq: localSeq,
+      targetSeq: session.lastSeq,
+      at: now,
+    };
+    await requestReplay(session.sid, deviceIdOverride);
   }
 
   function scheduleReconnect(): void {
@@ -1069,6 +1219,7 @@ export default function App() {
               setSessions([]);
               setBuffers({});
               setBufferSeqs({});
+              replayRequestRef.current = {};
               setActiveSid(null);
             }
             if (shouldHydrateDeviceId) {
@@ -1076,7 +1227,12 @@ export default function App() {
             }
             void requestSessions(nextDeviceId);
             if (activeSid) {
-              void requestReplay(activeSid, nextDeviceId);
+              const activeSessionRecord = sessionsRef.current.find((session) => session.sid === activeSid);
+              if (activeSessionRecord) {
+                void requestReplayIfNeeded(activeSessionRecord, nextDeviceId);
+              } else {
+                void requestReplay(activeSid, nextDeviceId);
+              }
             }
           }
           return;
@@ -1113,7 +1269,7 @@ export default function App() {
             setConnectionPhase("idle");
             setDeviceOnline(false);
             if (message.code === "AUTH_REVOKED") {
-              maybeNotify("访问已撤销", message.message);
+              maybeNotify("访问已撤销", message.message, { dedupeKey: `auth-revoked:${deviceIdRef.current}` });
               resetSecureBinding({
                 message: message.message,
                 notice: { kind: "error", text: message.message },
@@ -1163,6 +1319,7 @@ export default function App() {
       setSessions([]);
       setBuffers({});
       setBufferSeqs({});
+      replayRequestRef.current = {};
       setActiveSid(null);
       setDeviceId(payload.deviceId);
       setClientToken(payload.accessToken);
@@ -1692,7 +1849,12 @@ export default function App() {
                   onSelectSession={(sid) => {
                     suppressMobileAutoSelectRef.current = false;
                     setActiveSid(sid);
-                    void requestReplay(sid, deviceIdRef.current);
+                    const session = sessions.find((item) => item.sid === sid);
+                    if (session) {
+                      void requestReplayIfNeeded(session, deviceIdRef.current);
+                    } else {
+                      void requestReplay(sid, deviceIdRef.current);
+                    }
                   }}
                   onKillSession={handleKillSession}
                   onCleanupSuspectedSessions={handleCleanupSuspectedSessions}
@@ -1779,7 +1941,12 @@ export default function App() {
                     onSelectSession={(sid) => {
                       suppressMobileAutoSelectRef.current = false;
                       setActiveSid(sid);
-                      void requestReplay(sid, deviceIdRef.current);
+                      const session = sessions.find((item) => item.sid === sid);
+                      if (session) {
+                        void requestReplayIfNeeded(session, deviceIdRef.current);
+                      } else {
+                        void requestReplay(sid, deviceIdRef.current);
+                      }
                       revealWorkspace();
                     }}
                     onKillSession={handleKillSession}
