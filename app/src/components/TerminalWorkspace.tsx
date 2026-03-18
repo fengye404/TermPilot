@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import type { RefObject } from "react";
 import type { FormEvent } from "react";
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 
@@ -37,6 +39,8 @@ interface TerminalWorkspaceProps {
 }
 
 export function TerminalWorkspace(props: TerminalWorkspaceProps) {
+  const keyboardSectionRef = useRef<HTMLDivElement | null>(null);
+  const commandSectionRef = useRef<HTMLFormElement | null>(null);
   const isMobileView = Boolean(props.onBack);
   const showFocusAction = Boolean(props.onToggleFocusMode);
   const isManagedCommand = props.activeSession?.launchMode === "command";
@@ -52,6 +56,14 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
       ? `补帧中${typeof props.snapshotLag === "number" && props.snapshotLag > 0 ? ` · ${props.snapshotLag}` : ""}`
       : "实时同步"
     : "已结束";
+
+  const scrollSectionIntoView = (ref: RefObject<HTMLElement | null>) => {
+    ref.current?.scrollIntoView({
+      block: "start",
+      inline: "nearest",
+      behavior: "smooth",
+    });
+  };
 
   const renderShortcutButton = (shortcut: ShortcutKeyMeta) => {
     const toneClass = shortcut.tone === "primary"
@@ -125,14 +137,13 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
           </div>
         </div>
 
-        {props.onBack ? (
-          <button className={`${BUTTON_SECONDARY} inline-flex min-h-11 w-fit items-center`} type="button" onClick={props.onBack}>
-            返回会话列表
-          </button>
-        ) : null}
-
         {isMobileView ? (
           <div className="space-y-4">
+            {props.onBack ? (
+              <button className={`${BUTTON_SECONDARY} inline-flex min-h-11 w-fit items-center`} type="button" onClick={props.onBack}>
+                返回会话列表
+              </button>
+            ) : null}
             <div className="tp-terminal-shell relative p-3">
               <div className="mb-3 flex items-center justify-between gap-3 px-1">
                 <div>
@@ -148,14 +159,30 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <div className={`tp-terminal-frame ${props.focusMode ? "h-[72svh] min-h-[540px]" : "h-[56svh] min-h-[460px]"}`}>
                 <AnsiTerminalSnapshot snapshot={props.snapshot} />
               </div>
-              {showFocusAction ? (
-                <button className="tp-mobile-focus-fab" type="button" onClick={props.onToggleFocusMode}>
-                  {props.focusMode ? "退出专注" : "专注模式"}
+              <div className="tp-mobile-terminal-toolbar mt-3">
+                <button
+                  className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
+                  type="button"
+                  onClick={() => scrollSectionIntoView(keyboardSectionRef)}
+                >
+                  键盘
                 </button>
-              ) : null}
+                <button
+                  className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
+                  type="button"
+                  onClick={() => scrollSectionIntoView(commandSectionRef)}
+                >
+                  命令
+                </button>
+                {showFocusAction ? (
+                  <button className={`${BUTTON_PRIMARY} min-h-10 px-3 py-2 text-xs`} type="button" onClick={props.onToggleFocusMode}>
+                    {props.focusMode ? "退出专注" : "专注模式"}
+                  </button>
+                ) : null}
+              </div>
             </div>
 
-            <div className="tp-card px-4 py-4">
+            <div ref={keyboardSectionRef} className="tp-card px-4 py-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-[var(--tp-text)]">终端键盘</p>
@@ -197,7 +224,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               />
             </div>
 
-            <form className="tp-card px-4 py-4" onSubmit={props.onSubmitCommand}>
+            <form ref={commandSectionRef} className="tp-card px-4 py-4" onSubmit={props.onSubmitCommand}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-[var(--tp-text)]">快速输入</p>

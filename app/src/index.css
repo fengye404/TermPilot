@@ -405,6 +405,16 @@ summary:focus-visible {
   background: color-mix(in srgb, var(--tp-bg) 96%, transparent);
 }
 
+.tp-mobile-terminal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tp-mobile-terminal-toolbar > button {
+  flex: 1 1 0;
+}
+
 .tp-empty-state {
   border: 1px dashed var(--tp-border-strong);
   border-radius: 16px;

@@ -48,7 +48,7 @@ def kill_session(sid: str) -> None:
 
 
 def get_pairing_code() -> str:
-    output = run_pnpm(["cli", "--", "agent"])
+    output = run_pnpm(["cli", "--", "agent", "--pair"])
     match = re.search(r"配对码:\s*(\S+)", output)
     if not match:
         raise RuntimeError(f"无法解析配对码:\n{output}")

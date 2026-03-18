@@ -528,6 +528,26 @@ export default function App() {
   }, [mobileTerminalFocusMode]);
 
   useEffect(() => {
+    if (typeof document === "undefined" || isDesktop) {
+      return;
+    }
+
+    const body = document.body;
+    const previousOverflow = body.style.overflow;
+    const previousOverscroll = body.style.overscrollBehavior;
+
+    if (mobileTerminalFocusMode) {
+      body.style.overflow = "hidden";
+      body.style.overscrollBehavior = "none";
+    }
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.overscrollBehavior = previousOverscroll;
+    };
+  }, [isDesktop, mobileTerminalFocusMode]);
+
+  useEffect(() => {
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
         setMobileTerminalFocusMode(false);
