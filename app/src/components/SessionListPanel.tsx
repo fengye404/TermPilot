@@ -1,5 +1,5 @@
 import type { SessionRecord } from "@termpilot/protocol";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 
 import { BUTTON_DANGER, BUTTON_SECONDARY, Panel } from "./chrome";
 
@@ -79,18 +79,32 @@ function formatRemaining(targetIso: string | null | undefined, nowMs: number): s
 
 export function SessionListPanel(props: SessionListPanelProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const runningCount = props.sessions.filter((session) => session.status === "running").length;
-  const exitedCount = props.sessions.filter((session) => session.status === "exited").length;
+  const sessionCounts = useMemo(() => {
+    let running = 0;
+    let exited = 0;
+    let managedRunning = 0;
+    for (const session of props.sessions) {
+      if (session.status === "running") {
+        running += 1;
+        if (session.launchMode === "command") {
+          managedRunning += 1;
+        }
+      } else if (session.status === "exited") {
+        exited += 1;
+      }
+    }
+    return { running, exited, managedRunning };
+  }, [props.sessions]);
   const pinnedCount = props.pinnedSids.length;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       setNowMs(Date.now());
-    }, 30_000);
+    }, sessionCounts.managedRunning > 0 ? 30_000 : 60_000);
     return () => {
       window.clearInterval(timer);
     };
-  }, []);
+  }, [sessionCounts.managedRunning]);
 
   return (
     <Panel title="会话列表">
@@ -102,11 +116,11 @@ export function SessionListPanel(props: SessionListPanelProps) {
           </div>
           <div className="tp-stat-card">
             <div className="tp-stat-label">运行中</div>
-            <div className="tp-stat-value">{runningCount}</div>
+            <div className="tp-stat-value">{sessionCounts.running}</div>
           </div>
           <div className="tp-stat-card">
             <div className="tp-stat-label">已退出</div>
-            <div className="tp-stat-value">{exitedCount}</div>
+            <div className="tp-stat-value">{sessionCounts.exited}</div>
           </div>
           <div className="tp-stat-card">
             <div className="tp-stat-label">已置顶</div>
@@ -162,79 +176,105 @@ export function SessionListPanel(props: SessionListPanelProps) {
           </p>
         ) : (
           props.filteredSessions.map((session) => (
-            <div
+            <SessionCard
               key={session.sid}
-              data-session-name={session.name}
-              className={`tp-session-card ${
-                session.sid === props.activeSid
-                  ? "tp-session-card-active"
-                  : ""
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-[var(--tp-text)]">{session.name}</p>
-                  <p className="mt-1 text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
-                  {session.launchMode === "command" && session.status === "running" ? (
-                    <>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {(session.attachedClientCount ?? 0) === 0 ? (
-                          <span className="tp-chip tp-chip-warning min-h-0 px-2.5 py-1 text-[11px]">无人附着</span>
-                        ) : null}
-                        {session.suspectedOrphaned ? (
-                          <span className="tp-chip tp-chip-danger min-h-0 px-2.5 py-1 text-[11px]">疑似残留</span>
-                        ) : null}
-                      </div>
-                      <div className="mt-2 space-y-1 text-[11px] text-[var(--tp-text-soft)]">
-                        <p>上次输出 {formatRelativeTime(session.lastOutputAt ?? session.lastActivityAt, nowMs)}</p>
-                        {(session.attachedClientCount ?? 0) === 0 && session.detachedAt ? (
-                          <p>离开会话 {formatRelativeTime(session.detachedAt, nowMs)}</p>
-                        ) : null}
-                        {(session.attachedClientCount ?? 0) === 0 && session.autoCleanupAt ? (
-                          <p>
-                            {session.suspectedOrphaned ? "预计" : "若持续空闲，预计"} {formatRemaining(session.autoCleanupAt, nowMs)}后自动清理
-                          </p>
-                        ) : null}
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-                <span className={`tp-chip min-h-0 px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>
-                  {session.status === "running" ? "运行中" : "已退出"}
-                </span>
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button
-                  className={`tp-chip min-h-0 px-3 py-1.5 text-xs ${
-                    props.pinnedSids.includes(session.sid)
-                      ? "tp-chip-warning"
-                      : ""
-                  }`}
-                  type="button"
-                  onClick={() => props.onTogglePinnedSession(session.sid)}
-                >
-                  {props.pinnedSids.includes(session.sid) ? "取消置顶" : "置顶"}
-                </button>
-                <button
-                  className={`${BUTTON_SECONDARY} min-h-0 px-3 py-1.5 text-xs`}
-                  type="button"
-                  onClick={() => props.onSelectSession(session.sid)}
-                >
-                  查看
-                </button>
-                <button
-                  className={`${BUTTON_DANGER} min-h-0 px-3 py-1.5 text-xs`}
-                  type="button"
-                  disabled={session.status !== "running" || !props.canControl}
-                  onClick={() => props.onKillSession(session.sid)}
-                >
-                  关闭
-                </button>
-              </div>
-            </div>
+              session={session}
+              active={session.sid === props.activeSid}
+              pinned={props.pinnedSids.includes(session.sid)}
+              canControl={props.canControl}
+              nowMs={nowMs}
+              onTogglePinnedSession={props.onTogglePinnedSession}
+              onSelectSession={props.onSelectSession}
+              onKillSession={props.onKillSession}
+            />
           ))
         )}
       </div>
     </Panel>
   );
 }
+
+interface SessionCardProps {
+  session: SessionRecord;
+  active: boolean;
+  pinned: boolean;
+  canControl: boolean;
+  nowMs: number;
+  onTogglePinnedSession: (sid: string) => void;
+  onSelectSession: (sid: string) => void;
+  onKillSession: (sid: string) => void;
+}
+
+const SessionCard = memo(function SessionCard(props: SessionCardProps) {
+  const { session, active, pinned, canControl, nowMs } = props;
+
+  return (
+    <div
+      data-session-name={session.name}
+      className={`tp-session-card ${active ? "tp-session-card-active" : ""}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-[var(--tp-text)]">{session.name}</p>
+          <p className="mt-1 text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
+          {session.launchMode === "command" && session.status === "running" ? (
+            <>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(session.attachedClientCount ?? 0) === 0 ? (
+                  <span className="tp-chip tp-chip-warning min-h-0 px-2.5 py-1 text-[11px]">无人附着</span>
+                ) : null}
+                {session.suspectedOrphaned ? (
+                  <span className="tp-chip tp-chip-danger min-h-0 px-2.5 py-1 text-[11px]">疑似残留</span>
+                ) : null}
+              </div>
+              <div className="mt-2 space-y-1 text-[11px] text-[var(--tp-text-soft)]">
+                <p>上次输出 {formatRelativeTime(session.lastOutputAt ?? session.lastActivityAt, nowMs)}</p>
+                {(session.attachedClientCount ?? 0) === 0 && session.detachedAt ? (
+                  <p>离开会话 {formatRelativeTime(session.detachedAt, nowMs)}</p>
+                ) : null}
+                {(session.attachedClientCount ?? 0) === 0 && session.autoCleanupAt ? (
+                  <p>
+                    {session.suspectedOrphaned ? "预计" : "若持续空闲，预计"} {formatRemaining(session.autoCleanupAt, nowMs)}后自动清理
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
+        <span className={`tp-chip min-h-0 px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>
+          {session.status === "running" ? "运行中" : "已退出"}
+        </span>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          className={`tp-chip min-h-0 px-3 py-1.5 text-xs ${pinned ? "tp-chip-warning" : ""}`}
+          type="button"
+          onClick={() => props.onTogglePinnedSession(session.sid)}
+        >
+          {pinned ? "取消置顶" : "置顶"}
+        </button>
+        <button
+          className={`${BUTTON_SECONDARY} min-h-0 px-3 py-1.5 text-xs`}
+          type="button"
+          onClick={() => props.onSelectSession(session.sid)}
+        >
+          查看
+        </button>
+        <button
+          className={`${BUTTON_DANGER} min-h-0 px-3 py-1.5 text-xs`}
+          type="button"
+          disabled={session.status !== "running" || !canControl}
+          onClick={() => props.onKillSession(session.sid)}
+        >
+          关闭
+        </button>
+      </div>
+    </div>
+  );
+}, (prev, next) => (
+  prev.session === next.session
+  && prev.active === next.active
+  && prev.pinned === next.pinned
+  && prev.canControl === next.canControl
+  && Math.floor(prev.nowMs / 30_000) === Math.floor(next.nowMs / 30_000)
+));

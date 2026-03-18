@@ -200,6 +200,7 @@ export default function App() {
   const sessionsRef = useRef<SessionRecord[]>([]);
   const bufferSeqsRef = useRef<Record<string, number>>({});
   const replayRequestRef = useRef<Record<string, { afterSeq: number; targetSeq: number; at: number }>>({});
+  const foregroundRecoveryRef = useRef<{ at: number; sid: string | null }>({ at: 0, sid: null });
   const notificationDedupRef = useRef<Record<string, number>>({});
   const cleanupReminderTimerRef = useRef<Record<string, number>>({});
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
@@ -282,6 +283,7 @@ export default function App() {
   const connected = connectionPhase === "connected";
   const canControlDevice = connected && deviceOnline;
   const parsedWsUrl = useMemo(() => tryParseUrl(wsUrl), [wsUrl]);
+  const pinnedSidSet = useMemo(() => new Set(pinnedSids), [pinnedSids]);
   const relayHttpBaseUrl = useMemo(
     () => (parsedWsUrl ? getRelayHttpBaseUrl(parsedWsUrl.toString()) : null),
     [parsedWsUrl],
@@ -299,14 +301,14 @@ export default function App() {
         return session.name.toLowerCase().includes(query) || session.cwd.toLowerCase().includes(query);
       })
       .sort((left, right) => {
-        const leftPinned = pinnedSids.includes(left.sid);
-        const rightPinned = pinnedSids.includes(right.sid);
+        const leftPinned = pinnedSidSet.has(left.sid);
+        const rightPinned = pinnedSidSet.has(right.sid);
         if (leftPinned !== rightPinned) {
           return leftPinned ? -1 : 1;
         }
         return right.startedAt.localeCompare(left.startedAt);
       });
-  }, [deferredSessionQuery, pinnedSids, sessions, statusFilter]);
+  }, [deferredSessionQuery, pinnedSidSet, sessions, statusFilter]);
 
   useEffect(() => {
     deviceIdRef.current = deviceId;
@@ -594,8 +596,8 @@ export default function App() {
     }
 
     const pickSession = [...sessions].sort((left, right) => {
-      const leftPinned = pinnedSids.includes(left.sid);
-      const rightPinned = pinnedSids.includes(right.sid);
+      const leftPinned = pinnedSidSet.has(left.sid);
+      const rightPinned = pinnedSidSet.has(right.sid);
       if (leftPinned !== rightPinned) {
         return leftPinned ? -1 : 1;
       }
@@ -611,7 +613,7 @@ export default function App() {
 
     setActiveSid(pickSession.sid);
     void requestReplayIfNeeded(pickSession, deviceIdRef.current);
-  }, [activeSid, connected, isDesktop, pinnedSids, sessions]);
+  }, [activeSid, connected, isDesktop, pinnedSidSet, sessions]);
 
   useEffect(() => {
     const previousDeviceOnline = previousDeviceOnlineRef.current;
@@ -799,6 +801,46 @@ export default function App() {
       document.removeEventListener("visibilitychange", onForeground);
     };
   }, [relayHttpBaseUrl]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    const recoverForegroundState = () => {
+      if (document.visibilityState !== "visible" || !connected) {
+        return;
+      }
+
+      const now = Date.now();
+      if (
+        foregroundRecoveryRef.current.sid === activeSid
+        && now - foregroundRecoveryRef.current.at < 3_000
+      ) {
+        return;
+      }
+      foregroundRecoveryRef.current = { at: now, sid: activeSid };
+
+      void requestSessions(deviceIdRef.current);
+      if (!activeSid) {
+        return;
+      }
+
+      const activeSessionRecord = sessionsRef.current.find((session) => session.sid === activeSid);
+      if (activeSessionRecord) {
+        void requestReplayIfNeeded(activeSessionRecord, deviceIdRef.current);
+        return;
+      }
+      void requestReplay(activeSid, deviceIdRef.current);
+    };
+
+    window.addEventListener("focus", recoverForegroundState);
+    document.addEventListener("visibilitychange", recoverForegroundState);
+    return () => {
+      window.removeEventListener("focus", recoverForegroundState);
+      document.removeEventListener("visibilitychange", recoverForegroundState);
+    };
+  }, [activeSid, connected]);
 
   function showNotice(kind: NoticeState["kind"], text: string): void {
     setNotice({ kind, text });
@@ -1612,6 +1654,20 @@ export default function App() {
     }
   }
 
+  function selectSession(sid: string, options?: { reveal?: boolean }): void {
+    suppressMobileAutoSelectRef.current = false;
+    setActiveSid(sid);
+    const session = sessionsRef.current.find((item) => item.sid === sid);
+    if (session) {
+      void requestReplayIfNeeded(session, deviceIdRef.current);
+    } else {
+      void requestReplay(sid, deviceIdRef.current);
+    }
+    if (options?.reveal) {
+      revealWorkspace();
+    }
+  }
+
   function revealWorkspace(): void {
     if (!workspaceRef.current || typeof window === "undefined") {
       return;
@@ -1864,16 +1920,7 @@ export default function App() {
                   onSessionQueryChange={setSessionQuery}
                   onStatusFilterChange={setStatusFilter}
                   onTogglePinnedSession={togglePinnedSession}
-                  onSelectSession={(sid) => {
-                    suppressMobileAutoSelectRef.current = false;
-                    setActiveSid(sid);
-                    const session = sessions.find((item) => item.sid === sid);
-                    if (session) {
-                      void requestReplayIfNeeded(session, deviceIdRef.current);
-                    } else {
-                      void requestReplay(sid, deviceIdRef.current);
-                    }
-                  }}
+                  onSelectSession={selectSession}
                   onKillSession={handleKillSession}
                   onCleanupSuspectedSessions={handleCleanupSuspectedSessions}
                 />
@@ -1957,23 +2004,15 @@ export default function App() {
                     statusFilter={statusFilter}
                     suspectedOrphanedCount={suspectedOrphanedSessions.length}
                     cleanupPending={cleanupPending}
-                    onSessionQueryChange={setSessionQuery}
-                    onStatusFilterChange={setStatusFilter}
-                    onTogglePinnedSession={togglePinnedSession}
-                    onSelectSession={(sid) => {
-                      suppressMobileAutoSelectRef.current = false;
-                      setActiveSid(sid);
-                      const session = sessions.find((item) => item.sid === sid);
-                      if (session) {
-                        void requestReplayIfNeeded(session, deviceIdRef.current);
-                      } else {
-                        void requestReplay(sid, deviceIdRef.current);
-                      }
-                      revealWorkspace();
-                    }}
-                    onKillSession={handleKillSession}
-                    onCleanupSuspectedSessions={handleCleanupSuspectedSessions}
-                  />
+                  onSessionQueryChange={setSessionQuery}
+                  onStatusFilterChange={setStatusFilter}
+                  onTogglePinnedSession={togglePinnedSession}
+                  onSelectSession={(sid) => {
+                    selectSession(sid, { reveal: true });
+                  }}
+                  onKillSession={handleKillSession}
+                  onCleanupSuspectedSessions={handleCleanupSuspectedSessions}
+                />
 
                   <details className="tp-card px-4 py-4 sm:px-5">
                     <summary className="tp-disclosure-summary list-none">
