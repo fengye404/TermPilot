@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentBusinessMessage,
   ClientBusinessMessage,
@@ -251,10 +251,12 @@ export default function App() {
     () => sessions.find((session) => session.sid === activeSid) ?? null,
     [activeSid, sessions],
   );
-  const activeSnapshot = useMemo(
+  const activeSnapshotRaw = useMemo(
     () => (activeSid ? (buffers[activeSid] ?? "") : ""),
     [activeSid, buffers],
   );
+  const activeSnapshot = useDeferredValue(activeSnapshotRaw);
+  const deferredSessionQuery = useDeferredValue(sessionQuery);
   const runningSessionsCount = useMemo(
     () => sessions.filter((session) => session.status === "running").length,
     [sessions],
@@ -267,6 +269,14 @@ export default function App() {
     () => sessions.filter((session) => session.status === "running" && session.suspectedOrphaned),
     [sessions],
   );
+  const activeSnapshotLag = useMemo(() => {
+    if (!activeSession || !activeSid) {
+      return 0;
+    }
+    const currentSeq = bufferSeqs[activeSid] ?? -1;
+    return Math.max(0, activeSession.lastSeq - currentSeq);
+  }, [activeSession, activeSid, bufferSeqs]);
+  const activeSnapshotPending = activeSnapshotLag > 0 && activeSession?.status === "running";
   const hasSecureBinding = clientToken.trim().length > 0 && Boolean(clientKeyPair) && agentPublicKey.trim().length > 0;
   const isPaired = hasSecureBinding;
   const connected = connectionPhase === "connected";
@@ -277,7 +287,7 @@ export default function App() {
     [parsedWsUrl],
   );
   const filteredSessions = useMemo(() => {
-    const query = sessionQuery.trim().toLowerCase();
+    const query = deferredSessionQuery.trim().toLowerCase();
     return sessions
       .filter((session) => {
         if (statusFilter !== "all" && session.status !== statusFilter) {
@@ -296,7 +306,7 @@ export default function App() {
         }
         return right.startedAt.localeCompare(left.startedAt);
       });
-  }, [pinnedSids, sessionQuery, sessions, statusFilter]);
+  }, [deferredSessionQuery, pinnedSids, sessions, statusFilter]);
 
   useEffect(() => {
     deviceIdRef.current = deviceId;
@@ -942,40 +952,42 @@ export default function App() {
         if (message.deviceId !== deviceIdRef.current) {
           return;
         }
-        setSessions(message.payload.sessions);
-        setBuffers((current) => {
-          const nextBuffers: SessionMap = {};
-          for (const session of message.payload.sessions) {
-            if (current[session.sid]) {
-              nextBuffers[session.sid] = current[session.sid];
+        startTransition(() => {
+          setSessions(message.payload.sessions);
+          setBuffers((current) => {
+            const nextBuffers: SessionMap = {};
+            for (const session of message.payload.sessions) {
+              if (current[session.sid]) {
+                nextBuffers[session.sid] = current[session.sid];
+              }
             }
-          }
-          return nextBuffers;
-        });
-        setBufferSeqs((current) => {
-          const nextSeqs: Record<string, number> = {};
-          for (const session of message.payload.sessions) {
-            if (typeof current[session.sid] === "number") {
-              nextSeqs[session.sid] = current[session.sid];
+            return nextBuffers;
+          });
+          setBufferSeqs((current) => {
+            const nextSeqs: Record<string, number> = {};
+            for (const session of message.payload.sessions) {
+              if (typeof current[session.sid] === "number") {
+                nextSeqs[session.sid] = current[session.sid];
+              }
+              const localSeq = typeof current[session.sid] === "number" ? current[session.sid] : -1;
+              if (localSeq >= session.lastSeq) {
+                delete replayRequestRef.current[session.sid];
+              }
             }
-            const localSeq = typeof current[session.sid] === "number" ? current[session.sid] : -1;
-            if (localSeq >= session.lastSeq) {
-              delete replayRequestRef.current[session.sid];
+            return nextSeqs;
+          });
+          setActiveSid((current) => {
+            const next = current && message.payload.sessions.some((session) => session.sid === current)
+              ? current
+              : null;
+            if (next) {
+              const activeSessionRecord = message.payload.sessions.find((session) => session.sid === next);
+              if (activeSessionRecord) {
+                void requestReplayIfNeeded(activeSessionRecord, deviceIdRef.current);
+              }
             }
-          }
-          return nextSeqs;
-        });
-        setActiveSid((current) => {
-          const next = current && message.payload.sessions.some((session) => session.sid === current)
-            ? current
-            : null;
-          if (next) {
-            const activeSessionRecord = message.payload.sessions.find((session) => session.sid === next);
-            if (activeSessionRecord) {
-              void requestReplayIfNeeded(activeSessionRecord, deviceIdRef.current);
-            }
-          }
-          return next;
+            return next;
+          });
         });
         return;
       case "session.created":
@@ -984,32 +996,36 @@ export default function App() {
         if (session.deviceId !== deviceIdRef.current) {
           return;
         }
-        setSessions((current) => {
-          const next = current.filter((item) => item.sid !== session.sid);
-          next.push(session);
-          next.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-          return next;
+        startTransition(() => {
+          setSessions((current) => {
+            const next = current.filter((item) => item.sid !== session.sid);
+            next.push(session);
+            next.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+            return next;
+          });
+          if ((bufferSeqsRef.current[session.sid] ?? -1) >= session.lastSeq) {
+            delete replayRequestRef.current[session.sid];
+          } else if (activeSid === session.sid) {
+            void requestReplayIfNeeded(session, deviceIdRef.current);
+          }
+          setActiveSid((current) => current ?? session.sid);
         });
-        if ((bufferSeqsRef.current[session.sid] ?? -1) >= session.lastSeq) {
-          delete replayRequestRef.current[session.sid];
-        } else if (activeSid === session.sid) {
-          void requestReplayIfNeeded(session, deviceIdRef.current);
-        }
-        setActiveSid((current) => current ?? session.sid);
         return;
       }
       case "session.output":
         if (message.deviceId !== deviceIdRef.current) {
           return;
         }
-        setBuffers((current) => ({ ...current, [message.sid]: message.payload.data }));
-        setBufferSeqs((current) => {
-          const next = { ...current, [message.sid]: message.seq };
-          const pending = replayRequestRef.current[message.sid];
-          if (pending && message.seq >= pending.targetSeq) {
-            delete replayRequestRef.current[message.sid];
-          }
-          return next;
+        startTransition(() => {
+          setBuffers((current) => ({ ...current, [message.sid]: message.payload.data }));
+          setBufferSeqs((current) => {
+            const next = { ...current, [message.sid]: message.seq };
+            const pending = replayRequestRef.current[message.sid];
+            if (pending && message.seq >= pending.targetSeq) {
+              delete replayRequestRef.current[message.sid];
+            }
+            return next;
+          });
         });
         return;
       case "session.exit":
@@ -1020,11 +1036,13 @@ export default function App() {
         if (activeSid === message.sid) {
           showNotice("info", message.payload.reason);
         }
-        setSessions((current) =>
-          current.map((session) =>
-            session.sid === message.sid ? { ...session, status: "exited" } : session,
-          ),
-        );
+        startTransition(() => {
+          setSessions((current) =>
+            current.map((session) =>
+              session.sid === message.sid ? { ...session, status: "exited" } : session,
+            ),
+          );
+        });
         return;
       case "error":
         showNotice("error", message.message);
@@ -1867,6 +1885,8 @@ export default function App() {
                   activeSid={activeSid}
                   canControl={canControlDevice}
                   focusMode={mobileTerminalFocusMode}
+                  snapshotPending={activeSnapshotPending}
+                  snapshotLag={activeSnapshotLag}
                   command={command}
                   keyboardBridge={keyboardBridge}
                   pasteBuffer={pasteBuffer}
@@ -1899,6 +1919,8 @@ export default function App() {
                     activeSid={activeSid}
                     canControl={canControlDevice}
                     focusMode={mobileTerminalFocusMode}
+                    snapshotPending={activeSnapshotPending}
+                    snapshotLag={activeSnapshotLag}
                     command={command}
                     keyboardBridge={keyboardBridge}
                     pasteBuffer={pasteBuffer}

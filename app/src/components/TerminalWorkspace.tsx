@@ -17,6 +17,8 @@ interface TerminalWorkspaceProps {
   activeSid: string | null;
   canControl: boolean;
   focusMode?: boolean;
+  snapshotPending?: boolean;
+  snapshotLag?: number;
   command: string;
   keyboardBridge: string;
   pasteBuffer: string;
@@ -45,6 +47,11 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const executionKeys = props.shortcutKeys.filter((shortcut) => ["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const navigationKeys = props.shortcutKeys.filter((shortcut) => !["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const helperKeys = navigationKeys.filter((shortcut) => !shortcut.key.startsWith("arrow_"));
+  const syncChipLabel = props.activeSession?.status === "running"
+    ? props.snapshotPending
+      ? `补帧中${typeof props.snapshotLag === "number" && props.snapshotLag > 0 ? ` · ${props.snapshotLag}` : ""}`
+      : "实时同步"
+    : "已结束";
 
   const renderShortcutButton = (shortcut: ShortcutKeyMeta) => {
     const toneClass = shortcut.tone === "primary"
@@ -134,7 +141,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
-                    {props.activeSession.status === "running" ? "实时同步" : "已结束"}
+                    {syncChipLabel}
                   </span>
                 </div>
               </div>
@@ -356,7 +363,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                     <p className="text-xs text-[var(--tp-text-soft)]">这里显示当前会话的最新输出。</p>
                   </div>
                   <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
-                    {props.activeSession.status === "running" ? "实时同步" : "已结束"}
+                    {syncChipLabel}
                   </span>
                 </div>
                 <div className="tp-terminal-frame h-[52svh] min-h-[440px] max-h-[720px]">
