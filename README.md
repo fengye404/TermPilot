@@ -49,6 +49,8 @@ The system has three runtime pieces:
 - Device-scoped pairing, access grants, and encrypted browser-to-agent session messages
 - Relay persistence limited to pairing, grant, and audit metadata, with SQLite as the default long-running store and optional PostgreSQL via `DATABASE_URL`
 - Mobile web UI focused on viewing, light input, and shortcut controls on the same session
+- Browser notifications for device offline, session exit, and suspected stale managed sessions while the page is in the background
+- Adaptive output polling: active sessions stay snappy, while long-detached managed sessions are polled more conservatively
 - Managed command sessions include lightweight stale-session governance for long-detached, no-output leftovers
 
 This is a deliberately narrow scope. TermPilot is built for session continuity, not for desktop remoting or generic server administration.

@@ -64,9 +64,40 @@ interface SessionRuntimeState {
   lastRenderedBuffer: string;
   lastStatus: SessionRecord["status"];
   layoutNormalized: boolean;
+  lastSyncedAt: number;
+  lastBufferChangeAt: number;
+  lastRemoteInteractionAt: number;
 }
 
 type EncryptedClientMessage = RelayToAgentMessage & { type: "secure.client"; accessToken?: string };
+
+function getSessionSyncIntervalMs(session: SessionRecord, runtimeState: SessionRuntimeState | undefined, baseIntervalMs: number): number {
+  if (session.status === "exited") {
+    return Math.max(baseIntervalMs * 8, 4_000);
+  }
+
+  const attachedClientCount = session.attachedClientCount ?? 0;
+  if (attachedClientCount > 0) {
+    return baseIntervalMs;
+  }
+
+  const recentlyActive = runtimeState
+    ? Date.now() - Math.max(runtimeState.lastBufferChangeAt, runtimeState.lastRemoteInteractionAt) < 10_000
+    : false;
+  if (recentlyActive) {
+    return Math.max(baseIntervalMs * 2, 750);
+  }
+
+  if (session.launchMode === "command" && session.suspectedOrphaned) {
+    return Math.max(baseIntervalMs * 12, 4_000);
+  }
+
+  if (session.launchMode === "command") {
+    return Math.max(baseIntervalMs * 4, 1_500);
+  }
+
+  return Math.max(baseIntervalMs * 3, 1_000);
+}
 
 export class AgentDaemon {
   private readonly runtimeState = new Map<string, SessionRuntimeState>();
@@ -139,8 +170,14 @@ export class AgentDaemon {
     while (this.running) {
       await this.refreshGrantPublicKeys();
       const sessions = loadState().sessions.filter((session) => session.deviceId === this.options.deviceId);
+      const nowMs = Date.now();
 
       for (const session of sessions) {
+        const runtimeState = this.runtimeState.get(session.sid);
+        const syncIntervalMs = getSessionSyncIntervalMs(session, runtimeState, this.options.pollIntervalMs);
+        if (runtimeState && nowMs - runtimeState.lastSyncedAt < syncIntervalMs) {
+          continue;
+        }
         await this.syncSession(session);
       }
 
@@ -176,7 +213,11 @@ export class AgentDaemon {
       lastRenderedBuffer: "",
       lastStatus: session.status,
       layoutNormalized: false,
+      lastSyncedAt: 0,
+      lastBufferChangeAt: 0,
+      lastRemoteInteractionAt: 0,
     };
+    runtimeState.lastSyncedAt = Date.now();
 
     if (session.status === "exited") {
       if (runtimeState.lastStatus !== "exited") {
@@ -321,6 +362,7 @@ export class AgentDaemon {
         return;
       }
       nextSession = bumpedSession;
+      runtimeState.lastBufferChangeAt = Date.now();
 
       const outputMessage: SessionOutputMessage = {
         type: "session.output",
@@ -340,6 +382,9 @@ export class AgentDaemon {
       lastRenderedBuffer: buffer,
       lastStatus: nextSession.status,
       layoutNormalized: runtimeState.layoutNormalized,
+      lastSyncedAt: runtimeState.lastSyncedAt,
+      lastBufferChangeAt: runtimeState.lastBufferChangeAt,
+      lastRemoteInteractionAt: runtimeState.lastRemoteInteractionAt,
     });
 
     const stateMessage: AgentBusinessMessage = {
@@ -358,6 +403,28 @@ export class AgentDaemon {
     const key = `${frame.deviceId}:${frame.sid}`;
     const nextFrames = [...(this.outputBuffers.get(key) ?? []), frame].slice(-OUTPUT_FRAME_LIMIT);
     this.outputBuffers.set(key, nextFrames);
+  }
+
+  private noteRemoteInteraction(sid: string): void {
+    const runtimeState = this.runtimeState.get(sid);
+    if (runtimeState) {
+      runtimeState.lastRemoteInteractionAt = Date.now();
+      this.runtimeState.set(sid, runtimeState);
+      return;
+    }
+
+    const session = getSessionBySid(sid);
+    if (!session) {
+      return;
+    }
+    this.runtimeState.set(sid, {
+      lastRenderedBuffer: "",
+      lastStatus: session.status,
+      layoutNormalized: false,
+      lastSyncedAt: 0,
+      lastBufferChangeAt: 0,
+      lastRemoteInteractionAt: Date.now(),
+    });
   }
 
   private async handleMessage(message: RelayToAgentMessage): Promise<void> {
@@ -446,6 +513,7 @@ export class AgentDaemon {
   }
 
   private async handleReplay(accessToken: string, message: SessionReplayMessage): Promise<void> {
+    this.noteRemoteInteraction(message.sid);
     const key = `${this.options.deviceId}:${message.sid}`;
     const afterSeq = message.payload?.afterSeq ?? -1;
     const frames = (this.outputBuffers.get(key) ?? []).filter((item) => item.seq > afterSeq);
@@ -492,6 +560,7 @@ export class AgentDaemon {
         return;
       }
 
+      this.noteRemoteInteraction(message.sid);
       await sendInput(session, message.payload.text, message.payload.key);
     } catch (error) {
       await this.sendEncryptedError(accessToken, message.reqId, "SESSION_INPUT_FAILED", error);
@@ -505,6 +574,7 @@ export class AgentDaemon {
         await this.sendEncryptedError(accessToken, message.reqId, "SESSION_NOT_FOUND", `会话 ${message.sid} 不存在`);
         return;
       }
+      this.noteRemoteInteraction(message.sid);
       await resizeSession(session, message.payload.cols, message.payload.rows);
     } catch (error) {
       await this.sendEncryptedError(accessToken, message.reqId, "SESSION_RESIZE_FAILED", error);

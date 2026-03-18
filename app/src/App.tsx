@@ -198,6 +198,7 @@ export default function App() {
   const cleanupWatchTimerRef = useRef<number | null>(null);
   const cleanupRequestedSidsRef = useRef<string[] | null>(null);
   const sessionsRef = useRef<SessionRecord[]>([]);
+  const bufferSeqsRef = useRef<Record<string, number>>({});
   const deviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const clientTokenRef = useRef(DEFAULT_CLIENT_TOKEN);
   const clientKeyPairRef = useRef<E2EEKeyPair | null>(null);
@@ -207,6 +208,8 @@ export default function App() {
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
   const previousSessionStatusRef = useRef<Record<string, SessionRecord["status"]>>({});
+  const previousOrphanedSessionsRef = useRef<Record<string, boolean>>({});
+  const sessionExitReasonRef = useRef<Record<string, string>>({});
   const bootstrappedNotificationsRef = useRef(false);
 
   const [wsUrl, setWsUrl] = useState(getDefaultWsUrl);
@@ -220,6 +223,7 @@ export default function App() {
   const [deviceOnline, setDeviceOnline] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [buffers, setBuffers] = useState<SessionMap>({});
+  const [bufferSeqs, setBufferSeqs] = useState<Record<string, number>>({});
   const [activeSid, setActiveSid] = useState<string | null>(null);
   const [pinnedSids, setPinnedSids] = useState<string[]>([]);
   const [sessionQuery, setSessionQuery] = useState("");
@@ -346,6 +350,10 @@ export default function App() {
   }, [sessions]);
 
   useEffect(() => {
+    bufferSeqsRef.current = bufferSeqs;
+  }, [bufferSeqs]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") {
       return;
     }
@@ -404,6 +412,7 @@ export default function App() {
     setDeviceOnline(false);
     setSessions([]);
     setBuffers({});
+    setBufferSeqs({});
     setActiveSid(null);
     suppressMobileAutoSelectRef.current = false;
 
@@ -588,28 +597,36 @@ export default function App() {
   useEffect(() => {
     const previousDeviceOnline = previousDeviceOnlineRef.current;
     const previousSessionStatus = previousSessionStatusRef.current;
+    const previousOrphanedSessions = previousOrphanedSessionsRef.current;
     const nextSessionStatus = Object.fromEntries(sessions.map((session) => [session.sid, session.status]));
+    const nextOrphanedSessions = Object.fromEntries(sessions.map((session) => [session.sid, Boolean(session.suspectedOrphaned)]));
 
-    if (bootstrappedNotificationsRef.current && notificationsEnabled && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && document.hidden) {
+    if (bootstrappedNotificationsRef.current) {
       if (previousDeviceOnline && !deviceOnline) {
-        new Notification("TermPilot", {
-          body: `设备 ${deviceId} 已离线`,
-        });
+        maybeNotify("TermPilot", `设备 ${deviceId} 已离线`);
       }
 
       for (const session of sessions) {
+        if (!previousOrphanedSessions[session.sid] && session.suspectedOrphaned) {
+          const remaining = formatRelativeDurationUntil(session.autoCleanupAt);
+          maybeNotify("疑似残留会话", `${session.name} 当前无人附着，若持续空闲将于 ${remaining} 后自动清理。`);
+        }
         if (previousSessionStatus[session.sid] === "running" && session.status === "exited") {
-          new Notification("会话已退出", {
-            body: `${session.name} 已结束`,
-          });
+          const exitReason = sessionExitReasonRef.current[session.sid]?.trim() || "";
+          const isAutoCleaned = exitReason.includes("自动清理");
+          maybeNotify(
+            isAutoCleaned ? "会话已自动清理" : "会话已退出",
+            isAutoCleaned ? `${session.name} 因长时间无人附着且无输出被自动回收。` : `${session.name} 已结束。`,
+          );
         }
       }
     }
 
     previousDeviceOnlineRef.current = deviceOnline;
     previousSessionStatusRef.current = nextSessionStatus;
+    previousOrphanedSessionsRef.current = nextOrphanedSessions;
     bootstrappedNotificationsRef.current = true;
-  }, [deviceId, deviceOnline, notificationsEnabled, sessions]);
+  }, [deviceId, deviceOnline, sessions]);
 
   useEffect(() => {
     const requested = cleanupRequestedSidsRef.current;
@@ -707,6 +724,49 @@ export default function App() {
     }, 4000);
   }
 
+  function maybeNotify(title: string, body: string): void {
+    if (
+      !notificationsEnabled
+      || typeof window === "undefined"
+      || typeof document === "undefined"
+      || !("Notification" in window)
+      || Notification.permission !== "granted"
+      || !document.hidden
+    ) {
+      return;
+    }
+
+    try {
+      new Notification(title, { body });
+    } catch {
+      // ignore unsupported notification edge cases
+    }
+  }
+
+  function formatRelativeDurationUntil(targetIso: string | null | undefined): string {
+    if (!targetIso) {
+      return "稍后";
+    }
+    const timestamp = Date.parse(targetIso);
+    if (!Number.isFinite(timestamp)) {
+      return "稍后";
+    }
+    const diffMs = Math.max(0, timestamp - Date.now());
+    if (diffMs < 60_000) {
+      return "1 分钟内";
+    }
+    const diffMinutes = Math.ceil(diffMs / 60_000);
+    if (diffMinutes < 60) {
+      return `${diffMinutes} 分钟`;
+    }
+    const diffHours = Math.ceil(diffMinutes / 60);
+    if (diffHours < 24) {
+      return `${diffHours} 小时`;
+    }
+    const diffDays = Math.ceil(diffHours / 24);
+    return `${diffDays} 天`;
+  }
+
   function resetSecureBinding(options: SecureBindingResetOptions): void {
     disconnect();
     setClientToken("");
@@ -721,9 +781,12 @@ export default function App() {
     setActiveSid(null);
     setSessions([]);
     setBuffers({});
+    setBufferSeqs({});
     setPairingMessage(options.message);
     previousDeviceOnlineRef.current = false;
     previousSessionStatusRef.current = {};
+    previousOrphanedSessionsRef.current = {};
+    sessionExitReasonRef.current = {};
     bootstrappedNotificationsRef.current = false;
     if (options.notice) {
       showNotice(options.notice.kind, options.notice.text);
@@ -785,6 +848,15 @@ export default function App() {
           }
           return nextBuffers;
         });
+        setBufferSeqs((current) => {
+          const nextSeqs: Record<string, number> = {};
+          for (const session of message.payload.sessions) {
+            if (typeof current[session.sid] === "number") {
+              nextSeqs[session.sid] = current[session.sid];
+            }
+          }
+          return nextSeqs;
+        });
         setActiveSid((current) => {
           const next = current && message.payload.sessions.some((session) => session.sid === current)
             ? current
@@ -815,10 +887,15 @@ export default function App() {
           return;
         }
         setBuffers((current) => ({ ...current, [message.sid]: message.payload.data }));
+        setBufferSeqs((current) => ({ ...current, [message.sid]: message.seq }));
         return;
       case "session.exit":
         if (message.deviceId !== deviceIdRef.current) {
           return;
+        }
+        sessionExitReasonRef.current[message.sid] = message.payload.reason;
+        if (activeSid === message.sid) {
+          showNotice("info", message.payload.reason);
         }
         setSessions((current) =>
           current.map((session) =>
@@ -847,7 +924,7 @@ export default function App() {
       deviceId: deviceIdOverride ?? deviceIdRef.current,
       sid,
       payload: {
-        afterSeq: -1,
+        afterSeq: bufferSeqsRef.current[sid] ?? -1,
       },
     });
   }
@@ -910,7 +987,7 @@ export default function App() {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       setNotificationsEnabled(true);
-      showNotice("success", "已开启浏览器提醒。页面在后台时，会在会话退出或设备离线时提醒。");
+      showNotice("success", "已开启浏览器提醒。页面在后台时，会在设备离线、会话退出或疑似残留时提醒。");
       return;
     }
 
@@ -991,6 +1068,7 @@ export default function App() {
             if (nextDeviceId !== previousDeviceId) {
               setSessions([]);
               setBuffers({});
+              setBufferSeqs({});
               setActiveSid(null);
             }
             if (shouldHydrateDeviceId) {
@@ -1034,7 +1112,8 @@ export default function App() {
             stopReconnectLoop();
             setConnectionPhase("idle");
             setDeviceOnline(false);
-          if (message.code === "AUTH_REVOKED") {
+            if (message.code === "AUTH_REVOKED") {
+              maybeNotify("访问已撤销", message.message);
               resetSecureBinding({
                 message: message.message,
                 notice: { kind: "error", text: message.message },
@@ -1083,6 +1162,7 @@ export default function App() {
 
       setSessions([]);
       setBuffers({});
+      setBufferSeqs({});
       setActiveSid(null);
       setDeviceId(payload.deviceId);
       setClientToken(payload.accessToken);
