@@ -28,6 +28,8 @@ features:
     details: relay 负责入口、配对、授权和加密路由；agent 负责本地 tmux 会话和输出同步。
   - title: 面向长期任务
     details: 适合 Claude Code、部署、迁移、脚本执行等需要离开桌面后继续查看和轻控制的任务。
+  - title: 移动端终端工作区
+    details: 手机端提供终端键盘、快速输入、快捷控制和专注模式，适合轻量查看与补命令。
 ---
 
 ## 产品定位
@@ -54,7 +56,7 @@ TermPilot 面向的是一个很明确的使用场景：
   <div class="tp-doc-panel">
     <p class="tp-doc-kicker">同步</p>
     <h3>端侧输出回放</h3>
-    <p>输出同步由 agent 提供，移动端重点支持查看、轻输入和快捷控制。</p>
+    <p>输出同步由 agent 提供，页面回到前台后会主动补齐缺失输出，保持当前会话尽快追平。</p>
   </div>
   <div class="tp-doc-panel">
     <p class="tp-doc-kicker">安全</p>
