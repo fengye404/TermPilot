@@ -21,7 +21,7 @@ hero:
 
 features:
   - title: 同一条受管理会话
-    details: 桌面和移动端接入的是同一条会话，而不是新开的 shell 或远程桌面镜像。
+    details: 桌面和移动端接入的是同一条会话，不需要重新开一个 shell。
   - title: 本地优先的数据归属
     details: 会话标题、cwd、状态详情和终端输出保留在 agent 所在电脑，relay 只保留最小元数据。
   - title: relay 与 agent 分层
@@ -38,7 +38,7 @@ TermPilot 面向的是一个很明确的使用场景：
 
 **一条终端任务已经在你的电脑上运行，而你希望在离开桌面之后，继续从手机接入这条原会话。**
 
-它不是远程桌面，也不是新的 shell 启动器。它解决的是同一条长期任务在多端之间的连续性。
+它围绕同一条长期任务在多端之间持续可达来设计。
 
 ## 当前产品形态
 
@@ -83,7 +83,7 @@ TermPilot 面向的是一个很明确的使用场景：
 <div class="tp-doc-links">
   <a class="tp-doc-link" href="/why-termpilot">
     <span class="tp-doc-link-title">产品概览</span>
-    <span class="tp-doc-link-body">理解它解决什么问题、适合什么任务，以及为什么不是远程桌面。</span>
+    <span class="tp-doc-link-body">理解它解决什么问题、适合什么任务，以及当前的产品边界。</span>
   </a>
   <a class="tp-doc-link" href="/getting-started">
     <span class="tp-doc-link-title">快速开始</span>

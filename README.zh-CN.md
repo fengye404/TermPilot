@@ -8,7 +8,7 @@
 
 让同一条受管理终端会话在电脑和手机之间持续可见、可控制。
 
-TermPilot 是一个本地优先的终端会话连续性工具。它让你在不把会话内容搬进 relay 的前提下，继续从手机访问电脑上那条已经运行中的受管理会话。
+TermPilot 是一个本地优先的终端会话共享工具，方便你从手机继续访问电脑上已经运行中的受管理会话，同时把会话内容保留在本机。
 
 > [!TIP]
 > 文档站: [TermPilot Docs](https://fengye404.top/TermPilot/) · [快速开始](https://fengye404.top/TermPilot/getting-started) · [部署指南](https://fengye404.top/TermPilot/deployment-guide) · [Agent 运维](https://fengye404.top/TermPilot/agent-operations) · [故障排查](https://fengye404.top/TermPilot/troubleshooting) · [CLI 参考](https://fengye404.top/TermPilot/cli-reference)
@@ -24,7 +24,7 @@ TermPilot 围绕一条很明确的主路径设计：
 - 你离开了工位
 - 你仍然想在手机上继续接入这条原会话
 
-这条会话可以是 Claude Code、部署流程、迁移任务，或者任何长期运行的终端任务。它解决的是会话连续性，不是远程桌面访问。
+这条会话可以是 Claude Code、部署流程、迁移任务，或者任何长期运行的终端任务。整个产品围绕同一条会话在多端之间持续可达来设计。
 
 ## 架构
 
@@ -53,7 +53,7 @@ TermPilot 围绕一条很明确的主路径设计：
 - 输出同步采用自适应轮询：活跃会话保持更快刷新，长期无人附着的托管命令会话会自动降频
 - 托管命令会话带有轻量残留治理，会自动回收长期无人附着且无输出的会话
 
-这是一条刻意收窄的产品边界。TermPilot 解决的是会话连续性，不是桌面远控或通用运维平台。
+这是一条刻意收窄的产品边界，重点放在会话连续性和多端接入体验上。
 
 如果你是从旧版本升级、且本地绑定里还没有本地密钥，需要重新配对一次。
 

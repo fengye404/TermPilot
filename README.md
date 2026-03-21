@@ -8,7 +8,7 @@ English | [简体中文](./README.zh-CN.md)
 
 Keep one managed terminal session available across desktop and mobile.
 
-TermPilot is a local-first terminal session continuity tool for long-running work. It keeps the same managed session reachable from your phone without moving session content into the relay.
+TermPilot is a local-first tool for continuing the same managed terminal session from your phone while it keeps running on your computer.
 
 > [!TIP]
 > Documentation site: [TermPilot Docs](https://fengye404.top/TermPilot/) · [Quick Start](https://fengye404.top/TermPilot/getting-started) · [Deployment Guide](https://fengye404.top/TermPilot/deployment-guide) · [Agent Operations](https://fengye404.top/TermPilot/agent-operations) · [Troubleshooting](https://fengye404.top/TermPilot/troubleshooting) · [CLI Reference](https://fengye404.top/TermPilot/cli-reference)
@@ -24,7 +24,7 @@ TermPilot is built around one narrow path:
 - you leave your desk
 - you still want that exact session on your phone
 
-That session can be Claude Code, a deployment, a migration, or any other long-running terminal task. The product is designed around continuity, not remote desktop access.
+That session can be Claude Code, a deployment, a migration, or any other long-running terminal task. The product is designed around keeping the same session available across devices.
 
 ## Architecture
 
@@ -55,7 +55,7 @@ The system has three runtime pieces:
 - Incremental replay and foreground recovery to keep long-running sessions responsive when the page returns from the background
 - Managed command sessions include lightweight stale-session governance for long-detached, no-output leftovers
 
-This is a deliberately narrow scope. TermPilot is built for session continuity, not for desktop remoting or generic server administration.
+This is a deliberately narrow scope focused on session continuity across your own devices.
 
 If you redeploy or migrate from an older binding without local keys, re-pair the device.
 
