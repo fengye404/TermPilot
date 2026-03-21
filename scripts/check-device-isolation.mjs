@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
+import { decryptFromPeer, encryptForPeer, generateE2EEKeyPair } from "../packages/protocol/src/index.ts";
 import { WebSocket } from "ws";
 
-const ROOT = "/Users/fengye/workspace/TermPilot";
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RELAY_PORT = 19000 + Math.floor(Math.random() * 1000);
 const HTTP_BASE = `http://127.0.0.1:${RELAY_PORT}`;
 const WS_BASE = `ws://127.0.0.1:${RELAY_PORT}/ws`;
@@ -90,14 +92,14 @@ async function connectSocket(url) {
   });
 }
 
-async function createPairingCode(deviceId) {
+async function createPairingCode(deviceId, agentPublicKey) {
   const response = await fetch(`${HTTP_BASE}/api/pairing-codes`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${AGENT_TOKEN}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ deviceId }),
+    body: JSON.stringify({ deviceId, agentPublicKey }),
   });
   if (!response.ok) {
     throw new Error(`创建设备 ${deviceId} 配对码失败: ${await response.text()}`);
@@ -105,18 +107,63 @@ async function createPairingCode(deviceId) {
   return response.json();
 }
 
-async function redeemPairingCode(pairingCode) {
+async function redeemPairingCode(pairingCode, clientPublicKey) {
   const response = await fetch(`${HTTP_BASE}/api/pairings/redeem`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify({ pairingCode }),
+    body: JSON.stringify({ pairingCode, clientPublicKey }),
   });
   if (!response.ok) {
     throw new Error(`兑换配对码失败: ${await response.text()}`);
   }
   return response.json();
+}
+
+async function sendSecureAgentMessage(socket, agentKeyPair, clientPublicKey, accessToken, deviceId, message) {
+  const reqId = "reqId" in message ? message.reqId : undefined;
+  const payload = await encryptForPeer(
+    JSON.stringify(message),
+    agentKeyPair.privateKey,
+    clientPublicKey,
+    {
+      channel: "agent",
+      deviceId,
+      accessToken,
+      reqId,
+    },
+  );
+  socket.send({
+    type: "secure.agent",
+    reqId,
+    deviceId,
+    accessToken,
+    payload,
+  });
+}
+
+async function waitForDecryptedAgentMessage(socket, clientKeyPair, agentPublicKey, accessToken, deviceId, label, predicate) {
+  const envelope = await socket.waitFor(
+    (message) => message.type === "secure.agent" && message.accessToken === accessToken && message.deviceId === deviceId,
+    label,
+  );
+  const plaintext = await decryptFromPeer(
+    envelope.payload,
+    clientKeyPair.privateKey,
+    agentPublicKey,
+    {
+      channel: "agent",
+      deviceId,
+      accessToken,
+      reqId: envelope.reqId,
+    },
+  );
+  const businessMessage = JSON.parse(plaintext);
+  if (!predicate(businessMessage)) {
+    throw new Error(`收到未匹配的业务消息: ${label}\n${plaintext}`);
+  }
+  return businessMessage;
 }
 
 async function expectNoMessage(socket, predicate, timeoutMs, label) {
@@ -157,6 +204,11 @@ const sockets = [];
 try {
   await waitForRelay();
 
+  const agentAKeys = await generateE2EEKeyPair();
+  const agentBKeys = await generateE2EEKeyPair();
+  const clientAKeys = await generateE2EEKeyPair();
+  const clientBKeys = await generateE2EEKeyPair();
+
   const agentA = await connectSocket(`${WS_BASE}?role=agent&token=${AGENT_TOKEN}&deviceId=device-a`);
   const agentB = await connectSocket(`${WS_BASE}?role=agent&token=${AGENT_TOKEN}&deviceId=device-b`);
   sockets.push(agentA, agentB);
@@ -164,10 +216,10 @@ try {
   await agentA.waitFor((message) => message.type === "auth.ok" && message.payload?.deviceId === "device-a", "agent-a auth");
   await agentB.waitFor((message) => message.type === "auth.ok" && message.payload?.deviceId === "device-b", "agent-b auth");
 
-  const pairingA = await createPairingCode("device-a");
-  const pairingB = await createPairingCode("device-b");
-  const grantA = await redeemPairingCode(pairingA.pairingCode);
-  const grantB = await redeemPairingCode(pairingB.pairingCode);
+  const pairingA = await createPairingCode("device-a", agentAKeys.publicKey);
+  const pairingB = await createPairingCode("device-b", agentBKeys.publicKey);
+  const grantA = await redeemPairingCode(pairingA.pairingCode, clientAKeys.publicKey);
+  const grantB = await redeemPairingCode(pairingB.pairingCode, clientBKeys.publicKey);
 
   const clientA = await connectSocket(`${WS_BASE}?role=client&token=${grantA.accessToken}`);
   const clientB = await connectSocket(`${WS_BASE}?role=client&token=${grantB.accessToken}`);
@@ -175,6 +227,14 @@ try {
 
   await clientA.waitFor((message) => message.type === "auth.ok" && message.payload?.deviceId === "device-a", "client-a auth");
   await clientB.waitFor((message) => message.type === "auth.ok" && message.payload?.deviceId === "device-b", "client-b auth");
+  const stateA = await clientA.waitFor((message) => message.type === "relay.state", "client-a relay state");
+  const stateB = await clientB.waitFor((message) => message.type === "relay.state", "client-b relay state");
+  if (stateA.payload.agents.length !== 1 || stateA.payload.agents[0]?.deviceId !== "device-a") {
+    throw new Error("client-a 看到的 relay.state 设备范围不正确");
+  }
+  if (stateB.payload.agents.length !== 1 || stateB.payload.agents[0]?.deviceId !== "device-b") {
+    throw new Error("client-b 看到的 relay.state 设备范围不正确");
+  }
 
   const rogue = await connectSocket(`${WS_BASE}?role=client&token=demo-client-token`);
   sockets.push(rogue);
@@ -202,23 +262,42 @@ try {
     tmuxSessionName: "tmux-b",
   };
 
-  agentA.send({
+  await sendSecureAgentMessage(agentA, agentAKeys, clientAKeys.publicKey, grantA.accessToken, "device-a", {
     type: "session.created",
     deviceId: "device-a",
     payload: { session: sessionA },
   });
-  agentB.send({
+  await sendSecureAgentMessage(agentB, agentBKeys, clientBKeys.publicKey, grantB.accessToken, "device-b", {
     type: "session.created",
     deviceId: "device-b",
     payload: { session: sessionB },
   });
 
-  await clientA.waitFor((message) => message.type === "session.created" && message.deviceId === "device-a", "client-a own session");
-  await clientB.waitFor((message) => message.type === "session.created" && message.deviceId === "device-b", "client-b own session");
-  await expectNoMessage(clientA, (message) => message.type === "session.created" && message.deviceId === "device-b", 600, "client-a saw device-b session");
-  await expectNoMessage(clientB, (message) => message.type === "session.created" && message.deviceId === "device-a", 600, "client-b saw device-a session");
+  const createdA = await waitForDecryptedAgentMessage(
+    clientA,
+    clientAKeys,
+    grantA.agentPublicKey,
+    grantA.accessToken,
+    "device-a",
+    "client-a own session",
+    (message) => message.type === "session.created" && message.payload?.session?.sid === sessionA.sid,
+  );
+  const createdB = await waitForDecryptedAgentMessage(
+    clientB,
+    clientBKeys,
+    grantB.agentPublicKey,
+    grantB.accessToken,
+    "device-b",
+    "client-b own session",
+    (message) => message.type === "session.created" && message.payload?.session?.sid === sessionB.sid,
+  );
+  if (createdA.payload.session.deviceId !== "device-a" || createdB.payload.session.deviceId !== "device-b") {
+    throw new Error("解密后的会话创建消息设备归属不正确");
+  }
+  await expectNoMessage(clientA, (message) => message.type === "secure.agent" && message.deviceId === "device-b", 600, "client-a saw device-b envelope");
+  await expectNoMessage(clientB, (message) => message.type === "secure.agent" && message.deviceId === "device-a", 600, "client-b saw device-a envelope");
 
-  agentA.send({
+  await sendSecureAgentMessage(agentA, agentAKeys, clientAKeys.publicKey, grantA.accessToken, "device-a", {
     type: "session.output",
     deviceId: "device-a",
     sid: sessionA.sid,
@@ -228,7 +307,7 @@ try {
       mode: "replace",
     },
   });
-  agentB.send({
+  await sendSecureAgentMessage(agentB, agentBKeys, clientBKeys.publicKey, grantB.accessToken, "device-b", {
     type: "session.output",
     deviceId: "device-b",
     sid: sessionB.sid,
@@ -239,10 +318,29 @@ try {
     },
   });
 
-  await clientA.waitFor((message) => message.type === "session.output" && message.deviceId === "device-a" && message.payload?.data === "hello-from-a", "client-a own output");
-  await clientB.waitFor((message) => message.type === "session.output" && message.deviceId === "device-b" && message.payload?.data === "hello-from-b", "client-b own output");
-  await expectNoMessage(clientA, (message) => message.type === "session.output" && message.deviceId === "device-b", 600, "client-a saw device-b output");
-  await expectNoMessage(clientB, (message) => message.type === "session.output" && message.deviceId === "device-a", 600, "client-b saw device-a output");
+  const outputA = await waitForDecryptedAgentMessage(
+    clientA,
+    clientAKeys,
+    grantA.agentPublicKey,
+    grantA.accessToken,
+    "device-a",
+    "client-a own output",
+    (message) => message.type === "session.output" && message.payload?.data === "hello-from-a",
+  );
+  const outputB = await waitForDecryptedAgentMessage(
+    clientB,
+    clientBKeys,
+    grantB.agentPublicKey,
+    grantB.accessToken,
+    "device-b",
+    "client-b own output",
+    (message) => message.type === "session.output" && message.payload?.data === "hello-from-b",
+  );
+  if (outputA.deviceId !== "device-a" || outputB.deviceId !== "device-b") {
+    throw new Error("解密后的输出消息设备归属不正确");
+  }
+  await expectNoMessage(clientA, (message) => message.type === "secure.agent" && message.deviceId === "device-b", 600, "client-a saw device-b output envelope");
+  await expectNoMessage(clientB, (message) => message.type === "secure.agent" && message.deviceId === "device-a", 600, "client-b saw device-a output envelope");
 
   console.log("device isolation ok");
 } finally {

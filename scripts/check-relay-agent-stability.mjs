@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 import WebSocket from "ws";
 
-const cwd = "/Users/fengye/workspace/TermPilot";
+const cwd = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const deviceId = "pc-stability";
 const sessionName = `stability-${Date.now()}`;
 

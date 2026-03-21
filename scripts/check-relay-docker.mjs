@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import packageJson from "../package.json" with { type: "json" };
 
-const ROOT = "/Users/fengye/workspace/TermPilot";
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const IMAGE = `termpilot-relay:test-${Date.now()}`;
 const CONTAINER = `termpilot-relay-smoke-${Date.now()}`;
 

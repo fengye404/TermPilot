@@ -1,0 +1,44 @@
+[
+  {
+    "id": "verification-surface",
+    "implementation": [
+      "package.json",
+      "scripts/check-ui-smoke.ts",
+      "scripts/check-device-isolation.mjs",
+      "scripts/check-app-versioning.mjs",
+      "scripts/check-relay-storage-and-packaging.mjs",
+      "scripts/check-public-doc-freshness.mjs"
+    ],
+    "docs": [
+      "docs/development.md"
+    ]
+  },
+  {
+    "id": "security-protocol-core",
+    "implementation": [
+      "packages/protocol/src/index.ts",
+      "relay/src/server.ts",
+      "relay/src/auth-store.ts",
+      "agent/src/daemon.ts",
+      "app/src/App.tsx"
+    ],
+    "docs": [
+      "docs/security-design.md",
+      "docs/protocol.md"
+    ]
+  },
+  {
+    "id": "runtime-boundary-core",
+    "implementation": [
+      "src/cli.ts",
+      "agent/src/cli.ts",
+      "relay/src/cli.ts",
+      "relay/src/server.ts",
+      "agent/src/tmux-backend.ts"
+    ],
+    "docs": [
+      "docs/architecture.md",
+      "docs/development.md"
+    ]
+  }
+]

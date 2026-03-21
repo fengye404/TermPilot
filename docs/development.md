@@ -9,7 +9,8 @@
 - Node.js `22+`
 - pnpm
 - 电脑上安装 `tmux`
-- Python 3，用于部分 smoke / stability 脚本
+- Chromium 运行环境会由 Playwright 自动安装，用于仓库原生浏览器 smoke
+- Python 3 只在你仍然使用遗留兼容脚本时才需要
 
 安装依赖：
 
@@ -74,6 +75,22 @@ pnpm docs:build
 pnpm docs:preview
 ```
 
+### 推荐验证入口
+
+```bash
+pnpm verify:fast
+pnpm verify:full
+pnpm verify:browser
+pnpm verify:e2ee
+```
+
+说明：
+
+- `verify:fast`：类型检查 + 内部架构检查 + 内部文档结构检查 + 公共文档 freshness 检查
+- `verify:full`：在 fast 基础上补构建、文档站构建和 repo-native 运行时检查
+- `verify:browser`：运行仓库原生 Playwright UI smoke
+- `verify:e2ee`：运行浏览器 smoke 与设备隔离检查的组合
+
 ## 4. 质量检查
 
 ### UI smoke
@@ -86,7 +103,7 @@ pnpm test:ui-smoke
 
 - 先执行一次 `pnpm build`
 - 启动一个本地 relay
-- 用脚本化浏览器跑最小链路 smoke
+- 用仓库内 Playwright 脚本跑最小链路 smoke
 
 ### 稳定性检查
 
@@ -104,6 +121,17 @@ pnpm test:isolation
 
 用于验证不同设备 scope 下的可见性和隔离行为。
 
+### E2EE 组合检查
+
+```bash
+pnpm test:e2ee
+```
+
+用于组合验证：
+
+- 浏览器配对与加密业务链路
+- 设备隔离与 secure envelope 路由
+
 ## 5. 推荐开发顺序
 
 ### 改 CLI / agent / relay 后
@@ -111,14 +139,14 @@ pnpm test:isolation
 建议至少执行：
 
 ```bash
-pnpm typecheck
-pnpm build
+pnpm verify:fast
 ```
 
 如果改到了会话同步、UI 状态或连接主链路，再补：
 
 ```bash
-pnpm test:ui-smoke
+pnpm verify:browser
+pnpm verify:e2ee
 pnpm check:stability
 ```
 
@@ -137,7 +165,7 @@ pnpm docs:build
 ```bash
 pnpm --filter @termpilot/app typecheck
 pnpm build:web
-pnpm test:ui-smoke
+pnpm verify:browser
 ```
 
 ## 6. 发布流程
@@ -155,7 +183,7 @@ pnpm test:ui-smoke
 3. 执行 `pnpm docs:build`
 4. 执行 `pnpm test:relay-storage`
 5. 执行 `pnpm test:app-versioning`
-6. 执行 `pnpm test:ui-smoke`
+6. 执行 `pnpm verify:e2ee`
 7. 推送版本标签，例如 `v0.3.10`
 
 当前仓库已经有 tag 触发的自动发布流程：
