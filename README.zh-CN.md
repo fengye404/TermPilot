@@ -164,6 +164,42 @@ termpilot attach --sid <sid>
 - `termpilot run -- <command>` 表示“围绕这个命令启动一条受管理会话”
 - `termpilot create` + `termpilot attach` 表示“先建一条普通 shell 会话，再按需回到它”
 
+## 本地开发测试流程
+
+如果你是在当前仓库里迭代开发，最好不要把本地开发运行和全局 npm 安装的 `termpilot`、以及默认的 `~/.termpilot` 状态目录混在一起。
+
+先把下面这段加到 `~/.zshrc`：
+
+```bash
+alias tpdev='TERMPILOT_HOME=/tmp/termpilot-local node /Users/fengye/workspace/TermPilot/dist/cli.js'
+```
+
+然后重新加载 shell：
+
+```bash
+source ~/.zshrc
+```
+
+之后就按这套本地专用链路跑：
+
+```bash
+tpdev relay run
+tpdev agent --relay ws://127.0.0.1:8787/ws --pair
+tpdev claude code
+```
+
+这套方式的好处是：
+
+- 使用的是当前仓库构建出来的 CLI，而不是全局 npm 安装版本
+- 本地状态目录固定隔离在 `/tmp/termpilot-local`
+- 可以直接对着 `http://127.0.0.1:8787` 做浏览器测试，不用先发 npm 包
+
+如果你要启动别的托管命令，也可以直接：
+
+```bash
+tpdev run -- <command>
+```
+
 ## CLI 参考
 
 ```bash

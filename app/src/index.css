@@ -365,7 +365,7 @@ summary:focus-visible {
   border: 1px solid var(--tp-border);
   border-radius: 14px;
   background: var(--tp-terminal-bg);
-  padding: 0.75rem;
+  padding: 0.45rem;
 }
 
 .tp-mobile-terminal-surface {
@@ -663,6 +663,14 @@ summary:focus-visible {
 
 .tp-mobile-terminal-toolbar > button {
   flex: 1 1 0;
+}
+
+.tp-desktop-terminal-shell {
+  padding: 0.55rem;
+}
+
+.tp-desktop-terminal-frame {
+  padding: 0.3rem;
 }
 
 @media (max-width: 1023px) {

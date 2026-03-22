@@ -248,7 +248,8 @@ export default function App() {
   const previousOrphanedSessionsRef = useRef<Record<string, boolean>>({});
   const sessionExitReasonRef = useRef<Record<string, string>>({});
   const bootstrappedNotificationsRef = useRef(false);
-  const terminalSizeRef = useRef<Record<string, { cols: number; rows: number }>>({});
+  const terminalViewportSizeRef = useRef<Record<string, { cols: number; rows: number }>>({});
+  const terminalSentSizeRef = useRef<Record<string, { cols: number; rows: number }>>({});
 
   const [wsUrl, setWsUrl] = useState(getDefaultWsUrl);
   const [clientToken, setClientToken] = useState(DEFAULT_CLIENT_TOKEN);
@@ -1660,15 +1661,21 @@ export default function App() {
   }
 
   function handleTerminalResize(cols: number, rows: number): void {
-    if (!activeSid || !canControlDevice || cols <= 0 || rows <= 0) {
+    if (!activeSid || cols <= 0 || rows <= 0) {
       return;
     }
 
-    const current = terminalSizeRef.current[activeSid];
-    if (current && current.cols === cols && current.rows === rows) {
+    terminalViewportSizeRef.current[activeSid] = { cols, rows };
+
+    if (!canControlDevice) {
       return;
     }
-    terminalSizeRef.current[activeSid] = { cols, rows };
+
+    const sent = terminalSentSizeRef.current[activeSid];
+    if (sent && sent.cols === cols && sent.rows === rows) {
+      return;
+    }
+    terminalSentSizeRef.current[activeSid] = { cols, rows };
 
     void sendSecureMessage({
       type: "session.resize",
@@ -1681,6 +1688,31 @@ export default function App() {
       },
     });
   }
+
+  useEffect(() => {
+    if (!activeSid || !canControlDevice) {
+      return;
+    }
+
+    const viewport = terminalViewportSizeRef.current[activeSid];
+    if (!viewport) {
+      return;
+    }
+
+    const sent = terminalSentSizeRef.current[activeSid];
+    if (sent && sent.cols === viewport.cols && sent.rows === viewport.rows) {
+      return;
+    }
+
+    terminalSentSizeRef.current[activeSid] = viewport;
+    void sendSecureMessage({
+      type: "session.resize",
+      reqId: createReqId("resize"),
+      deviceId,
+      sid: activeSid,
+      payload: viewport,
+    });
+  }, [activeSid, canControlDevice, deviceId]);
 
   function handleSendPaste(mode: "raw" | "line"): void {
     if (!activeSid || !pasteBuffer || !canControlDevice) {
@@ -1863,7 +1895,7 @@ export default function App() {
   const mobileFocusShellClassName = mobileTerminalFocusMode ? "tp-mobile-focus-shell tp-mobile-focus-shell-active" : undefined;
 
   return (
-    <main className={`mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-4 py-4 text-[var(--tp-text)] sm:px-5 sm:py-5 lg:px-6 ${compactMobileChrome ? "gap-3" : "gap-4"}`}>
+    <main className={`mx-auto flex min-h-screen w-full max-w-[1580px] flex-col px-4 py-4 text-[var(--tp-text)] sm:px-5 sm:py-5 lg:px-6 ${compactMobileChrome ? "gap-3" : "gap-4"}`}>
       <header className={`tp-card ${compactMobileChrome ? "px-4 py-3" : "px-4 py-4 sm:px-5"}`}>
         <div className={`flex items-start justify-between ${compactMobileChrome ? "gap-3" : "flex-wrap gap-4"}`}>
           <div>
@@ -2036,7 +2068,7 @@ export default function App() {
       ) : (
         <>
           {isDesktop ? (
-            <section className="grid gap-4 lg:grid-cols-[328px_minmax(0,1fr)] xl:grid-cols-[336px_minmax(0,1fr)]">
+            <section className="grid gap-4 lg:grid-cols-[304px_minmax(0,1fr)] xl:grid-cols-[312px_minmax(0,1fr)]">
               <div className="tp-sidebar-sticky space-y-4">
                 <CreateSessionPanel
                   canControl={canControlDevice}

@@ -21,6 +21,8 @@
   - Rebuilds the CLI bundle and app bundle after TypeScript checks.
 - `pnpm test:relay-storage`
   - Verifies relay storage behavior and packaging assumptions.
+- `pnpm test:terminal-resize`
+  - Verifies that a locally spawned browser causes the attached tmux session to resize past the default narrow width.
 - `pnpm test:app-versioning`
   - Verifies version metadata and build metadata exposure.
 - `pnpm test:isolation`
@@ -33,6 +35,8 @@
   - Fails when implementation hotspots changed without their mapped public docs changing too.
 - `pnpm test:ui-smoke:built`
   - Runs the repository-native Playwright smoke against a locally spawned relay.
+- `pnpm test:terminal-resize:built`
+  - Runs the built local browser-to-tmux resize check without rebuilding first.
 - `pnpm test:e2ee:built`
   - Runs the built device-isolation and UI encryption flow checks together.
 

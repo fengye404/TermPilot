@@ -1,6 +1,6 @@
 {
   "name": "@fengye404/termpilot",
-  "version": "0.4.9",
+  "version": "0.5.1",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.31.0",
@@ -58,6 +58,8 @@
     "test:relay-storage": "pnpm build && pnpm test:relay-storage:built",
     "test:relay-storage:built": "node scripts/check-relay-storage-and-packaging.mjs",
     "test:relay-docker": "node scripts/check-relay-docker.mjs",
+    "test:terminal-resize": "pnpm build && pnpm test:terminal-resize:built",
+    "test:terminal-resize:built": "pnpm exec tsx scripts/check-terminal-resize.ts",
     "test:ui-smoke": "pnpm build && pnpm test:ui-smoke:built",
     "test:ui-smoke:built": "pnpm exec tsx scripts/check-ui-smoke.ts",
     "prepack": "pnpm build"

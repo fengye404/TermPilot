@@ -166,6 +166,42 @@ If you only remember one rule:
 - `termpilot run -- <command>` means “start a managed session around this command”
 - `termpilot create` + `termpilot attach` means “create a plain shell session, then re-enter it when needed”
 
+## Local Dev Loop
+
+If you are iterating on the repository locally, avoid mixing your development runs with the globally installed `termpilot` binary and `~/.termpilot` state.
+
+Add this alias to `~/.zshrc`:
+
+```bash
+alias tpdev='TERMPILOT_HOME=/tmp/termpilot-local node /Users/fengye/workspace/TermPilot/dist/cli.js'
+```
+
+Reload your shell:
+
+```bash
+source ~/.zshrc
+```
+
+Then use this local-only flow:
+
+```bash
+tpdev relay run
+tpdev agent --relay ws://127.0.0.1:8787/ws --pair
+tpdev claude code
+```
+
+This setup gives you:
+
+- the CLI built from your current repository instead of the globally installed npm package
+- an isolated local state directory at `/tmp/termpilot-local`
+- a fast browser test loop against `http://127.0.0.1:8787` without publishing to npm first
+
+If you want to launch a different managed command, use:
+
+```bash
+tpdev run -- <command>
+```
+
 ## CLI Reference
 
 ```bash

@@ -144,8 +144,8 @@ function resolveTypography(fontPreset: XtermTerminalProps["fontPreset"]): Pick<I
       };
     default:
       return {
-        fontSize: 13,
-        lineHeight: 1.35,
+        fontSize: 12,
+        lineHeight: 1.22,
       };
   }
 }
@@ -218,6 +218,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
           fontSize,
           lineHeight,
+          letterSpacing: -0.2,
           scrollback: 5000,
           theme: readTerminalTheme(),
         });

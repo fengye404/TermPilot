@@ -613,9 +613,9 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         {isMobileView ? (
           props.focusMode ? mobileFocusContent : mobileDefaultContent
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-4">
-              <div className="tp-terminal-shell p-3">
+              <div className="tp-terminal-shell tp-desktop-terminal-shell p-3">
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                   <div>
                     <p className="text-sm font-medium text-[var(--tp-text)]">终端输出</p>
@@ -625,7 +625,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                     {syncChipLabel}
                   </span>
                 </div>
-                <div className="tp-terminal-frame h-[52svh] min-h-[440px] max-h-[720px]">
+                <div className="tp-terminal-frame tp-desktop-terminal-frame h-[52svh] min-h-[440px] max-h-[720px]">
                   <XtermTerminal
                     key={props.activeSession.sid}
                     ref={terminalRef}
