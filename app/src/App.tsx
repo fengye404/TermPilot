@@ -71,6 +71,11 @@ interface RelayHealthResponse {
   appBuild?: string;
 }
 
+interface AppShellSnapshot {
+  buildId: string;
+  moduleScriptUrl: string;
+}
+
 interface SecureBindingResetOptions {
   message: string;
   notice?: NoticeState;
@@ -114,6 +119,30 @@ function tryParseUrl(value: string): URL | null {
   } catch {
     return null;
   }
+}
+
+function getCurrentAppShellSnapshot(): AppShellSnapshot {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return { buildId: "", moduleScriptUrl: "" };
+  }
+
+  const buildId = document.querySelector('meta[name="termpilot-app-build"]')?.getAttribute("content")?.trim() || "";
+  const moduleScript = document.querySelector('script[type="module"][src]') as HTMLScriptElement | null;
+  const moduleScriptUrl = moduleScript?.src ? new URL(moduleScript.src, window.location.href).toString() : "";
+  return { buildId, moduleScriptUrl };
+}
+
+function parseAppShellSnapshot(html: string, baseUrl: string): AppShellSnapshot {
+  if (typeof DOMParser === "undefined") {
+    return { buildId: "", moduleScriptUrl: "" };
+  }
+
+  const documentNode = new DOMParser().parseFromString(html, "text/html");
+  const buildId = documentNode.querySelector('meta[name="termpilot-app-build"]')?.getAttribute("content")?.trim() || "";
+  const moduleScript = documentNode.querySelector('script[type="module"][src]') as HTMLScriptElement | null;
+  const scriptSrc = moduleScript?.getAttribute("src")?.trim() || "";
+  const moduleScriptUrl = scriptSrc ? new URL(scriptSrc, `${baseUrl}/`).toString() : "";
+  return { buildId, moduleScriptUrl };
 }
 
 function detectTouchDevice(): boolean {
@@ -754,6 +783,65 @@ export default function App() {
     };
   }, []);
 
+  async function reconcileAppBuild(options?: { interactive?: boolean }): Promise<boolean> {
+    if (typeof window === "undefined" || typeof document === "undefined" || !relayHttpBaseUrl) {
+      return false;
+    }
+
+    try {
+      const [healthResponse, shellResponse] = await Promise.all([
+        fetch(`${relayHttpBaseUrl}/health`, { cache: "no-store" }),
+        fetch(`${relayHttpBaseUrl}/`, { cache: "no-store" }),
+      ]);
+      if (!healthResponse.ok || !shellResponse.ok) {
+        return false;
+      }
+      const [payload, shellHtml] = await Promise.all([
+        healthResponse.json() as Promise<RelayHealthResponse>,
+        shellResponse.text(),
+      ]);
+      const serverBuild = payload.appBuild?.trim();
+      const serverVersion = payload.appVersion?.trim() || serverBuild || APP_VERSION;
+      const currentShell = getCurrentAppShellSnapshot();
+      const nextShell = parseAppShellSnapshot(shellHtml, relayHttpBaseUrl);
+      const scriptChanged = Boolean(
+        currentShell.moduleScriptUrl
+        && nextShell.moduleScriptUrl
+        && currentShell.moduleScriptUrl !== nextShell.moduleScriptUrl,
+      );
+      const buildChanged = Boolean(
+        nextShell.buildId
+        && currentShell.buildId
+        && nextShell.buildId !== currentShell.buildId,
+      );
+
+      window.localStorage.setItem(APP_BUILD_STORAGE_KEY, APP_BUILD_ID);
+      if ((!serverBuild || serverBuild === APP_BUILD_ID) && !scriptChanged && !buildChanged) {
+        window.sessionStorage.removeItem(APP_BUILD_RELOAD_MARKER_KEY);
+        return false;
+      }
+
+      const latestFingerprint = nextShell.buildId || serverBuild || nextShell.moduleScriptUrl || serverVersion;
+      const reloadMarker = `${currentShell.buildId || APP_BUILD_ID}:${currentShell.moduleScriptUrl}->${latestFingerprint}:${nextShell.moduleScriptUrl}`;
+      if (window.sessionStorage.getItem(APP_BUILD_RELOAD_MARKER_KEY) === reloadMarker) {
+        if (options?.interactive) {
+          setPairingMessage((current) => current || `检测到 relay 已升级到 ${serverVersion}，请手动刷新页面完成更新。`);
+          showNotice("info", `发现新版本 ${serverVersion}，请刷新页面完成更新。`);
+        }
+        return false;
+      }
+
+      window.sessionStorage.setItem(APP_BUILD_RELOAD_MARKER_KEY, reloadMarker);
+      await clearStaleAppCaches();
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set("v", latestFingerprint);
+      window.location.replace(nextUrl.toString());
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   useEffect(() => {
     const requested = cleanupRequestedSidsRef.current;
     if (!requested || requested.length === 0) {
@@ -785,41 +873,10 @@ export default function App() {
     let cancelled = false;
 
     const reconcileBuild = async () => {
-      try {
-        const response = await fetch(`${relayHttpBaseUrl}/health`, { cache: "no-store" });
-        if (!response.ok) {
-          return;
-        }
-        const payload = await response.json() as RelayHealthResponse;
-        const serverBuild = payload.appBuild?.trim();
-        const serverVersion = payload.appVersion?.trim() || serverBuild || APP_VERSION;
-
-        window.localStorage.setItem(APP_BUILD_STORAGE_KEY, APP_BUILD_ID);
-        if (!serverBuild || serverBuild === APP_BUILD_ID) {
-          window.sessionStorage.removeItem(APP_BUILD_RELOAD_MARKER_KEY);
-          return;
-        }
-
-        const reloadMarker = `${APP_BUILD_ID}->${serverBuild}`;
-        if (window.sessionStorage.getItem(APP_BUILD_RELOAD_MARKER_KEY) === reloadMarker) {
-          if (!cancelled) {
-            setPairingMessage((current) => current || `检测到 relay 已升级到 ${serverVersion}，请手动刷新页面完成更新。`);
-            showNotice("info", `发现新版本 ${serverVersion}，请刷新页面完成更新。`);
-          }
-          return;
-        }
-
-        window.sessionStorage.setItem(APP_BUILD_RELOAD_MARKER_KEY, reloadMarker);
-        await clearStaleAppCaches();
-        if (cancelled) {
-          return;
-        }
-        const nextUrl = new URL(window.location.href);
-        nextUrl.searchParams.set("v", serverBuild);
-        window.location.replace(nextUrl.toString());
-      } catch {
-        // ignore transient health lookup failures
+      if (cancelled) {
+        return;
       }
+      await reconcileAppBuild();
     };
 
     void reconcileBuild();
@@ -829,11 +886,17 @@ export default function App() {
         void reconcileBuild();
       }
     };
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void reconcileBuild();
+      }
+    }, 30_000);
 
     window.addEventListener("focus", onForeground);
     document.addEventListener("visibilitychange", onForeground);
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
       window.removeEventListener("focus", onForeground);
       document.removeEventListener("visibilitychange", onForeground);
     };
@@ -1394,6 +1457,9 @@ export default function App() {
     const code = pairingCode.trim().toUpperCase();
     if (!code) {
       setPairingMessage("请先输入配对码。");
+      return;
+    }
+    if (await reconcileAppBuild({ interactive: true })) {
       return;
     }
 

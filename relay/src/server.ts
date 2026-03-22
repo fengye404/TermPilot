@@ -315,20 +315,25 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
     sqliteDatabase?.close();
   });
 
-  app.get("/health", async () => ({
-    ok: true,
-    appVersion,
-    appBuild,
-    storeMode,
-    agentsOnline: agents.size,
-    clientsOnline: clients.size,
-    webUiReady: existsSync(webDir),
-    adminClientTokenEnabled: false,
-    security: {
-      relayStoresSessionContent: false,
-      endToEndEncryptionRequiredForPairedClients: true,
-    },
-  }));
+  app.get("/health", async (_request, reply) => {
+    reply.header("cache-control", "no-store, must-revalidate");
+    reply.header("x-termpilot-app-version", appVersion);
+    reply.header("x-termpilot-app-build", appBuild);
+    return {
+      ok: true,
+      appVersion,
+      appBuild,
+      storeMode,
+      agentsOnline: agents.size,
+      clientsOnline: clients.size,
+      webUiReady: existsSync(webDir),
+      adminClientTokenEnabled: false,
+      security: {
+        relayStoresSessionContent: false,
+        endToEndEncryptionRequiredForPairedClients: true,
+      },
+    };
+  });
 
   app.post<{ Body: PairingCodeRequest }>("/api/pairing-codes", async (request, reply) => {
     const authHeader = request.headers.authorization;
@@ -565,6 +570,8 @@ export async function startRelayServer(options: RelayServerOptions = {}) {
       reply.raw.setHeader("cache-control", "no-store");
       return reply.code(404).send({ message: "Not Found" });
     }
+    reply.header("x-termpilot-app-version", appVersion);
+    reply.header("x-termpilot-app-build", appBuild);
     if (path.extname(filePath).toLowerCase() === ".html") {
       reply.raw.setHeader("cache-control", "no-store, must-revalidate");
     } else {

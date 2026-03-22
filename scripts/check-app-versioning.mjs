@@ -107,17 +107,46 @@ async function main() {
     if (healthResponse.headers.get("access-control-allow-origin") !== "*") {
       throw new Error("relay /health 没有返回跨域版本探测需要的 access-control-allow-origin: *");
     }
+    if (healthResponse.headers.get("cache-control") !== "no-store, must-revalidate") {
+      throw new Error(`relay /health cache-control 应为 no-store, must-revalidate，实际是 ${healthResponse.headers.get("cache-control")}`);
+    }
+    if (healthResponse.headers.get("x-termpilot-app-version") !== packageJson.version) {
+      throw new Error("relay /health 没有返回正确的 x-termpilot-app-version");
+    }
+    if (healthResponse.headers.get("x-termpilot-app-build") !== payload.appBuild) {
+      throw new Error("relay /health 没有返回正确的 x-termpilot-app-build");
+    }
     if (typeof payload.appBuild !== "string" || payload.appBuild.trim().length === 0) {
       throw new Error("relay /health 没有返回有效的 appBuild");
     }
 
     const htmlResponse = await fetch(baseUrl, { cache: "no-store" });
     const html = await htmlResponse.text();
+    if (htmlResponse.headers.get("cache-control") !== "no-store, must-revalidate") {
+      throw new Error(`首页 HTML cache-control 应为 no-store, must-revalidate，实际是 ${htmlResponse.headers.get("cache-control")}`);
+    }
+    if (htmlResponse.headers.get("x-termpilot-app-build") !== payload.appBuild) {
+      throw new Error("首页 HTML 没有返回正确的 x-termpilot-app-build");
+    }
     if (!html.includes('name="termpilot-app-version"')) {
       throw new Error("首页 HTML 缺少 termpilot-app-version 元数据");
     }
     if (!html.includes('name="termpilot-app-build"')) {
       throw new Error("首页 HTML 缺少 termpilot-app-build 元数据");
+    }
+    const scriptMatch = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/);
+    if (!scriptMatch) {
+      throw new Error("首页 HTML 缺少模块入口脚本");
+    }
+    const assetResponse = await fetch(new URL(scriptMatch[1], `${baseUrl}/`), { cache: "no-store" });
+    if (!assetResponse.ok) {
+      throw new Error("模块入口脚本无法访问");
+    }
+    if (assetResponse.headers.get("cache-control") !== "public, max-age=31536000, immutable") {
+      throw new Error(`模块入口脚本 cache-control 应为 immutable，实际是 ${assetResponse.headers.get("cache-control")}`);
+    }
+    if (assetResponse.headers.get("x-termpilot-app-build") !== payload.appBuild) {
+      throw new Error("模块入口脚本没有返回正确的 x-termpilot-app-build");
     }
 
     const overridePort = await getFreePort();

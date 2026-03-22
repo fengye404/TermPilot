@@ -314,27 +314,37 @@ function getSubtle(): SubtleCrypto {
   return maybeCrypto.subtle;
 }
 
+function hasBrowserBase64(): boolean {
+  return typeof window !== "undefined" && typeof btoa === "function" && typeof atob === "function";
+}
+
 function toBase64(bytes: Uint8Array): string {
+  if (hasBrowserBase64()) {
+    let binary = "";
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
+  }
   if (typeof Buffer !== "undefined") {
     return Buffer.from(bytes).toString("base64");
   }
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
+  throw new Error("当前运行环境不支持 base64 编码。");
 }
 
 function fromBase64(value: string): Uint8Array {
+  if (hasBrowserBase64()) {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
   if (typeof Buffer !== "undefined") {
     return new Uint8Array(Buffer.from(value, "base64"));
   }
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
+  throw new Error("当前运行环境不支持 base64 解码。");
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
