@@ -5,13 +5,21 @@ export const BUTTON_SECONDARY = "tp-button tp-button-secondary";
 export const BUTTON_DANGER = "tp-button tp-button-danger";
 export const BUTTON_SUBTLE = "tp-button tp-button-subtle";
 
-export function Panel(props: { title: string; children: ReactNode }) {
+export function Panel(props: {
+  title: string;
+  children: ReactNode;
+  hideHeader?: boolean;
+  className?: string;
+  bodyClassName?: string;
+}) {
   return (
-    <section className="tp-card px-4 py-4 sm:px-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="tp-panel-title">{props.title}</h2>
-      </div>
-      {props.children}
+    <section className={`tp-card px-4 py-4 sm:px-5 ${props.className ?? ""}`.trim()}>
+      {props.hideHeader ? null : (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="tp-panel-title">{props.title}</h2>
+        </div>
+      )}
+      <div className={props.bodyClassName}>{props.children}</div>
     </section>
   );
 }

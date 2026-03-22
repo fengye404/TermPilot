@@ -294,10 +294,59 @@ async function waitForSessionCard(page: Page, name: string, timeoutMs = 15000): 
 }
 
 async function ensureSessionListVisible(page: Page): Promise<void> {
-  const backButton = page.getByRole("button", { name: "返回会话列表" }).first();
+  const backButton = page.locator(
+    'button[aria-label="返回会话列表"], button:has-text("返回会话列表"), button:has-text("返回")',
+  ).first();
   if (await backButton.isVisible().catch(() => false)) {
     await backButton.click();
   }
+}
+
+async function openConnectionSettings(page: Page): Promise<void> {
+  await page.waitForFunction(() => (
+    Array.from(document.querySelectorAll("details")).some((node) => (
+      node instanceof HTMLDetailsElement
+      && node.querySelector("summary")?.textContent?.includes("连接与设备设置")
+    ))
+  ), { timeout: 10000 });
+  await page.evaluate(() => {
+    const details = Array.from(document.querySelectorAll("details")).find((node) => (
+      node instanceof HTMLDetailsElement
+      && node.querySelector("summary")?.textContent?.includes("连接与设备设置")
+    ));
+    if (!(details instanceof HTMLDetailsElement)) {
+      throw new Error("connection settings disclosure not found");
+    }
+    if (details.open) {
+      return;
+    }
+    const summary = details.querySelector("summary");
+    if (!(summary instanceof HTMLElement)) {
+      throw new Error("connection settings summary not found");
+    }
+    summary.click();
+  });
+}
+
+async function clickButtonByText(page: Page, text: string): Promise<void> {
+  await page.waitForFunction((expectedText) => (
+    Array.from(document.querySelectorAll("button")).some((node) => (
+      node instanceof HTMLButtonElement
+      && !node.disabled
+      && node.textContent?.includes(expectedText)
+    ))
+  ), text, { timeout: 10000 });
+  await page.evaluate((expectedText) => {
+    const button = Array.from(document.querySelectorAll("button")).find((node) => (
+      node instanceof HTMLButtonElement
+      && !node.disabled
+      && node.textContent?.includes(expectedText)
+    ));
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`button not found: ${expectedText}`);
+    }
+    button.click();
+  }, text);
 }
 
 async function main(): Promise<void> {
@@ -357,17 +406,17 @@ async function main(): Promise<void> {
       await page.keyboard.press("Enter");
       await waitForTerminalText(page, keyboardText);
 
-      await page.getByRole("button", { name: "返回会话列表" }).click();
+      await ensureSessionListVisible(page);
       await waitForSessionCard(page, sessionTwo);
       await page.locator(`[data-session-name="${sessionTwo}"]:visible`).getByRole("button", { name: "查看" }).click();
       await page.getByText(sessionTwo, { exact: false }).first().waitFor({ timeout: 15000 });
-      await page.getByRole("button", { name: "返回会话列表" }).click();
+      await ensureSessionListVisible(page);
 
       await page.locator(`[data-session-name="${sessionOne}"]:visible`).getByRole("button", { name: "关闭" }).click();
       await page.getByText("已发送关闭会话请求。", { exact: false }).waitFor({ timeout: 10000 });
 
-      await page.locator("summary", { hasText: "连接与设备设置" }).click();
-      await page.getByRole("button", { name: "清除本机绑定" }).click();
+      await openConnectionSettings(page);
+      await clickButtonByText(page, "清除本机绑定");
       await page.getByText("已清除本机保存的访问令牌", { exact: false }).waitFor({ timeout: 10000 });
       await waitForClearedToken(page);
 

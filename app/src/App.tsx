@@ -279,6 +279,7 @@ export default function App() {
   const [createCwd, setCreateCwd] = useState("");
   const [createShell, setCreateShell] = useState("");
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+  const [isPortraitViewport, setIsPortraitViewport] = useState(() => typeof window !== "undefined" ? window.innerHeight >= window.innerWidth : true);
   const [isTouchDevice, setIsTouchDevice] = useState(detectTouchDevice);
   const [mobileTerminalFocusMode, setMobileTerminalFocusMode] = useState(false);
 
@@ -316,6 +317,8 @@ export default function App() {
   const isPaired = hasSecureBinding;
   const connected = connectionPhase === "connected";
   const canControlDevice = connected && deviceOnline;
+  const mobileSessionView = !isDesktop && Boolean(activeSession);
+  const compactMobileChrome = mobileSessionView && !mobileTerminalFocusMode;
   const parsedWsUrl = useMemo(() => tryParseUrl(wsUrl), [wsUrl]);
   const pinnedSidSet = useMemo(() => new Set(pinnedSids), [pinnedSids]);
   const relayHttpBaseUrl = useMemo(
@@ -386,6 +389,7 @@ export default function App() {
     }
     const handleResize = () => {
       setIsDesktop(window.innerWidth >= 1024);
+      setIsPortraitViewport(window.innerHeight >= window.innerWidth);
       setIsTouchDevice(detectTouchDevice());
     };
     window.addEventListener("resize", handleResize);
@@ -1855,25 +1859,35 @@ export default function App() {
     }
   }
 
+  const mobileFocusShellClassName = mobileTerminalFocusMode
+    ? `tp-mobile-focus-shell tp-mobile-focus-shell-active ${isPortraitViewport ? "tp-mobile-focus-shell-rotated" : "tp-mobile-focus-shell-landscape"}`
+    : undefined;
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-4 px-4 py-4 text-[var(--tp-text)] sm:px-5 sm:py-5 lg:px-6">
-      <header className="tp-card px-4 py-4 sm:px-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <main className={`mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-4 py-4 text-[var(--tp-text)] sm:px-5 sm:py-5 lg:px-6 ${compactMobileChrome ? "gap-3" : "gap-4"}`}>
+      <header className={`tp-card ${compactMobileChrome ? "px-4 py-3" : "px-4 py-4 sm:px-5"}`}>
+        <div className={`flex items-start justify-between ${compactMobileChrome ? "gap-3" : "flex-wrap gap-4"}`}>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--tp-accent-strong)]">TermPilot</p>
-            <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--tp-text)]">
-              {isPaired ? "会话面板" : "先绑定你的电脑"}
+            <h1 className={`font-semibold tracking-[-0.03em] text-[var(--tp-text)] ${compactMobileChrome ? "mt-1 text-[22px]" : "mt-2 text-[28px]"}`}>
+              {compactMobileChrome
+                ? (activeSession?.name ?? "当前会话")
+                : isPaired
+                  ? "会话面板"
+                  : "先绑定你的电脑"}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-[var(--tp-text-muted)]">
-              {isPaired
-                ? "先选一个会话，再进入查看输出和补命令。"
-                : "在电脑上执行 termpilot agent --relay 你的 relay 地址。命令会直接启动后台 agent 并打印一次性配对码。"}
+            <p className={`max-w-2xl text-[var(--tp-text-muted)] ${compactMobileChrome ? "mt-1 text-xs" : "mt-2 text-sm"}`}>
+              {compactMobileChrome
+                ? "终端优先展示，控制和设置默认收起。"
+                : isPaired
+                  ? "先选一个会话，再进入查看输出和补命令。"
+                  : "在电脑上执行 termpilot agent --relay 你的 relay 地址。命令会直接启动后台 agent 并打印一次性配对码。"}
             </p>
           </div>
           {isPaired ? (
-            <div className="flex flex-wrap gap-2">
-              <span className="tp-chip">{deviceId}</span>
-              <span className="tp-chip">App {APP_VERSION}</span>
+            <div className={`flex ${compactMobileChrome ? "max-w-[52vw] flex-wrap justify-end gap-1.5" : "flex-wrap gap-2"}`}>
+              {compactMobileChrome ? null : <span className="tp-chip">{deviceId}</span>}
+              {compactMobileChrome ? null : <span className="tp-chip">App {APP_VERSION}</span>}
               <span className={`tp-chip ${deviceOnline ? "tp-chip-active" : "tp-chip-danger"}`}>{deviceOnline ? "设备在线" : "设备离线"}</span>
               <span className={`tp-chip ${connected ? "tp-chip-active" : ""}`}>
                 {connected ? "已连上 relay" : connectionPhase === "reconnecting" ? "正在重连 relay" : "relay 未连接"}
@@ -1881,7 +1895,7 @@ export default function App() {
             </div>
           ) : null}
         </div>
-        {isPaired ? (
+        {isPaired && !compactMobileChrome ? (
           <div className="mt-4 tp-stat-grid">
             <div className="tp-stat-card">
               <div className="tp-stat-label">当前设备</div>
@@ -1903,7 +1917,7 @@ export default function App() {
         ) : null}
       </header>
 
-      {notice ? (
+      {notice && !mobileTerminalFocusMode ? (
         <NoticeBanner
           kind={notice.kind}
           text={notice.text}
@@ -2088,7 +2102,7 @@ export default function App() {
                 <div
                   ref={workspaceRef}
                   data-testid="terminal-workspace"
-                  className={mobileTerminalFocusMode ? "tp-mobile-focus-shell fixed inset-0 z-50 overflow-y-auto px-3 py-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]" : undefined}
+                  className={mobileFocusShellClassName}
                 >
                   <TerminalWorkspace
                     activeSession={activeSession}
@@ -2165,51 +2179,53 @@ export default function App() {
             </section>
           )}
 
-          <details className="tp-card px-4 py-4 sm:px-5">
-            <summary className="tp-disclosure-summary list-none">
-              <span>
-                <span className="block text-sm font-medium text-[var(--tp-text)]">连接与设备设置</span>
-                <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">不常用的连接信息和设备管理项放在这里。</span>
-              </span>
-            </summary>
-            <p className="mt-3 text-xs text-[var(--tp-text-soft)]">
-              这里放不常用的信息和管理项。日常使用时，你主要只需要看会话列表和终端输出。
-            </p>
-            <div className="mt-4">
-              <ConnectionPanel
-                title="连接与设备设置"
-                wsUrl={wsUrl}
-                wsUrlValid={parsedWsUrl !== null}
-                clientToken={clientToken}
-                deviceId={deviceId}
-                deviceIdEditable={!deviceIdLocked}
-                pairingCode={pairingCode}
-                pairingMessage={pairingMessage}
-                pairingPending={pairingPending}
-                pairingInitializing={!pairingKeyReady}
-                agentFingerprint={agentFingerprint}
-                connectionPhase={connectionPhase}
-                notificationsEnabled={notificationsEnabled}
-                onWsUrlChange={setWsUrl}
-                onClientTokenChange={setClientToken}
-                onDeviceIdChange={setDeviceId}
-                onPairingCodeChange={handlePairingCodeChange}
-                onRedeemPairingCode={() => {
-                  void handleRedeemPairingCode();
-                }}
-                onConnect={() => connect(true)}
-                onRefresh={() => {
-                  void requestSessions(deviceIdRef.current);
-                }}
-                onDisconnect={disconnect}
-                onClearBinding={clearBinding}
-                onToggleNotifications={() => {
-                  void toggleNotifications();
-                }}
-                showPairingSection={false}
-              />
-            </div>
-          </details>
+          {!mobileSessionView ? (
+            <details className="tp-card px-4 py-4 sm:px-5">
+              <summary className="tp-disclosure-summary list-none">
+                <span>
+                  <span className="block text-sm font-medium text-[var(--tp-text)]">连接与设备设置</span>
+                  <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">不常用的连接信息和设备管理项放在这里。</span>
+                </span>
+              </summary>
+              <p className="mt-3 text-xs text-[var(--tp-text-soft)]">
+                这里放不常用的信息和管理项。日常使用时，你主要只需要看会话列表和终端输出。
+              </p>
+              <div className="mt-4">
+                <ConnectionPanel
+                  title="连接与设备设置"
+                  wsUrl={wsUrl}
+                  wsUrlValid={parsedWsUrl !== null}
+                  clientToken={clientToken}
+                  deviceId={deviceId}
+                  deviceIdEditable={!deviceIdLocked}
+                  pairingCode={pairingCode}
+                  pairingMessage={pairingMessage}
+                  pairingPending={pairingPending}
+                  pairingInitializing={!pairingKeyReady}
+                  agentFingerprint={agentFingerprint}
+                  connectionPhase={connectionPhase}
+                  notificationsEnabled={notificationsEnabled}
+                  onWsUrlChange={setWsUrl}
+                  onClientTokenChange={setClientToken}
+                  onDeviceIdChange={setDeviceId}
+                  onPairingCodeChange={handlePairingCodeChange}
+                  onRedeemPairingCode={() => {
+                    void handleRedeemPairingCode();
+                  }}
+                  onConnect={() => connect(true)}
+                  onRefresh={() => {
+                    void requestSessions(deviceIdRef.current);
+                  }}
+                  onDisconnect={disconnect}
+                  onClearBinding={clearBinding}
+                  onToggleNotifications={() => {
+                    void toggleNotifications();
+                  }}
+                  showPairingSection={false}
+                />
+              </div>
+            </details>
+          ) : null}
         </>
       )}
     </main>
