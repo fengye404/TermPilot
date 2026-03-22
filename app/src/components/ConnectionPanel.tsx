@@ -10,6 +10,7 @@ interface ConnectionPanelProps {
   pairingCode: string;
   pairingMessage: string;
   pairingPending: boolean;
+  pairingInitializing: boolean;
   agentFingerprint?: string;
   connectionPhase: "idle" | "connecting" | "connected" | "reconnecting";
   notificationsEnabled: boolean;
@@ -74,13 +75,17 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
               <button
                 className={BUTTON_PRIMARY}
                 type="button"
-                disabled={props.pairingPending || !props.wsUrlValid}
+                disabled={props.pairingPending || props.pairingInitializing || !props.wsUrlValid}
                 onClick={props.onRedeemPairingCode}
               >
-                {props.pairingPending ? "配对中" : "配对"}
+                {props.pairingPending ? "配对中" : props.pairingInitializing ? "初始化中" : "配对"}
               </button>
             </div>
-            {props.pairingMessage ? <p className="mt-2 text-xs text-[var(--tp-text-muted)]">{props.pairingMessage}</p> : null}
+            {props.pairingMessage || props.pairingInitializing ? (
+              <p className="mt-2 text-xs text-[var(--tp-text-muted)]">
+                {props.pairingMessage || "正在初始化本地配对密钥…"}
+              </p>
+            ) : null}
           </div>
         ) : null}
         {showActions ? (

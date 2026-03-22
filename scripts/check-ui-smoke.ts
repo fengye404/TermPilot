@@ -200,6 +200,32 @@ async function waitForStoredToken(page: Page): Promise<void> {
   throw new Error("pairing did not persist a client token");
 }
 
+async function waitForStoredBinding(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const stored = await page.evaluate((storageKey) => {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) {
+        return false;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        const token = typeof parsed.clientToken === "string" ? parsed.clientToken.trim() : "";
+        const publicKey = typeof parsed.clientKeyPair?.publicKey === "string" ? parsed.clientKeyPair.publicKey.trim() : "";
+        const privateKey = typeof parsed.clientKeyPair?.privateKey === "string" ? parsed.clientKeyPair.privateKey.trim() : "";
+        const agentPublicKey = typeof parsed.agentPublicKey === "string" ? parsed.agentPublicKey.trim() : "";
+        return Boolean(token && publicKey && privateKey && agentPublicKey);
+      } catch {
+        return false;
+      }
+    }, APP_STORAGE_KEY);
+    if (stored) {
+      return;
+    }
+    await delay(500);
+  }
+  throw new Error("pairing did not persist the secure binding");
+}
+
 async function waitForClearedToken(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const stored = await page.evaluate((storageKey) => {
@@ -310,6 +336,9 @@ async function main(): Promise<void> {
       await page.getByPlaceholder("ABC-234").fill(pairingCode);
       await page.getByRole("button", { name: "配对" }).click();
       await waitForStoredToken(page);
+      await waitForStoredBinding(page);
+      await page.reload({ waitUntil: "networkidle" });
+      await waitForStoredBinding(page);
 
       await ensureSessionListVisible(page);
       await waitForSessionCard(page, sessionOne);

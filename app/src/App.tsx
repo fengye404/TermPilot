@@ -170,8 +170,10 @@ async function clearStaleAppCaches(): Promise<void> {
 async function generateValidatedClientKeyPair(): Promise<E2EEKeyPair> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const next = await generateE2EEKeyPair();
-    if (next.publicKey.trim() && next.privateKey.trim()) {
-      return next;
+    const publicKey = next.publicKey.trim();
+    const privateKey = next.privateKey.trim();
+    if (publicKey && privateKey) {
+      return { publicKey, privateKey };
     }
   }
   throw new Error("浏览器未能初始化本地配对密钥，请刷新页面后重试。");
@@ -207,6 +209,7 @@ export default function App() {
   const clientTokenRef = useRef(DEFAULT_CLIENT_TOKEN);
   const clientKeyPairRef = useRef<E2EEKeyPair | null>(null);
   const pairingKeyDraftRef = useRef<E2EEKeyPair | null>(null);
+  const pairingKeyInitPromiseRef = useRef<Promise<E2EEKeyPair> | null>(null);
   const agentPublicKeyRef = useRef("");
   const suppressMobileAutoSelectRef = useRef(false);
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
@@ -225,6 +228,8 @@ export default function App() {
   const [deviceIdLocked, setDeviceIdLocked] = useState(false);
   const [connectionPhase, setConnectionPhase] = useState<ConnectionPhase>("idle");
   const [deviceOnline, setDeviceOnline] = useState(false);
+  const [storageHydrated, setStorageHydrated] = useState(false);
+  const [pairingKeyReady, setPairingKeyReady] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [buffers, setBuffers] = useState<SessionMap>({});
   const [bufferSeqs, setBufferSeqs] = useState<Record<string, number>>({});
@@ -391,14 +396,17 @@ export default function App() {
 
   useEffect(() => {
     if (hasSecureBinding) {
+      setPairingKeyReady(true);
       return;
     }
     let cancelled = false;
+    setPairingKeyReady(false);
     void ensurePairingKeyPair()
       .then(() => {
         if (cancelled) {
           return;
         }
+        setPairingKeyReady(true);
         setPairingMessage((current) => (
           current.includes("本地配对密钥")
             ? ""
@@ -406,6 +414,10 @@ export default function App() {
         ));
       })
       .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setPairingKeyReady(false);
         // ignore warmup failures and surface them only on explicit pairing
       });
     return () => {
@@ -485,10 +497,15 @@ export default function App() {
       }
     } catch {
       // ignore malformed local state
+    } finally {
+      setStorageHydrated(true);
     }
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined" || !storageHydrated) {
+      return;
+    }
     const payload: StoredState = {
       wsUrl,
       clientToken,
@@ -500,7 +517,7 @@ export default function App() {
       agentPublicKey,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [activeSid, agentPublicKey, clientKeyPair, clientToken, deviceId, notificationsEnabled, pinnedSids, wsUrl]);
+  }, [activeSid, agentPublicKey, clientKeyPair, clientToken, deviceId, notificationsEnabled, pinnedSids, storageHydrated, wsUrl]);
 
   useEffect(() => {
     setKeyboardBridge("");
@@ -947,6 +964,8 @@ export default function App() {
     setClientToken("");
     setClientKeyPair(null);
     pairingKeyDraftRef.current = null;
+    pairingKeyInitPromiseRef.current = null;
+    setPairingKeyReady(false);
     setAgentPublicKey("");
     setAgentFingerprint("");
     setDeviceIdLocked(false);
@@ -1407,6 +1426,7 @@ export default function App() {
       setClientKeyPair(nextClientKeyPair);
       clientKeyPairRef.current = nextClientKeyPair;
       pairingKeyDraftRef.current = nextClientKeyPair;
+      setPairingKeyReady(true);
       setAgentPublicKey(payload.agentPublicKey);
       agentPublicKeyRef.current = payload.agentPublicKey;
       setPairingCode("");
@@ -1453,13 +1473,31 @@ export default function App() {
       if (isValidKeyPair(pairingKeyDraftRef.current)) {
         return pairingKeyDraftRef.current;
       }
+      if (pairingKeyInitPromiseRef.current) {
+        return pairingKeyInitPromiseRef.current;
+      }
+    } else {
+      pairingKeyInitPromiseRef.current = null;
     }
-    const next = await generateValidatedClientKeyPair();
-    pairingKeyDraftRef.current = next;
-    return next;
+    const initPromise = generateValidatedClientKeyPair().then((next) => {
+      pairingKeyDraftRef.current = next;
+      return next;
+    });
+    pairingKeyInitPromiseRef.current = initPromise;
+    try {
+      return await initPromise;
+    } finally {
+      if (pairingKeyInitPromiseRef.current === initPromise) {
+        pairingKeyInitPromiseRef.current = null;
+      }
+    }
   }
 
   async function redeemPairingCode(code: string, clientKeyPairValue: E2EEKeyPair): Promise<PairingRedeemResponse> {
+    const clientPublicKey = clientKeyPairValue.publicKey.trim();
+    if (!clientPublicKey) {
+      throw new Error("浏览器未能初始化本地配对密钥，请刷新页面后重试。");
+    }
     const response = await fetch(`${relayHttpBaseUrl}/api/pairings/redeem`, {
       method: "POST",
       headers: {
@@ -1467,7 +1505,7 @@ export default function App() {
       },
       body: JSON.stringify({
         pairingCode: code,
-        clientPublicKey: clientKeyPairValue.publicKey,
+        clientPublicKey,
       }),
     });
 
@@ -1860,15 +1898,19 @@ export default function App() {
                 <button
                   className="tp-button tp-button-primary px-5 py-3 text-sm"
                   type="button"
-                  disabled={pairingPending || parsedWsUrl === null}
+                  disabled={pairingPending || !pairingKeyReady || parsedWsUrl === null}
                   onClick={() => {
                     void handleRedeemPairingCode();
                   }}
                 >
-                  {pairingPending ? "配对中" : "配对"}
+                  {pairingPending ? "配对中" : pairingKeyReady ? "配对" : "初始化中"}
                 </button>
               </div>
-              {pairingMessage ? <p className="mt-3 text-sm text-[var(--tp-text-muted)]">{pairingMessage}</p> : null}
+              {pairingMessage || !pairingKeyReady ? (
+                <p className="mt-3 text-sm text-[var(--tp-text-muted)]">
+                  {pairingMessage || "正在初始化本地配对密钥…"}
+                </p>
+              ) : null}
             </Panel>
 
             <details className="tp-card px-4 py-4 sm:px-5">
@@ -1886,6 +1928,7 @@ export default function App() {
                   pairingCode={pairingCode}
                   pairingMessage={pairingMessage}
                   pairingPending={pairingPending}
+                  pairingInitializing={!pairingKeyReady}
                   agentFingerprint={agentFingerprint}
                   connectionPhase={connectionPhase}
                   notificationsEnabled={notificationsEnabled}
@@ -2077,6 +2120,7 @@ export default function App() {
                 pairingCode={pairingCode}
                 pairingMessage={pairingMessage}
                 pairingPending={pairingPending}
+                pairingInitializing={!pairingKeyReady}
                 agentFingerprint={agentFingerprint}
                 connectionPhase={connectionPhase}
                 notificationsEnabled={notificationsEnabled}
