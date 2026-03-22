@@ -402,8 +402,9 @@ async function main(): Promise<void> {
       await waitForTerminalText(page, terminalText);
 
       const keyboardText = `kb-smoke-${Date.now()}`;
-      await workspace.getByPlaceholder("点这里唤起键盘，直接往当前光标输入").fill(`printf '${keyboardText}'`);
-      await page.keyboard.press("Enter");
+      const keyboardInput = workspace.getByLabel("终端键盘输入").first();
+      await keyboardInput.fill(`printf '${keyboardText}'`);
+      await keyboardInput.press("Enter");
       await waitForTerminalText(page, keyboardText);
 
       await ensureSessionListVisible(page);

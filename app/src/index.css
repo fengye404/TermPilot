@@ -368,6 +368,37 @@ summary:focus-visible {
   padding: 0.75rem;
 }
 
+.tp-mobile-terminal-surface {
+  position: relative;
+}
+
+.tp-mobile-terminal-surface .tp-terminal-frame {
+  cursor: text;
+}
+
+.tp-mobile-keyboard-field {
+  min-width: 0;
+  background: color-mix(in srgb, var(--tp-panel) 88%, transparent);
+}
+
+.tp-mobile-focus-keyboard-field {
+  width: min(44vw, 180px);
+  min-width: 120px;
+  border-color: var(--tp-border-strong);
+  background: color-mix(in srgb, var(--tp-panel-strong) 92%, transparent);
+}
+
+.tp-mobile-terminal-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--tp-border-soft);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--tp-panel-strong) 80%, transparent);
+  padding: 10px 12px;
+}
+
 .tp-ansi-snapshot {
   margin: 0;
   min-width: max-content;
@@ -451,24 +482,58 @@ summary:focus-visible {
   min-height: 0;
   height: 100%;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .tp-mobile-focus-terminal-bar {
-  display: grid;
-  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+  display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 8px;
+  align-self: center;
+  width: min(100%, 460px);
   border: 1px solid var(--tp-border);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--tp-panel-strong) 92%, transparent);
-  padding: 10px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tp-panel-strong) 90%, transparent);
+  padding: 6px;
+}
+
+.tp-mobile-focus-chip {
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 1px solid var(--tp-border-soft);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tp-panel) 92%, transparent);
+  padding: 6px 10px;
+  text-align: center;
 }
 
 .tp-mobile-focus-terminal .tp-terminal-frame {
   flex: 1 1 auto;
   min-height: 0;
   border-radius: 16px;
+}
+
+.tp-mobile-focus-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.tp-mobile-focus-surface-hint {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.tp-mobile-focus-control-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.tp-mobile-focus-control-strip > * {
+  flex: 0 0 auto;
 }
 
 .tp-mobile-terminal-toolbar {
@@ -547,5 +612,9 @@ summary:focus-visible {
 
   .tp-mobile-focus-shell-active .tp-ansi-snapshot {
     font-size: 12px;
+  }
+
+  .tp-mobile-terminal-meta {
+    align-items: flex-start;
   }
 }

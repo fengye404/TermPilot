@@ -1,5 +1,5 @@
 import type { FormEvent, RefObject } from "react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 
 import { AnsiTerminalSnapshot } from "./AnsiTerminalSnapshot";
@@ -40,8 +40,10 @@ interface TerminalWorkspaceProps {
 export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const toolsSectionRef = useRef<HTMLDetailsElement | null>(null);
   const commandSectionRef = useRef<HTMLDetailsElement | null>(null);
+  const keyboardFieldRef = useRef<HTMLInputElement | null>(null);
   const isMobileView = Boolean(props.onBack);
   const showFocusAction = Boolean(props.onToggleFocusMode);
+  const [mobileKeyboardFocused, setMobileKeyboardFocused] = useState(false);
   const isManagedCommand = props.activeSession?.launchMode === "command";
   const exitHintTitle = isManagedCommand ? "退出方式" : "离开与结束";
   const exitHintBody = isManagedCommand
@@ -50,11 +52,24 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const executionKeys = props.shortcutKeys.filter((shortcut) => ["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const navigationKeys = props.shortcutKeys.filter((shortcut) => !["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const helperKeys = navigationKeys.filter((shortcut) => !shortcut.key.startsWith("arrow_"));
+  const mobileKeyboardToolKeys = props.shortcutKeys.filter((shortcut) => ["tab", "escape", "ctrl_c", "ctrl_d"].includes(shortcut.key));
+  const mobileFocusControlKeys = props.shortcutKeys.filter((shortcut) => [
+    "enter",
+    "tab",
+    "escape",
+    "ctrl_c",
+    "ctrl_d",
+    "arrow_up",
+    "arrow_down",
+    "arrow_left",
+    "arrow_right",
+  ].includes(shortcut.key));
   const syncChipLabel = props.activeSession?.status === "running"
     ? props.snapshotPending
       ? `补帧中${typeof props.snapshotLag === "number" && props.snapshotLag > 0 ? ` · ${props.snapshotLag}` : ""}`
       : "实时同步"
     : "已结束";
+  const keyboardStatusLabel = mobileKeyboardFocused ? "键盘已连接" : "点终端输入";
 
   const scrollSectionIntoView = (ref: RefObject<HTMLElement | null>) => {
     ref.current?.scrollIntoView({
@@ -88,6 +103,83 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
       </button>
     );
   };
+
+  const focusMobileKeyboard = () => {
+    if (!props.activeSid || !props.canControl) {
+      return;
+    }
+    const input = keyboardFieldRef.current;
+    if (!input) {
+      return;
+    }
+    input.focus({ preventScroll: true });
+    const cursor = input.value.length;
+    try {
+      input.setSelectionRange(cursor, cursor);
+    } catch {
+      // ignore browsers that do not support setSelectionRange on focused element
+    }
+  };
+
+  const primeMobileKeyboardFocus = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    focusMobileKeyboard();
+  };
+
+  const handleKeyboardCaptureKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      props.onKeyboardBridgeKey("enter");
+      return;
+    }
+    if (event.key === "Backspace" && props.keyboardBridge.length === 0) {
+      props.onKeyboardBridgeKey("backspace");
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      props.onKeyboardBridgeKey("tab");
+    }
+  };
+
+  const renderMobileKeyboardField = (className?: string) => (
+    <input
+      ref={keyboardFieldRef}
+      className={`tp-input min-h-10 disabled:opacity-50 ${className ?? ""}`.trim()}
+      aria-label="终端键盘输入"
+      value={props.keyboardBridge}
+      onChange={(event) => props.onKeyboardBridgeChange(event.target.value)}
+      onKeyDown={handleKeyboardCaptureKeyDown}
+      onFocus={() => setMobileKeyboardFocused(true)}
+      onBlur={() => setMobileKeyboardFocused(false)}
+      placeholder={mobileKeyboardFocused ? "继续输入..." : "点终端后在这里输入"}
+      enterKeyHint="enter"
+      autoCapitalize="off"
+      autoCorrect="off"
+      autoComplete="off"
+      spellCheck={false}
+      disabled={!props.activeSid || !props.canControl}
+    />
+  );
+
+  const renderCompactShortcutButton = (shortcut: ShortcutKeyMeta, emphasized = false) => (
+    <button
+      key={shortcut.key}
+      className={`${
+        emphasized && shortcut.tone === "primary"
+          ? "tp-control-button-primary"
+          : emphasized && shortcut.tone === "danger"
+            ? "tp-control-button-danger"
+            : "tp-control-button"
+      } min-h-10 rounded-[14px] px-3 py-2 text-xs font-medium disabled:opacity-40`}
+      type="button"
+      disabled={!props.activeSid || !props.canControl}
+      onClick={() => props.onSendKey(shortcut.key)}
+    >
+      <span className="block font-mono text-[12px] opacity-80">{shortcut.chip}</span>
+      <span className="mt-0.5 block">{shortcut.label}</span>
+    </button>
+  );
 
   if (!props.activeSession) {
     return (
@@ -133,20 +225,47 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         ) : (
           <span />
         )}
-        <div className="min-w-0 text-center">
-          <p className="truncate text-sm font-medium text-[var(--tp-text)]">{props.activeSession.name}</p>
-          <p className="mt-0.5 text-[11px] text-[var(--tp-text-soft)]">{syncChipLabel}</p>
+        <div className="tp-mobile-focus-chip min-w-0">
+          <p className="truncate text-[12px] font-medium text-[var(--tp-text)]">{props.activeSession.name}</p>
+          <p className="mt-0.5 text-[10px] text-[var(--tp-text-soft)]">{syncChipLabel}</p>
         </div>
         {showFocusAction ? (
-          <button className={`${BUTTON_PRIMARY} min-h-10 px-3 py-2 text-xs`} type="button" onClick={props.onToggleFocusMode}>
-            退出专注
+          <button className={`${BUTTON_PRIMARY} min-h-9 px-3 py-2 text-[11px]`} type="button" onClick={props.onToggleFocusMode}>
+            退出
           </button>
         ) : (
           <span />
         )}
       </div>
-      <div className="tp-terminal-frame h-full min-h-0 flex-1">
-        <AnsiTerminalSnapshot snapshot={props.snapshot} />
+      <div
+        className="tp-mobile-terminal-surface tp-mobile-focus-stage"
+        data-testid="mobile-terminal-surface"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          focusMobileKeyboard();
+        }}
+        onClick={focusMobileKeyboard}
+      >
+        <div className="tp-terminal-frame h-full min-h-0 flex-1">
+          <AnsiTerminalSnapshot snapshot={props.snapshot} />
+        </div>
+        <div className="tp-mobile-focus-surface-hint">
+          <button
+            className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
+            type="button"
+            onMouseDown={primeMobileKeyboardFocus}
+            onClick={(event) => {
+              event.stopPropagation();
+              focusMobileKeyboard();
+            }}
+          >
+            {keyboardStatusLabel}
+          </button>
+        </div>
+      </div>
+      <div className="tp-mobile-focus-control-strip" aria-label="专注模式控制工具">
+        {renderMobileKeyboardField("tp-mobile-focus-keyboard-field shrink-0")}
+        {mobileFocusControlKeys.map((shortcut) => renderCompactShortcutButton(shortcut, true))}
       </div>
     </div>
   );
@@ -163,8 +282,30 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             {syncChipLabel}
           </span>
         </div>
-        <div className="tp-terminal-frame h-[64svh] min-h-[520px]">
-          <AnsiTerminalSnapshot snapshot={props.snapshot} />
+        <div
+          className="tp-mobile-terminal-surface"
+          data-testid="mobile-terminal-surface"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            focusMobileKeyboard();
+          }}
+          onClick={focusMobileKeyboard}
+        >
+          <div className="tp-terminal-frame h-[64svh] min-h-[520px]">
+            <AnsiTerminalSnapshot snapshot={props.snapshot} />
+          </div>
+        </div>
+        <div className="tp-mobile-terminal-meta mt-3">
+          <button
+            className={`${BUTTON_SECONDARY} min-h-10 shrink-0 px-3 py-2 text-xs`}
+            type="button"
+            onMouseDown={primeMobileKeyboardFocus}
+            onClick={focusMobileKeyboard}
+            disabled={!props.activeSid || !props.canControl}
+          >
+            唤起键盘
+          </button>
+          {renderMobileKeyboardField("tp-mobile-keyboard-field flex-1")}
         </div>
         <div className="tp-mobile-terminal-toolbar mt-3">
           {props.onBack ? (
@@ -180,9 +321,10 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
           <button
             className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
             type="button"
-            onClick={() => scrollSectionIntoView(commandSectionRef)}
+            onMouseDown={primeMobileKeyboardFocus}
+            onClick={focusMobileKeyboard}
           >
-            输入
+            键盘
           </button>
           <button
             className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
@@ -234,45 +376,36 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         </form>
 
         <div className="mt-4 border-t border-[var(--tp-border-soft)] pt-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-[var(--tp-text)]">终端键盘</p>
-              <p className="mt-1 text-xs text-[var(--tp-text-soft)]">手机软键盘输入会直接写进当前光标位置，回车立即发送。</p>
+          <div className="tp-card-muted px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-[var(--tp-text)]">手机键盘直连</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--tp-text-soft)]">
+                  点上面的终端正文就能直接调起系统键盘。空格、符号、回车都走手机原生键盘；Tab、Esc、Ctrl 这类不顺手的键放到下面的控制工具里。
+                </p>
+              </div>
+              <button
+                className={`${BUTTON_SECONDARY} min-h-10 shrink-0 px-3 py-2 text-xs`}
+                type="button"
+                onMouseDown={primeMobileKeyboardFocus}
+                disabled={!props.activeSid || !props.canControl}
+                onClick={focusMobileKeyboard}
+              >
+                唤起键盘
+              </button>
             </div>
-            <button
-              className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-xs`}
-              type="button"
-              disabled={!props.activeSid || !props.canControl}
-              onClick={() => props.onKeyboardBridgeKey("enter")}
-            >
-              回车
-            </button>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <button
+                className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
+                type="button"
+                disabled={!props.activeSid || !props.canControl}
+                onClick={() => props.onKeyboardBridgeKey("enter")}
+              >
+                回车
+              </button>
+              {mobileKeyboardToolKeys.map((shortcut) => renderCompactShortcutButton(shortcut))}
+            </div>
           </div>
-          <input
-            className="tp-input min-h-11 disabled:opacity-50"
-            value={props.keyboardBridge}
-            onChange={(event) => props.onKeyboardBridgeChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                props.onKeyboardBridgeKey("enter");
-                return;
-              }
-              if (event.key === "Backspace" && props.keyboardBridge.length === 0) {
-                props.onKeyboardBridgeKey("backspace");
-                return;
-              }
-              if (event.key === "Tab") {
-                event.preventDefault();
-                props.onKeyboardBridgeKey("tab");
-              }
-            }}
-            placeholder="点这里唤起键盘，直接往当前光标输入"
-            enterKeyHint="send"
-            autoCapitalize="off"
-            autoCorrect="off"
-            disabled={!props.activeSid || !props.canControl}
-          />
         </div>
       </details>
 
