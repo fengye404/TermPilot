@@ -1,5 +1,5 @@
 import type { FormEvent, RefObject, SyntheticEvent } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, Panel } from "./chrome";
@@ -18,6 +18,7 @@ interface TerminalWorkspaceProps {
   activeSid: string | null;
   canControl: boolean;
   focusMode?: boolean;
+  focusRotateTerminal?: boolean;
   snapshotPending?: boolean;
   snapshotLag?: number;
   command: string;
@@ -43,6 +44,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const isMobileView = Boolean(props.onBack);
   const showFocusAction = Boolean(props.onToggleFocusMode);
   const [mobileKeyboardFocused, setMobileKeyboardFocused] = useState(false);
+  const [focusToolsOpen, setFocusToolsOpen] = useState(false);
   const isManagedCommand = props.activeSession?.launchMode === "command";
   const exitHintTitle = isManagedCommand ? "退出方式" : "离开与结束";
   const exitHintBody = isManagedCommand
@@ -69,6 +71,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
       : "实时同步"
     : "已结束";
   const keyboardStatusLabel = mobileKeyboardFocused ? "键盘已连接" : "点终端输入";
+  const focusToolsSheetId = props.activeSid ? `tp-focus-tools-${props.activeSid}` : "tp-focus-tools";
 
   const scrollSectionIntoView = (ref: RefObject<HTMLElement | null>) => {
     ref.current?.scrollIntoView({
@@ -115,7 +118,13 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
     focusMobileKeyboard();
   };
 
-  const renderCompactShortcutButton = (shortcut: ShortcutKeyMeta, emphasized = false) => (
+  useEffect(() => {
+    if (props.focusMode) {
+      setFocusToolsOpen(false);
+    }
+  }, [props.activeSid, props.focusMode]);
+
+  const renderCompactShortcutButton = (shortcut: ShortcutKeyMeta, emphasized = false, extraClassName = "") => (
     <button
       key={shortcut.key}
       className={`${
@@ -124,7 +133,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
           : emphasized && shortcut.tone === "danger"
             ? "tp-control-button-danger"
             : "tp-control-button"
-      } min-h-10 rounded-[14px] px-3 py-2 text-xs font-medium disabled:opacity-40`}
+      } min-h-10 rounded-[14px] px-3 py-2 text-xs font-medium disabled:opacity-40 ${extraClassName}`.trim()}
       type="button"
       disabled={!props.activeSid || !props.canControl}
       onClick={() => props.onSendKey(shortcut.key)}
@@ -166,30 +175,37 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const mobileFocusContent = (
     <div className="tp-mobile-focus-terminal">
       <div
-        className="tp-mobile-terminal-surface tp-mobile-focus-stage"
+        className={`tp-mobile-terminal-surface tp-mobile-focus-stage ${props.focusRotateTerminal ? "tp-mobile-focus-stage-rotated-shell" : ""}`.trim()}
         data-testid="mobile-terminal-surface"
         onPointerDown={(event) => {
           event.preventDefault();
+          setFocusToolsOpen(false);
           focusMobileKeyboard();
         }}
-        onClick={focusMobileKeyboard}
+        onClick={() => {
+          setFocusToolsOpen(false);
+          focusMobileKeyboard();
+        }}
       >
-        <div className="tp-terminal-frame h-full min-h-0 flex-1">
-          <XtermTerminal
-            key={props.activeSession.sid}
-            ref={terminalRef}
-            sessionKey={props.activeSession.sid}
-            snapshot={props.snapshot}
-            className="h-full"
-            onData={props.onTerminalData}
-            onResize={props.onTerminalResize}
-            onSpecialKey={props.onSendKey}
-            onFocusChange={setMobileKeyboardFocused}
-          />
+        <div className={props.focusRotateTerminal ? "tp-mobile-focus-rotated-viewport" : "h-full"}>
+          <div className="tp-terminal-frame tp-mobile-focus-frame h-full min-h-0 flex-1">
+            <XtermTerminal
+              key={props.activeSession.sid}
+              ref={terminalRef}
+              sessionKey={props.activeSession.sid}
+              snapshot={props.snapshot}
+              className="h-full"
+              fontPreset="focus"
+              onData={props.onTerminalData}
+              onResize={props.onTerminalResize}
+              onSpecialKey={props.onSendKey}
+              onFocusChange={setMobileKeyboardFocused}
+            />
+          </div>
         </div>
         <div className="tp-mobile-focus-overlay">
           <button
-            className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
+            className={`${BUTTON_SECONDARY} tp-mobile-focus-chip`}
             type="button"
             onPointerDown={primeMobileKeyboardFocus}
             onClick={(event) => {
@@ -197,38 +213,88 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               focusMobileKeyboard();
             }}
           >
-            {mobileKeyboardFocused ? "已连接" : "键盘"}
+            {mobileKeyboardFocused ? "键盘已连" : "键盘"}
+          </button>
+          <button
+            className={`${BUTTON_SECONDARY} tp-mobile-focus-chip`}
+            type="button"
+            aria-expanded={focusToolsOpen}
+            aria-controls={focusToolsSheetId}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              setFocusToolsOpen((open) => !open);
+            }}
+          >
+            {focusToolsOpen ? "收起工具" : "工具"}
           </button>
           {showFocusAction ? (
             <button
-              className={`${BUTTON_PRIMARY} min-h-9 px-3 py-2 text-[11px]`}
+              className={`${BUTTON_PRIMARY} tp-mobile-focus-chip`}
               type="button"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
               onClick={props.onToggleFocusMode}
             >
               退出
             </button>
           ) : null}
         </div>
-      </div>
-      <div className="tp-mobile-focus-control-dock" aria-label="专注模式控制工具">
-        <button
-          className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
-          type="button"
-          onPointerDown={primeMobileKeyboardFocus}
-          onClick={focusMobileKeyboard}
-          disabled={!props.activeSid || !props.canControl}
-        >
-          键盘
-        </button>
-        {mobileFocusControlKeys.map((shortcut) => renderCompactShortcutButton(shortcut, true))}
+        {focusToolsOpen ? (
+          <div
+            id={focusToolsSheetId}
+            className="tp-mobile-focus-tools-sheet"
+            aria-label="专注模式控制工具"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <div className="tp-mobile-focus-tools-header">
+              <div>
+                <p className="text-sm font-medium text-[var(--tp-text)]">控制工具</p>
+                <p className="mt-1 text-[11px] text-[var(--tp-text-soft)]">默认收起，常规输入直接点终端。</p>
+              </div>
+              <button
+                className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
+                type="button"
+                onClick={() => {
+                  setFocusToolsOpen(false);
+                }}
+              >
+                收起
+              </button>
+            </div>
+            <div className="tp-mobile-focus-tools-grid">
+              <button
+                className={`${BUTTON_SECONDARY} tp-mobile-focus-shortcut`}
+                type="button"
+                onPointerDown={primeMobileKeyboardFocus}
+                onClick={focusMobileKeyboard}
+                disabled={!props.activeSid || !props.canControl}
+              >
+                <span className="block font-mono text-[12px] opacity-80">⌨</span>
+                <span className="mt-0.5 block">键盘</span>
+              </button>
+              {mobileFocusControlKeys.map((shortcut) => renderCompactShortcutButton(shortcut, true, "tp-mobile-focus-shortcut"))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 
   const mobileDefaultContent = (
     <div className="space-y-3">
-      <div className="tp-terminal-shell relative p-3">
-        <div className="mb-3 flex items-center justify-between gap-3 px-1">
+      <div className="tp-terminal-shell tp-mobile-session-terminal-shell relative p-3">
+        <div className="tp-mobile-session-terminal-header mb-3 flex items-center justify-between gap-3 px-1">
           <div className="min-w-0">
             <p className="text-sm font-medium text-[var(--tp-text)]">终端输出</p>
             <p className="truncate text-xs text-[var(--tp-text-soft)]">{props.activeSession.cwd}</p>
@@ -246,13 +312,14 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
           }}
           onClick={focusMobileKeyboard}
         >
-          <div className="tp-terminal-frame h-[64svh] min-h-[520px]">
+          <div className="tp-terminal-frame tp-mobile-session-terminal-frame h-[64svh] min-h-[520px]">
             <XtermTerminal
               key={props.activeSession.sid}
               ref={terminalRef}
               sessionKey={props.activeSession.sid}
               snapshot={props.snapshot}
               className="h-full"
+              fontPreset="compact"
               onData={props.onTerminalData}
               onResize={props.onTerminalResize}
               onSpecialKey={props.onSendKey}
@@ -565,6 +632,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                     sessionKey={props.activeSession.sid}
                     snapshot={props.snapshot}
                     className="h-full"
+                    fontPreset="default"
                     onData={props.onTerminalData}
                     onResize={props.onTerminalResize}
                     onSpecialKey={props.onSendKey}

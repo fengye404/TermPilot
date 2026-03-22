@@ -19,6 +19,7 @@ interface XtermTerminalProps {
   sessionKey: string;
   snapshot: string;
   className?: string;
+  fontPreset?: "default" | "compact" | "focus";
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
   onSpecialKey?: (key: InputKey) => void;
@@ -129,9 +130,30 @@ function isTextInputKey(event: KeyboardEvent): boolean {
   return Array.from(event.key).length === 1;
 }
 
+function resolveTypography(fontPreset: XtermTerminalProps["fontPreset"]): Pick<ITerminalOptions, "fontSize" | "lineHeight"> {
+  switch (fontPreset) {
+    case "compact":
+      return {
+        fontSize: 11,
+        lineHeight: 1.18,
+      };
+    case "focus":
+      return {
+        fontSize: 11.5,
+        lineHeight: 1.16,
+      };
+    default:
+      return {
+        fontSize: 13,
+        lineHeight: 1.35,
+      };
+  }
+}
+
 export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalProps>(function XtermTerminal(props, ref) {
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const fitTerminalRef = useRef<(() => void) | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputMirrorRef = useRef<HTMLPreElement | null>(null);
   const onDataRef = useRef(props.onData);
@@ -186,6 +208,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         }
         const fitAddon = new FitAddon();
         fitAddonRef.current = fitAddon;
+        const { fontSize, lineHeight } = resolveTypography(props.fontPreset);
         const terminal = new Terminal({
           allowTransparency: false,
           convertEol: false,
@@ -193,8 +216,8 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           cursorStyle: "bar",
           drawBoldTextInBrightColors: false,
           fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
-          fontSize: 13,
-          lineHeight: 1.35,
+          fontSize,
+          lineHeight,
           scrollback: 5000,
           theme: readTerminalTheme(),
         });
@@ -213,6 +236,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
             // xterm can transiently lose renderer dimensions while the node is detaching.
           }
         };
+        fitTerminalRef.current = safeFit;
         safeFit();
 
         const helperTextarea = terminal.textarea;
@@ -396,6 +420,16 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           : null;
         media?.addEventListener("change", applyTheme);
 
+        const visualViewport = typeof window !== "undefined" ? window.visualViewport : null;
+        visualViewport?.addEventListener("resize", safeFit);
+
+        const fontSet = typeof document !== "undefined" ? document.fonts : null;
+        void fontSet?.ready.then(() => {
+          window.requestAnimationFrame(() => {
+            safeFit();
+          });
+        }).catch(() => undefined);
+
         const resizeObserver = typeof ResizeObserver !== "undefined"
           ? new ResizeObserver(() => {
             safeFit();
@@ -417,6 +451,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         cleanup = () => {
           resizeObserver?.disconnect();
           media?.removeEventListener("change", applyTheme);
+          visualViewport?.removeEventListener("resize", safeFit);
           if (helperTextarea instanceof HTMLElement) {
             helperTextarea.removeEventListener("focus", handleFocus);
             helperTextarea.removeEventListener("blur", handleBlur);
@@ -430,6 +465,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           terminal.dispose();
           terminalRef.current = null;
           fitAddonRef.current = null;
+          fitTerminalRef.current = null;
         };
       } catch (error) {
         if (disposed) {
@@ -448,6 +484,22 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
       cleanup();
     };
   }, [bootNonce]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || !terminalReady) {
+      return;
+    }
+    const { fontSize, lineHeight } = resolveTypography(props.fontPreset);
+    if (terminal.options.fontSize === fontSize && terminal.options.lineHeight === lineHeight) {
+      return;
+    }
+    terminal.options.fontSize = fontSize;
+    terminal.options.lineHeight = lineHeight;
+    window.requestAnimationFrame(() => {
+      fitTerminalRef.current?.();
+    });
+  }, [props.fontPreset, terminalReady]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

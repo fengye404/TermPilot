@@ -630,6 +630,54 @@ export class AgentDaemon {
       }
       this.noteRemoteInteraction(message.sid);
       await resizeSession(session, message.payload.cols, message.payload.rows);
+      await delay(60);
+
+      const buffer = await captureSession(session);
+      const runtimeState = this.runtimeState.get(session.sid) ?? {
+        lastRenderedBuffer: "",
+        lastStatus: session.status,
+        layoutNormalized: true,
+        lastSyncedAt: 0,
+        lastBufferChangeAt: 0,
+        lastRemoteInteractionAt: Date.now(),
+      };
+
+      if (buffer !== runtimeState.lastRenderedBuffer) {
+        const bumpedSession = bumpSessionSeq(session.sid);
+        if (!bumpedSession) {
+          return;
+        }
+        runtimeState.lastRenderedBuffer = buffer;
+        runtimeState.lastStatus = bumpedSession.status;
+        runtimeState.layoutNormalized = true;
+        runtimeState.lastBufferChangeAt = Date.now();
+        runtimeState.lastRemoteInteractionAt = Date.now();
+        this.runtimeState.set(session.sid, runtimeState);
+
+        const outputMessage = toOutputFrame(
+          this.options.deviceId,
+          session.sid,
+          bumpedSession.lastSeq,
+          buffer,
+          "replace",
+        );
+        this.pushOutputFrame(outputMessage);
+        await this.broadcastBusinessMessage(outputMessage);
+        await this.broadcastBusinessMessage({
+          type: "session.state",
+          deviceId: this.options.deviceId,
+          sid: bumpedSession.sid,
+          payload: {
+            session: bumpedSession,
+          },
+        });
+        return;
+      }
+
+      runtimeState.lastStatus = session.status;
+      runtimeState.layoutNormalized = true;
+      runtimeState.lastRemoteInteractionAt = Date.now();
+      this.runtimeState.set(session.sid, runtimeState);
     } catch (error) {
       await this.sendEncryptedError(accessToken, message.reqId, "SESSION_RESIZE_FAILED", error);
     }

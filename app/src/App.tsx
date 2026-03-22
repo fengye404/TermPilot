@@ -1173,7 +1173,11 @@ export default function App() {
         }
         {
           const currentSeq = bufferSeqsRef.current[message.sid] ?? -1;
-          if (message.seq <= currentSeq) {
+          if (message.seq < currentSeq) {
+            return;
+          }
+
+          if (message.seq === currentSeq && message.payload.mode !== "replace") {
             return;
           }
 
@@ -1856,9 +1860,7 @@ export default function App() {
     }
   }
 
-  const mobileFocusShellClassName = mobileTerminalFocusMode
-    ? `tp-mobile-focus-shell tp-mobile-focus-shell-active ${isPortraitViewport ? "tp-mobile-focus-shell-rotated" : "tp-mobile-focus-shell-landscape"}`
-    : undefined;
+  const mobileFocusShellClassName = mobileTerminalFocusMode ? "tp-mobile-focus-shell tp-mobile-focus-shell-active" : undefined;
 
   return (
     <main className={`mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-4 py-4 text-[var(--tp-text)] sm:px-5 sm:py-5 lg:px-6 ${compactMobileChrome ? "gap-3" : "gap-4"}`}>
@@ -2072,6 +2074,7 @@ export default function App() {
                   activeSid={activeSid}
                   canControl={canControlDevice}
                   focusMode={mobileTerminalFocusMode}
+                  focusRotateTerminal={mobileTerminalFocusMode && isPortraitViewport}
                   snapshotPending={activeSnapshotPending}
                   snapshotLag={activeSnapshotLag}
                   command={command}
@@ -2105,6 +2108,7 @@ export default function App() {
                     activeSid={activeSid}
                     canControl={canControlDevice}
                     focusMode={mobileTerminalFocusMode}
+                    focusRotateTerminal={mobileTerminalFocusMode && isPortraitViewport}
                     snapshotPending={activeSnapshotPending}
                     snapshotLag={activeSnapshotLag}
                     command={command}

@@ -145,7 +145,7 @@ export async function getAttachedClientCount(session: SessionRecord): Promise<nu
 }
 
 export async function captureSession(session: SessionRecord): Promise<string> {
-  return runTmux(["capture-pane", "-p", "-e", "-N", "-S", "-2000", "-t", session.tmuxSessionName]);
+  return runTmux(["capture-pane", "-p", "-J", "-e", "-N", "-S", "-2000", "-t", session.tmuxSessionName]);
 }
 
 export async function normalizeSessionWindow(session: SessionRecord): Promise<void> {
