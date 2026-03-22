@@ -1,9 +1,9 @@
-import type { FormEvent, RefObject } from "react";
+import type { FormEvent, RefObject, SyntheticEvent } from "react";
 import { useRef, useState } from "react";
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 
-import { AnsiTerminalSnapshot } from "./AnsiTerminalSnapshot";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, Panel } from "./chrome";
+import { XtermTerminal, type XtermTerminalHandle } from "./XtermTerminal";
 
 interface ShortcutKeyMeta {
   key: InputKey;
@@ -21,26 +21,25 @@ interface TerminalWorkspaceProps {
   snapshotPending?: boolean;
   snapshotLag?: number;
   command: string;
-  keyboardBridge: string;
   pasteBuffer: string;
   snapshot: string;
   shortcutKeys: ShortcutKeyMeta[];
   onBack?: () => void;
   onToggleFocusMode?: () => void;
   onCommandChange: (value: string) => void;
-  onKeyboardBridgeChange: (value: string) => void;
-  onKeyboardBridgeKey: (key: "enter" | "backspace" | "tab") => void;
   onSendCommandNow: () => void;
   onSubmitCommand: (event: FormEvent<HTMLFormElement>) => void;
   onPasteBufferChange: (value: string) => void;
   onSendPaste: (mode: "raw" | "line") => void;
+  onTerminalData: (data: string) => void;
+  onTerminalResize: (cols: number, rows: number) => void;
   onSendKey: (key: InputKey) => void;
 }
 
 export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const toolsSectionRef = useRef<HTMLDetailsElement | null>(null);
   const commandSectionRef = useRef<HTMLDetailsElement | null>(null);
-  const keyboardFieldRef = useRef<HTMLInputElement | null>(null);
+  const terminalRef = useRef<XtermTerminalHandle | null>(null);
   const isMobileView = Boolean(props.onBack);
   const showFocusAction = Boolean(props.onToggleFocusMode);
   const [mobileKeyboardFocused, setMobileKeyboardFocused] = useState(false);
@@ -108,59 +107,13 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
     if (!props.activeSid || !props.canControl) {
       return;
     }
-    const input = keyboardFieldRef.current;
-    if (!input) {
-      return;
-    }
-    input.focus({ preventScroll: true });
-    const cursor = input.value.length;
-    try {
-      input.setSelectionRange(cursor, cursor);
-    } catch {
-      // ignore browsers that do not support setSelectionRange on focused element
-    }
+    terminalRef.current?.focus();
   };
 
-  const primeMobileKeyboardFocus = (event: React.MouseEvent<HTMLElement>) => {
+  const primeMobileKeyboardFocus = (event: SyntheticEvent<HTMLElement>) => {
     event.preventDefault();
     focusMobileKeyboard();
   };
-
-  const handleKeyboardCaptureKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      props.onKeyboardBridgeKey("enter");
-      return;
-    }
-    if (event.key === "Backspace" && props.keyboardBridge.length === 0) {
-      props.onKeyboardBridgeKey("backspace");
-      return;
-    }
-    if (event.key === "Tab") {
-      event.preventDefault();
-      props.onKeyboardBridgeKey("tab");
-    }
-  };
-
-  const renderMobileKeyboardField = (className?: string) => (
-    <input
-      ref={keyboardFieldRef}
-      className={`tp-input min-h-10 disabled:opacity-50 ${className ?? ""}`.trim()}
-      aria-label="终端键盘输入"
-      value={props.keyboardBridge}
-      onChange={(event) => props.onKeyboardBridgeChange(event.target.value)}
-      onKeyDown={handleKeyboardCaptureKeyDown}
-      onFocus={() => setMobileKeyboardFocused(true)}
-      onBlur={() => setMobileKeyboardFocused(false)}
-      placeholder={mobileKeyboardFocused ? "继续输入..." : "点终端后在这里输入"}
-      enterKeyHint="enter"
-      autoCapitalize="off"
-      autoCorrect="off"
-      autoComplete="off"
-      spellCheck={false}
-      disabled={!props.activeSid || !props.canControl}
-    />
-  );
 
   const renderCompactShortcutButton = (shortcut: ShortcutKeyMeta, emphasized = false) => (
     <button
@@ -212,59 +165,61 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
 
   const mobileFocusContent = (
     <div className="tp-mobile-focus-terminal">
-      <div className="tp-mobile-focus-terminal-bar">
-        {props.onBack ? (
-          <button
-            className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
-            type="button"
-            aria-label="返回会话列表"
-            onClick={props.onBack}
-          >
-            返回
-          </button>
-        ) : (
-          <span />
-        )}
-        <div className="tp-mobile-focus-chip min-w-0">
-          <p className="truncate text-[12px] font-medium text-[var(--tp-text)]">{props.activeSession.name}</p>
-          <p className="mt-0.5 text-[10px] text-[var(--tp-text-soft)]">{syncChipLabel}</p>
-        </div>
-        {showFocusAction ? (
-          <button className={`${BUTTON_PRIMARY} min-h-9 px-3 py-2 text-[11px]`} type="button" onClick={props.onToggleFocusMode}>
-            退出
-          </button>
-        ) : (
-          <span />
-        )}
-      </div>
       <div
         className="tp-mobile-terminal-surface tp-mobile-focus-stage"
         data-testid="mobile-terminal-surface"
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           event.preventDefault();
           focusMobileKeyboard();
         }}
         onClick={focusMobileKeyboard}
       >
         <div className="tp-terminal-frame h-full min-h-0 flex-1">
-          <AnsiTerminalSnapshot snapshot={props.snapshot} />
+          <XtermTerminal
+            key={props.activeSession.sid}
+            ref={terminalRef}
+            sessionKey={props.activeSession.sid}
+            snapshot={props.snapshot}
+            className="h-full"
+            onData={props.onTerminalData}
+            onResize={props.onTerminalResize}
+            onSpecialKey={props.onSendKey}
+            onFocusChange={setMobileKeyboardFocused}
+          />
         </div>
-        <div className="tp-mobile-focus-surface-hint">
+        <div className="tp-mobile-focus-overlay">
           <button
             className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
             type="button"
-            onMouseDown={primeMobileKeyboardFocus}
+            onPointerDown={primeMobileKeyboardFocus}
             onClick={(event) => {
               event.stopPropagation();
               focusMobileKeyboard();
             }}
           >
-            {keyboardStatusLabel}
+            {mobileKeyboardFocused ? "已连接" : "键盘"}
           </button>
+          {showFocusAction ? (
+            <button
+              className={`${BUTTON_PRIMARY} min-h-9 px-3 py-2 text-[11px]`}
+              type="button"
+              onClick={props.onToggleFocusMode}
+            >
+              退出
+            </button>
+          ) : null}
         </div>
       </div>
-      <div className="tp-mobile-focus-control-strip" aria-label="专注模式控制工具">
-        {renderMobileKeyboardField("tp-mobile-focus-keyboard-field shrink-0")}
+      <div className="tp-mobile-focus-control-dock" aria-label="专注模式控制工具">
+        <button
+          className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
+          type="button"
+          onPointerDown={primeMobileKeyboardFocus}
+          onClick={focusMobileKeyboard}
+          disabled={!props.activeSid || !props.canControl}
+        >
+          键盘
+        </button>
         {mobileFocusControlKeys.map((shortcut) => renderCompactShortcutButton(shortcut, true))}
       </div>
     </div>
@@ -285,27 +240,40 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         <div
           className="tp-mobile-terminal-surface"
           data-testid="mobile-terminal-surface"
-          onMouseDown={(event) => {
+          onPointerDown={(event) => {
             event.preventDefault();
             focusMobileKeyboard();
           }}
           onClick={focusMobileKeyboard}
         >
           <div className="tp-terminal-frame h-[64svh] min-h-[520px]">
-            <AnsiTerminalSnapshot snapshot={props.snapshot} />
+            <XtermTerminal
+              key={props.activeSession.sid}
+              ref={terminalRef}
+              sessionKey={props.activeSession.sid}
+              snapshot={props.snapshot}
+              className="h-full"
+              onData={props.onTerminalData}
+              onResize={props.onTerminalResize}
+              onSpecialKey={props.onSendKey}
+              onFocusChange={setMobileKeyboardFocused}
+            />
           </div>
         </div>
         <div className="tp-mobile-terminal-meta mt-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--tp-text)]">{keyboardStatusLabel}</p>
+            <p className="mt-1 text-xs text-[var(--tp-text-soft)]">点终端正文后直接输入。手机键盘负责常规字符，特殊控制放到工具栏。</p>
+          </div>
           <button
             className={`${BUTTON_SECONDARY} min-h-10 shrink-0 px-3 py-2 text-xs`}
             type="button"
-            onMouseDown={primeMobileKeyboardFocus}
+            onPointerDown={primeMobileKeyboardFocus}
             onClick={focusMobileKeyboard}
             disabled={!props.activeSid || !props.canControl}
           >
             唤起键盘
           </button>
-          {renderMobileKeyboardField("tp-mobile-keyboard-field flex-1")}
         </div>
         <div className="tp-mobile-terminal-toolbar mt-3">
           {props.onBack ? (
@@ -321,7 +289,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
           <button
             className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
             type="button"
-            onMouseDown={primeMobileKeyboardFocus}
+            onPointerDown={primeMobileKeyboardFocus}
             onClick={focusMobileKeyboard}
           >
             键盘
@@ -387,7 +355,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <button
                 className={`${BUTTON_SECONDARY} min-h-10 shrink-0 px-3 py-2 text-xs`}
                 type="button"
-                onMouseDown={primeMobileKeyboardFocus}
+                onPointerDown={primeMobileKeyboardFocus}
                 disabled={!props.activeSid || !props.canControl}
                 onClick={focusMobileKeyboard}
               >
@@ -399,7 +367,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                 className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
                 type="button"
                 disabled={!props.activeSid || !props.canControl}
-                onClick={() => props.onKeyboardBridgeKey("enter")}
+                onClick={() => props.onSendKey("enter")}
               >
                 回车
               </button>
@@ -591,7 +559,17 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                   </span>
                 </div>
                 <div className="tp-terminal-frame h-[52svh] min-h-[440px] max-h-[720px]">
-                  <AnsiTerminalSnapshot snapshot={props.snapshot} />
+                  <XtermTerminal
+                    key={props.activeSession.sid}
+                    ref={terminalRef}
+                    sessionKey={props.activeSession.sid}
+                    snapshot={props.snapshot}
+                    className="h-full"
+                    onData={props.onTerminalData}
+                    onResize={props.onTerminalResize}
+                    onSpecialKey={props.onSendKey}
+                    onFocusChange={setMobileKeyboardFocused}
+                  />
                 </div>
                 {showFocusAction ? (
                   <button className="tp-mobile-focus-fab" type="button" onClick={props.onToggleFocusMode}>
@@ -603,52 +581,33 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               <div className="tp-card px-4 py-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-[var(--tp-text)]">终端键盘</p>
-                    <p className="mt-1 text-xs text-[var(--tp-text-soft)]">用于交互式提示、单字符输入和当前光标位置补字。</p>
+                    <p className="text-sm font-medium text-[var(--tp-text)]">直接终端输入</p>
+                    <p className="mt-1 text-xs text-[var(--tp-text-soft)]">点终端本体后直接打字。补全、回车和中断仍然保留在这里做辅助。</p>
                   </div>
                   <div className="flex gap-2">
                     <button
                       className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-xs`}
                       type="button"
                       disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onKeyboardBridgeKey("tab")}
+                      onClick={() => focusMobileKeyboard()}
                     >
-                      补全
+                      聚焦终端
                     </button>
                     <button
                       className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-xs`}
                       type="button"
                       disabled={!props.activeSid || !props.canControl}
-                      onClick={() => props.onKeyboardBridgeKey("enter")}
+                      onClick={() => props.onSendKey("enter")}
                     >
                       回车
                     </button>
                   </div>
                 </div>
-                <input
-                  className="tp-input min-h-11 disabled:opacity-50"
-                  value={props.keyboardBridge}
-                  onChange={(event) => props.onKeyboardBridgeChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      props.onKeyboardBridgeKey("enter");
-                      return;
-                    }
-                    if (event.key === "Backspace" && props.keyboardBridge.length === 0) {
-                      props.onKeyboardBridgeKey("backspace");
-                      return;
-                    }
-                    if (event.key === "Tab") {
-                      event.preventDefault();
-                      props.onKeyboardBridgeKey("tab");
-                    }
-                  }}
-                  placeholder="点这里直接往当前光标位置输入"
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  disabled={!props.activeSid || !props.canControl}
-                />
+                <div className="tp-card-muted px-4 py-4">
+                  <p className="text-sm text-[var(--tp-text)]">
+                    终端已经改为 `xterm.js` 控件。键盘、光标和选择都直接落在终端本体上，不再经过单独的 app 输入框。
+                  </p>
+                </div>
               </div>
 
               <div className="tp-card px-4 py-4">

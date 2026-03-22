@@ -224,7 +224,7 @@ export interface SessionOutputMessage {
   seq: number;
   payload: {
     data: string;
-    mode: "replace";
+    mode: "replace" | "append";
   };
 }
 

@@ -99,6 +99,42 @@ function getSessionSyncIntervalMs(session: SessionRecord, runtimeState: SessionR
   return Math.max(baseIntervalMs * 3, 1_000);
 }
 
+function toOutputFrame(
+  deviceId: string,
+  sid: string,
+  seq: number,
+  data: string,
+  mode: SessionOutputMessage["payload"]["mode"],
+): SessionOutputMessage {
+  return {
+    type: "session.output",
+    deviceId,
+    sid,
+    seq,
+    payload: {
+      data,
+      mode,
+    },
+  };
+}
+
+function deriveOutputFrame(
+  previousBuffer: string,
+  nextBuffer: string,
+): Pick<SessionOutputMessage["payload"], "data" | "mode"> {
+  if (!previousBuffer || !nextBuffer.startsWith(previousBuffer)) {
+    return {
+      data: nextBuffer,
+      mode: "replace",
+    };
+  }
+
+  return {
+    data: nextBuffer.slice(previousBuffer.length),
+    mode: "append",
+  };
+}
+
 export class AgentDaemon {
   private readonly runtimeState = new Map<string, SessionRuntimeState>();
 
@@ -356,24 +392,22 @@ export class AgentDaemon {
       return;
     }
 
-    if (buffer !== runtimeState.lastRenderedBuffer || runtimeState.lastStatus !== nextSession.status) {
+    if (buffer !== runtimeState.lastRenderedBuffer) {
       const bumpedSession = bumpSessionSeq(session.sid);
       if (!bumpedSession) {
         return;
       }
       nextSession = bumpedSession;
       runtimeState.lastBufferChangeAt = Date.now();
+      const nextFrame = deriveOutputFrame(runtimeState.lastRenderedBuffer, buffer);
 
-      const outputMessage: SessionOutputMessage = {
-        type: "session.output",
-        deviceId: this.options.deviceId,
-        sid: session.sid,
-        seq: nextSession.lastSeq,
-        payload: {
-          data: buffer,
-          mode: "replace",
-        },
-      };
+      const outputMessage = toOutputFrame(
+        this.options.deviceId,
+        session.sid,
+        nextSession.lastSeq,
+        nextFrame.data,
+        nextFrame.mode,
+      );
       this.pushOutputFrame(outputMessage);
       await this.broadcastBusinessMessage(outputMessage);
     }
@@ -517,6 +551,26 @@ export class AgentDaemon {
     const key = `${this.options.deviceId}:${message.sid}`;
     const afterSeq = message.payload?.afterSeq ?? -1;
     const frames = (this.outputBuffers.get(key) ?? []).filter((item) => item.seq > afterSeq);
+    const firstFrame = frames[0];
+    const missingContinuity = frames.length > 0 && firstFrame.seq > afterSeq + 1;
+    const missingInitialReplace = afterSeq < 0 && firstFrame?.payload.mode !== "replace";
+    if (frames.length === 0 || missingContinuity || missingInitialReplace) {
+      const session = getSessionBySid(message.sid);
+      if (!session || session.deviceId !== this.options.deviceId) {
+        return;
+      }
+      const buffer = await captureSession(session);
+      const replaceFrame = toOutputFrame(
+        this.options.deviceId,
+        session.sid,
+        session.lastSeq,
+        buffer,
+        "replace",
+      );
+      this.pushOutputFrame(replaceFrame);
+      await this.sendBusinessMessageToClient(accessToken, replaceFrame);
+      return;
+    }
     for (const frame of frames) {
       await this.sendBusinessMessageToClient(accessToken, frame);
     }

@@ -192,9 +192,11 @@ export async function sendInput(session: SessionRecord, text?: string, key?: Inp
 }
 
 export async function resizeSession(session: SessionRecord, cols: number, rows: number): Promise<void> {
-  void cols;
-  void rows;
-  await normalizeSessionWindow(session);
+  const nextCols = Math.max(20, Math.floor(cols));
+  const nextRows = Math.max(4, Math.floor(rows));
+  await runTmux(["set-window-option", "-t", session.tmuxSessionName, "window-size", "manual"]);
+  await runTmux(["set-window-option", "-t", session.tmuxSessionName, "aggressive-resize", "off"]);
+  await runTmux(["resize-window", "-t", session.tmuxSessionName, "-x", String(nextCols), "-y", String(nextRows)]);
 }
 
 export async function killSession(sid: string): Promise<SessionRecord> {

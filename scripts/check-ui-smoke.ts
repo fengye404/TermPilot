@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { chromium, type Page } from "playwright";
+import type { Locator } from "playwright";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..");
@@ -272,13 +273,25 @@ async function waitForWorkspaceInViewport(page: Page, timeoutMs = 3000): Promise
 async function waitForTerminalText(page: Page, text: string, timeoutMs = 15000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const content = await page.locator(".tp-ansi-snapshot").first().innerText().catch(() => "");
+    const content = await page.getByTestId("terminal-output-mirror").innerText().catch(() => "");
     if (content.includes(text)) {
       return;
     }
     await delay(200);
   }
   throw new Error(`terminal output did not include "${text}"`);
+}
+
+async function waitForTerminalInputMirror(workspace: Locator, text: string, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const content = await workspace.getByTestId("terminal-input-mirror").innerText().catch(() => "");
+    if (content.includes(text)) {
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error(`terminal input mirror did not include "${text}"`);
 }
 
 async function waitForSessionCard(page: Page, name: string, timeoutMs = 15000): Promise<void> {
@@ -372,7 +385,7 @@ async function main(): Promise<void> {
     });
     const errors: string[] = [];
     page.on("pageerror", (error) => {
-      errors.push(`pageerror: ${String(error)}`);
+      errors.push(`pageerror: ${error.stack ?? String(error)}`);
     });
     page.on("console", (message) => {
       if (message.type() === "error") {
@@ -402,9 +415,32 @@ async function main(): Promise<void> {
       await waitForTerminalText(page, terminalText);
 
       const keyboardText = `kb-smoke-${Date.now()}`;
-      const keyboardInput = workspace.getByLabel("终端键盘输入").first();
-      await keyboardInput.fill(`printf '${keyboardText}'`);
-      await keyboardInput.press("Enter");
+      await workspace.getByTestId("terminal-input").waitFor({ timeout: 10000 });
+      await workspace.getByTestId("terminal-input").evaluate((node, text) => {
+        if (!(node instanceof HTMLTextAreaElement)) {
+          throw new Error("terminal input textarea not found");
+        }
+        node.focus();
+        node.dispatchEvent(new InputEvent("beforeinput", {
+          data: text,
+          inputType: "insertText",
+          bubbles: true,
+          cancelable: true,
+        }));
+      }, `printf '${keyboardText}'`);
+      await waitForTerminalInputMirror(workspace, keyboardText);
+      await workspace.getByTestId("terminal-input").evaluate((node) => {
+        if (!(node instanceof HTMLTextAreaElement)) {
+          throw new Error("terminal input textarea not found");
+        }
+        node.focus();
+        node.dispatchEvent(new InputEvent("beforeinput", {
+          data: "\n",
+          inputType: "insertLineBreak",
+          bubbles: true,
+          cancelable: true,
+        }));
+      });
       await waitForTerminalText(page, keyboardText);
 
       await ensureSessionListVisible(page);

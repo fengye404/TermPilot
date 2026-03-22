@@ -14,6 +14,7 @@ import { ConnectionPanel } from "./components/ConnectionPanel";
 import { CreateSessionPanel } from "./components/CreateSessionPanel";
 import { SessionListPanel } from "./components/SessionListPanel";
 import { NoticeBanner, Panel } from "./components/chrome";
+import { prefetchXtermRuntime } from "./components/XtermTerminal";
 import { TerminalWorkspace } from "./components/TerminalWorkspace";
 
 declare const __TERMPILOT_APP_VERSION__: string;
@@ -247,6 +248,7 @@ export default function App() {
   const previousOrphanedSessionsRef = useRef<Record<string, boolean>>({});
   const sessionExitReasonRef = useRef<Record<string, string>>({});
   const bootstrappedNotificationsRef = useRef(false);
+  const terminalSizeRef = useRef<Record<string, { cols: number; rows: number }>>({});
 
   const [wsUrl, setWsUrl] = useState(getDefaultWsUrl);
   const [clientToken, setClientToken] = useState(DEFAULT_CLIENT_TOKEN);
@@ -273,7 +275,6 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [command, setCommand] = useState("");
-  const [keyboardBridge, setKeyboardBridge] = useState("");
   const [pasteBuffer, setPasteBuffer] = useState("");
   const [createName, setCreateName] = useState("");
   const [createCwd, setCreateCwd] = useState("");
@@ -405,6 +406,13 @@ export default function App() {
   useEffect(() => {
     bufferSeqsRef.current = bufferSeqs;
   }, [bufferSeqs]);
+
+  useEffect(() => {
+    if (!hasSecureBinding || sessions.length === 0) {
+      return;
+    }
+    void prefetchXtermRuntime();
+  }, [hasSecureBinding, sessions.length]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") {
@@ -553,7 +561,6 @@ export default function App() {
   }, [activeSid, agentPublicKey, clientKeyPair, clientToken, deviceId, notificationsEnabled, pinnedSids, storageHydrated, wsUrl]);
 
   useEffect(() => {
-    setKeyboardBridge("");
     if (activeSid) {
       return;
     }
@@ -1164,8 +1171,24 @@ export default function App() {
         if (message.deviceId !== deviceIdRef.current) {
           return;
         }
+        {
+          const currentSeq = bufferSeqsRef.current[message.sid] ?? -1;
+          if (message.seq <= currentSeq) {
+            return;
+          }
+
+          if (message.payload.mode === "append" && message.seq !== currentSeq + 1) {
+            void requestReplayForTarget(message.sid, message.seq, deviceIdRef.current);
+            return;
+          }
+        }
         startTransition(() => {
-          setBuffers((current) => ({ ...current, [message.sid]: message.payload.data }));
+          setBuffers((current) => ({
+            ...current,
+            [message.sid]: message.payload.mode === "append"
+              ? `${current[message.sid] ?? ""}${message.payload.data}`
+              : message.payload.data,
+          }));
           setBufferSeqs((current) => {
             const next = { ...current, [message.sid]: message.seq };
             const pending = replayRequestRef.current[message.sid];
@@ -1219,30 +1242,34 @@ export default function App() {
     });
   }
 
-  async function requestReplayIfNeeded(session: SessionRecord, deviceIdOverride?: string): Promise<void> {
-    const localSeq = bufferSeqsRef.current[session.sid] ?? -1;
-    if (localSeq >= session.lastSeq) {
-      delete replayRequestRef.current[session.sid];
+  async function requestReplayForTarget(sid: string, targetSeq: number, deviceIdOverride?: string): Promise<void> {
+    const afterSeq = bufferSeqsRef.current[sid] ?? -1;
+    if (afterSeq >= targetSeq) {
+      delete replayRequestRef.current[sid];
       return;
     }
 
-    const pending = replayRequestRef.current[session.sid];
+    const pending = replayRequestRef.current[sid];
     const now = Date.now();
     if (
       pending
-      && pending.afterSeq === localSeq
-      && pending.targetSeq >= session.lastSeq
+      && pending.afterSeq === afterSeq
+      && pending.targetSeq >= targetSeq
       && now - pending.at < 1_500
     ) {
       return;
     }
 
-    replayRequestRef.current[session.sid] = {
-      afterSeq: localSeq,
-      targetSeq: session.lastSeq,
+    replayRequestRef.current[sid] = {
+      afterSeq,
+      targetSeq,
       at: now,
     };
-    await requestReplay(session.sid, deviceIdOverride);
+    await requestReplay(sid, deviceIdOverride);
+  }
+
+  async function requestReplayIfNeeded(session: SessionRecord, deviceIdOverride?: string): Promise<void> {
+    await requestReplayForTarget(session.sid, session.lastSeq, deviceIdOverride);
   }
 
   function scheduleReconnect(): void {
@@ -1624,61 +1651,31 @@ export default function App() {
     setCommand("");
   }
 
-  function handleKeyboardBridgeChange(next: string): void {
-    if (!activeSid || !canControlDevice) {
-      setKeyboardBridge(next);
-      return;
-    }
-
-    if (next === keyboardBridge) {
-      return;
-    }
-
-    if (next.startsWith(keyboardBridge)) {
-      const appended = next.slice(keyboardBridge.length);
-      if (appended) {
-        sendRawTerminalText(appended);
-      }
-      setKeyboardBridge(next);
-      return;
-    }
-
-    if (keyboardBridge.startsWith(next)) {
-      const removedCount = keyboardBridge.length - next.length;
-      if (removedCount > 0) {
-        sendRawTerminalText("\u007f".repeat(removedCount));
-      }
-      setKeyboardBridge(next);
-      return;
-    }
-
-    if (keyboardBridge.length > 0) {
-      sendRawTerminalText("\u007f".repeat(keyboardBridge.length));
-    }
-    if (next) {
-      sendRawTerminalText(next);
-    }
-    setKeyboardBridge(next);
+  function handleTerminalData(data: string): void {
+    sendRawTerminalText(data);
   }
 
-  function handleKeyboardBridgeKey(key: "enter" | "backspace" | "tab"): void {
-    if (!activeSid || !canControlDevice) {
+  function handleTerminalResize(cols: number, rows: number): void {
+    if (!activeSid || !canControlDevice || cols <= 0 || rows <= 0) {
       return;
     }
 
-    if (key === "enter") {
-      sendRawTerminalText("\n");
-      setKeyboardBridge("");
+    const current = terminalSizeRef.current[activeSid];
+    if (current && current.cols === cols && current.rows === rows) {
       return;
     }
+    terminalSizeRef.current[activeSid] = { cols, rows };
 
-    if (key === "backspace") {
-      sendRawTerminalText("\u007f");
-      setKeyboardBridge((current) => current.slice(0, -1));
-      return;
-    }
-
-    sendKey("tab");
+    void sendSecureMessage({
+      type: "session.resize",
+      reqId: createReqId("resize"),
+      deviceId,
+      sid: activeSid,
+      payload: {
+        cols,
+        rows,
+      },
+    });
   }
 
   function handleSendPaste(mode: "raw" | "line"): void {
@@ -2078,7 +2075,6 @@ export default function App() {
                   snapshotPending={activeSnapshotPending}
                   snapshotLag={activeSnapshotLag}
                   command={command}
-                  keyboardBridge={keyboardBridge}
                   pasteBuffer={pasteBuffer}
                   shortcutKeys={SHORTCUT_KEYS}
                   snapshot={activeSnapshot}
@@ -2086,12 +2082,12 @@ export default function App() {
                     void toggleMobileTerminalFocusMode();
                   } : undefined}
                   onCommandChange={setCommand}
-                  onKeyboardBridgeChange={handleKeyboardBridgeChange}
-                  onKeyboardBridgeKey={handleKeyboardBridgeKey}
                   onSendCommandNow={sendCommandNow}
                   onSubmitCommand={handleSendCommand}
                   onPasteBufferChange={setPasteBuffer}
                   onSendPaste={handleSendPaste}
+                  onTerminalData={handleTerminalData}
+                  onTerminalResize={handleTerminalResize}
                   onSendKey={sendKey}
                 />
               </div>
@@ -2112,13 +2108,11 @@ export default function App() {
                     snapshotPending={activeSnapshotPending}
                     snapshotLag={activeSnapshotLag}
                     command={command}
-                    keyboardBridge={keyboardBridge}
                     pasteBuffer={pasteBuffer}
                     shortcutKeys={SHORTCUT_KEYS}
                     snapshot={activeSnapshot}
                     onBack={() => {
                       suppressMobileAutoSelectRef.current = true;
-                      setKeyboardBridge("");
                       setMobileTerminalFocusMode(false);
                       setActiveSid(null);
                     }}
@@ -2126,12 +2120,12 @@ export default function App() {
                       void toggleMobileTerminalFocusMode();
                     }}
                     onCommandChange={setCommand}
-                    onKeyboardBridgeChange={handleKeyboardBridgeChange}
-                    onKeyboardBridgeKey={handleKeyboardBridgeKey}
                     onSendCommandNow={sendCommandNow}
                     onSubmitCommand={handleSendCommand}
                     onPasteBufferChange={setPasteBuffer}
                     onSendPaste={handleSendPaste}
+                    onTerminalData={handleTerminalData}
+                    onTerminalResize={handleTerminalResize}
                     onSendKey={sendKey}
                   />
                 </div>
