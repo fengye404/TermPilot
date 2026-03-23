@@ -87,6 +87,10 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
     : "已结束";
   const keyboardStatusLabel = mobileKeyboardFocused ? "键盘已连接" : "短按输入，长按滚动";
   const focusToolsSheetId = props.activeSid ? `tp-focus-tools-${props.activeSid}` : "tp-focus-tools";
+  const mobileCompactTerminalKey = props.activeSession ? `${props.activeSession.sid}:mobile-compact` : "mobile-compact";
+  const mobileFocusTerminalKey = props.activeSession
+    ? `${props.activeSession.sid}:mobile-focus:${props.focusRotateTerminal ? "rotated" : "inline"}`
+    : "mobile-focus";
 
   const scrollSectionIntoView = (ref: RefObject<HTMLElement | null>) => {
     ref.current?.scrollIntoView({
@@ -267,7 +271,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         <div className={props.focusRotateTerminal ? "tp-mobile-focus-rotated-viewport" : "h-full"}>
           <div className="tp-terminal-frame tp-mobile-focus-frame h-full min-h-0 flex-1">
             <XtermTerminal
-              key={props.activeSession.sid}
+              key={mobileFocusTerminalKey}
               ref={terminalRef}
               sessionKey={props.activeSession.sid}
               snapshot={props.snapshot}
@@ -370,7 +374,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         >
           <div className="tp-terminal-frame tp-mobile-session-terminal-frame h-[64svh] min-h-[520px]">
             <XtermTerminal
-              key={props.activeSession.sid}
+              key={mobileCompactTerminalKey}
               ref={terminalRef}
               sessionKey={props.activeSession.sid}
               snapshot={props.snapshot}

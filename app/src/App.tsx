@@ -83,6 +83,8 @@ interface SecureBindingResetOptions {
   resetDeviceId?: boolean;
 }
 
+type ActiveSelectionMode = "auto" | "manual" | "restored";
+
 type LockableScreenOrientation = ScreenOrientation & {
   lock?: (orientation: "landscape" | "portrait") => Promise<void>;
   unlock?: () => void;
@@ -220,6 +222,33 @@ function isValidKeyPair(value: E2EEKeyPair | null | undefined): value is E2EEKey
   return Boolean(value?.publicKey.trim() && value?.privateKey.trim());
 }
 
+function rankSessionsForAutoSelection(sessions: SessionRecord[], pinnedSidSet: Set<string>): SessionRecord[] {
+  return [...sessions].sort((left, right) => {
+    if (left.status !== right.status) {
+      return left.status === "running" ? -1 : 1;
+    }
+
+    const leftPinned = pinnedSidSet.has(left.sid);
+    const rightPinned = pinnedSidSet.has(right.sid);
+    if (leftPinned !== rightPinned) {
+      return leftPinned ? -1 : 1;
+    }
+
+    const leftRecentActivity = left.lastOutputAt ?? left.lastActivityAt ?? left.startedAt;
+    const rightRecentActivity = right.lastOutputAt ?? right.lastActivityAt ?? right.startedAt;
+    const activityOrder = rightRecentActivity.localeCompare(leftRecentActivity);
+    if (activityOrder !== 0) {
+      return activityOrder;
+    }
+
+    return right.startedAt.localeCompare(left.startedAt);
+  });
+}
+
+function pickPreferredSession(sessions: SessionRecord[], pinnedSidSet: Set<string>): SessionRecord | null {
+  return rankSessionsForAutoSelection(sessions, pinnedSidSet)[0] ?? null;
+}
+
 export default function App() {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -241,6 +270,7 @@ export default function App() {
   const pairingKeyDraftRef = useRef<E2EEKeyPair | null>(null);
   const pairingKeyInitPromiseRef = useRef<Promise<E2EEKeyPair> | null>(null);
   const agentPublicKeyRef = useRef("");
+  const activeSelectionModeRef = useRef<ActiveSelectionMode>("auto");
   const suppressMobileAutoSelectRef = useRef(false);
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
@@ -283,6 +313,7 @@ export default function App() {
   const [createShell, setCreateShell] = useState("");
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
   const [isTouchDevice, setIsTouchDevice] = useState(detectTouchDevice);
+  const [isPortraitViewport, setIsPortraitViewport] = useState(() => typeof window !== "undefined" && window.innerHeight > window.innerWidth);
   const [mobileTerminalFocusMode, setMobileTerminalFocusMode] = useState(false);
 
   const activeSession = useMemo(
@@ -396,12 +427,28 @@ export default function App() {
       return;
     }
     const handleResize = () => {
-      setIsDesktop(window.innerWidth >= 1024);
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      setIsDesktop(viewportWidth >= 1024);
       setIsTouchDevice(detectTouchDevice());
+      setIsPortraitViewport(viewportHeight > viewportWidth);
     };
+
+    const handleOrientationChange = () => {
+      window.requestAnimationFrame(handleResize);
+    };
+
+    handleResize();
     window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleOrientationChange);
+    window.visualViewport?.addEventListener("resize", handleResize);
+    const orientation = ("orientation" in screen ? screen.orientation : undefined) as LockableScreenOrientation | undefined;
+    orientation?.addEventListener?.("change", handleOrientationChange);
     return () => {
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleOrientationChange);
+      window.visualViewport?.removeEventListener("resize", handleResize);
+      orientation?.removeEventListener?.("change", handleOrientationChange);
     };
   }, []);
 
@@ -490,6 +537,7 @@ export default function App() {
     setBufferSeqs({});
     replayRequestRef.current = {};
     setActiveSid(null);
+    activeSelectionModeRef.current = "auto";
     suppressMobileAutoSelectRef.current = false;
 
     const timeoutId = window.setTimeout(() => {
@@ -527,6 +575,7 @@ export default function App() {
         setDeviceId(parsed.deviceId.trim());
       }
       if (hasValidStoredBinding && (typeof parsed.activeSid === "string" || parsed.activeSid === null)) {
+        activeSelectionModeRef.current = parsed.activeSid ? "restored" : "auto";
         setActiveSid(parsed.activeSid ?? null);
       }
       if (Array.isArray(parsed.pinnedSids)) setPinnedSids(parsed.pinnedSids.filter((value): value is string => typeof value === "string"));
@@ -675,28 +724,26 @@ export default function App() {
     if (!isDesktop && suppressMobileAutoSelectRef.current) {
       return;
     }
-    if (activeSid && sessions.some((session) => session.sid === activeSid)) {
+    const currentActiveSession = activeSid
+      ? sessions.find((session) => session.sid === activeSid) ?? null
+      : null;
+    const preferredSession = pickPreferredSession(sessions, pinnedSidSet);
+
+    if (currentActiveSession && activeSelectionModeRef.current !== "auto") {
       return;
     }
 
-    const pickSession = [...sessions].sort((left, right) => {
-      const leftPinned = pinnedSidSet.has(left.sid);
-      const rightPinned = pinnedSidSet.has(right.sid);
-      if (leftPinned !== rightPinned) {
-        return leftPinned ? -1 : 1;
-      }
-      if (left.status !== right.status) {
-        return left.status === "running" ? -1 : 1;
-      }
-      return right.lastActivityAt.localeCompare(left.lastActivityAt);
-    })[0];
-
-    if (!pickSession) {
+    if (!preferredSession) {
       return;
     }
 
-    setActiveSid(pickSession.sid);
-    void requestReplayIfNeeded(pickSession, deviceIdRef.current);
+    if (currentActiveSession?.sid === preferredSession.sid) {
+      return;
+    }
+
+    activeSelectionModeRef.current = "auto";
+    setActiveSid(preferredSession.sid);
+    void requestReplayIfNeeded(preferredSession, deviceIdRef.current);
   }, [activeSid, connected, isDesktop, pinnedSidSet, sessions]);
 
   useEffect(() => {
@@ -1004,6 +1051,7 @@ export default function App() {
             // ignore focus failures
           }
           suppressMobileAutoSelectRef.current = false;
+          activeSelectionModeRef.current = "manual";
           setActiveSid(options.sid ?? null);
           if (options.sid) {
             void requestReplay(options.sid, deviceIdRef.current);
@@ -1054,6 +1102,7 @@ export default function App() {
       setDeviceId(DEFAULT_DEVICE_ID);
     }
     setActiveSid(null);
+    activeSelectionModeRef.current = "auto";
     setSessions([]);
     setBuffers({});
     setBufferCursors({});
@@ -1152,6 +1201,9 @@ export default function App() {
             const next = current && message.payload.sessions.some((session) => session.sid === current)
               ? current
               : null;
+            if (!next) {
+              activeSelectionModeRef.current = "auto";
+            }
             if (next) {
               const activeSessionRecord = message.payload.sessions.find((session) => session.sid === next);
               if (activeSessionRecord) {
@@ -1180,7 +1232,6 @@ export default function App() {
           } else if (activeSid === session.sid) {
             void requestReplayIfNeeded(session, deviceIdRef.current);
           }
-          setActiveSid((current) => current ?? session.sid);
         });
         return;
       }
@@ -1446,6 +1497,7 @@ export default function App() {
               setBufferSeqs({});
               replayRequestRef.current = {};
               setActiveSid(null);
+              activeSelectionModeRef.current = "auto";
             }
             if (shouldHydrateDeviceId) {
               setDeviceId(nextDeviceId);
@@ -1551,6 +1603,7 @@ export default function App() {
       setBufferSeqs({});
       replayRequestRef.current = {};
       setActiveSid(null);
+      activeSelectionModeRef.current = "auto";
       setDeviceId(payload.deviceId);
       deviceIdRef.current = payload.deviceId;
       requestedDeviceIdRef.current = payload.deviceId;
@@ -1854,6 +1907,7 @@ export default function App() {
 
   function selectSession(sid: string, options?: { reveal?: boolean }): void {
     suppressMobileAutoSelectRef.current = false;
+    activeSelectionModeRef.current = "manual";
     setActiveSid(sid);
     const session = sessionsRef.current.find((item) => item.sid === sid);
     if (session) {
@@ -1930,6 +1984,7 @@ export default function App() {
   }
 
   const mobileFocusShellClassName = mobileTerminalFocusMode ? "tp-mobile-focus-shell tp-mobile-focus-shell-active" : undefined;
+  const shouldRotateMobileFocusTerminal = !isDesktop && mobileTerminalFocusMode && isPortraitViewport;
   const onboardingRelayTarget = parsedWsUrl?.toString() ?? "你的 relay 地址";
   const onboardingStartCommand = `termpilot agent --relay ${onboardingRelayTarget}`;
   const onboardingShellClass = !isPaired
@@ -2193,7 +2248,7 @@ export default function App() {
                   activeSid={activeSid}
                   canControl={canControlDevice}
                   focusMode={mobileTerminalFocusMode}
-                  focusRotateTerminal={false}
+                  focusRotateTerminal={shouldRotateMobileFocusTerminal}
                   snapshotPending={activeSnapshotPending}
                   snapshotLag={activeSnapshotLag}
                   command={command}
@@ -2228,17 +2283,18 @@ export default function App() {
                     activeSid={activeSid}
                     canControl={canControlDevice}
                     focusMode={mobileTerminalFocusMode}
-                    focusRotateTerminal={false}
+                    focusRotateTerminal={shouldRotateMobileFocusTerminal}
                     snapshotPending={activeSnapshotPending}
                     snapshotLag={activeSnapshotLag}
                     command={command}
-                  pasteBuffer={pasteBuffer}
-                  shortcutKeys={SHORTCUT_KEYS}
-                  snapshot={activeSnapshot}
-                  cursor={activeCursor}
-                  onBack={() => {
-                    suppressMobileAutoSelectRef.current = true;
-                    setMobileTerminalFocusMode(false);
+                    pasteBuffer={pasteBuffer}
+                    shortcutKeys={SHORTCUT_KEYS}
+                    snapshot={activeSnapshot}
+                    cursor={activeCursor}
+                    onBack={() => {
+                      suppressMobileAutoSelectRef.current = true;
+                      setMobileTerminalFocusMode(false);
+                      activeSelectionModeRef.current = "auto";
                       setActiveSid(null);
                     }}
                     onToggleFocusMode={() => {
