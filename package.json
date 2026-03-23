@@ -1,6 +1,6 @@
 {
   "name": "@fengye404/termpilot",
-  "version": "0.5.1",
+  "version": "0.5.4",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.31.0",
@@ -37,6 +37,7 @@
     "dev:app": "pnpm --filter @termpilot/app run dev",
     "dev:relay": "pnpm --filter @termpilot/relay run dev",
     "dev:agent": "pnpm --filter @termpilot/agent run dev",
+    "local:reset": "pnpm exec tsx scripts/reset-local-dev.ts",
     "cli": "node dist/cli.js",
     "agent:create": "pnpm --filter @termpilot/agent run create",
     "agent:list": "pnpm --filter @termpilot/agent run list",

@@ -1,4 +1,4 @@
-import type { FormEvent, RefObject, SyntheticEvent } from "react";
+import type { FormEvent, PointerEvent as ReactPointerEvent, RefObject, SyntheticEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 
@@ -24,6 +24,7 @@ interface TerminalWorkspaceProps {
   command: string;
   pasteBuffer: string;
   snapshot: string;
+  cursor: { row: number; col: number } | null;
   shortcutKeys: ShortcutKeyMeta[];
   onBack?: () => void;
   onToggleFocusMode?: () => void;
@@ -41,6 +42,21 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const toolsSectionRef = useRef<HTMLDetailsElement | null>(null);
   const commandSectionRef = useRef<HTMLDetailsElement | null>(null);
   const terminalRef = useRef<XtermTerminalHandle | null>(null);
+  const touchGestureRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    longPress: boolean;
+    timer: number | null;
+  }>({
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    moved: false,
+    longPress: false,
+    timer: null,
+  });
   const isMobileView = Boolean(props.onBack);
   const showFocusAction = Boolean(props.onToggleFocusMode);
   const [mobileKeyboardFocused, setMobileKeyboardFocused] = useState(false);
@@ -53,7 +69,6 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const executionKeys = props.shortcutKeys.filter((shortcut) => ["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const navigationKeys = props.shortcutKeys.filter((shortcut) => !["enter", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const helperKeys = navigationKeys.filter((shortcut) => !shortcut.key.startsWith("arrow_"));
-  const mobileKeyboardToolKeys = props.shortcutKeys.filter((shortcut) => ["tab", "escape", "ctrl_c", "ctrl_d"].includes(shortcut.key));
   const mobileFocusControlKeys = props.shortcutKeys.filter((shortcut) => [
     "enter",
     "tab",
@@ -70,7 +85,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
       ? `补帧中${typeof props.snapshotLag === "number" && props.snapshotLag > 0 ? ` · ${props.snapshotLag}` : ""}`
       : "实时同步"
     : "已结束";
-  const keyboardStatusLabel = mobileKeyboardFocused ? "键盘已连接" : "点终端输入";
+  const keyboardStatusLabel = mobileKeyboardFocused ? "键盘已连接" : "短按输入，长按滚动";
   const focusToolsSheetId = props.activeSid ? `tp-focus-tools-${props.activeSid}` : "tp-focus-tools";
 
   const scrollSectionIntoView = (ref: RefObject<HTMLElement | null>) => {
@@ -91,7 +106,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
     return (
       <button
         key={shortcut.key}
-        className={`flex min-h-12 items-center gap-3 rounded-[14px] border px-3 py-3 text-left transition disabled:opacity-40 ${toneClass}`}
+        className={`tp-rail-button flex min-h-11 items-center gap-3 rounded-[16px] border px-3 py-3 text-left transition disabled:opacity-40 ${toneClass}`}
         disabled={!props.activeSid || !props.canControl}
         onClick={() => props.onSendKey(shortcut.key)}
       >
@@ -100,7 +115,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{shortcut.label}</span>
-          <span className="mt-0.5 block text-xs text-[var(--tp-text-muted)]">{shortcut.description}</span>
+          <span className="mt-0.5 block truncate text-[11px] text-[var(--tp-text-muted)]">{shortcut.description}</span>
         </span>
       </button>
     );
@@ -118,11 +133,69 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
     focusMobileKeyboard();
   };
 
+  const clearTouchGestureTimer = () => {
+    const timer = touchGestureRef.current.timer;
+    if (timer !== null) {
+      window.clearTimeout(timer);
+      touchGestureRef.current.timer = null;
+    }
+  };
+
+  const handleMobileTerminalPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    clearTouchGestureTimer();
+    touchGestureRef.current.pointerId = event.pointerId;
+    touchGestureRef.current.startX = event.clientX;
+    touchGestureRef.current.startY = event.clientY;
+    touchGestureRef.current.moved = false;
+    touchGestureRef.current.longPress = false;
+    touchGestureRef.current.timer = window.setTimeout(() => {
+      touchGestureRef.current.longPress = true;
+      touchGestureRef.current.timer = null;
+    }, 180);
+  };
+
+  const handleMobileTerminalPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType !== "touch" || touchGestureRef.current.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = Math.abs(event.clientX - touchGestureRef.current.startX);
+    const deltaY = Math.abs(event.clientY - touchGestureRef.current.startY);
+    if (deltaX > 8 || deltaY > 8) {
+      touchGestureRef.current.moved = true;
+      clearTouchGestureTimer();
+    }
+  };
+
+  const handleMobileTerminalPointerEnd = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType !== "touch" || touchGestureRef.current.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const shouldFocusKeyboard = !touchGestureRef.current.moved && !touchGestureRef.current.longPress;
+    clearTouchGestureTimer();
+    touchGestureRef.current.pointerId = null;
+    touchGestureRef.current.moved = false;
+    touchGestureRef.current.longPress = false;
+
+    if (shouldFocusKeyboard) {
+      focusMobileKeyboard();
+    }
+  };
+
   useEffect(() => {
     if (props.focusMode) {
       setFocusToolsOpen(false);
     }
   }, [props.activeSid, props.focusMode]);
+
+  useEffect(() => () => {
+    clearTouchGestureTimer();
+  }, []);
 
   const renderCompactShortcutButton = (shortcut: ShortcutKeyMeta, emphasized = false, extraClassName = "") => (
     <button
@@ -177,15 +250,10 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
       <div
         className={`tp-mobile-terminal-surface tp-mobile-focus-stage ${props.focusRotateTerminal ? "tp-mobile-focus-stage-rotated-shell" : ""}`.trim()}
         data-testid="mobile-terminal-surface"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          setFocusToolsOpen(false);
-          focusMobileKeyboard();
-        }}
-        onClick={() => {
-          setFocusToolsOpen(false);
-          focusMobileKeyboard();
-        }}
+        onPointerDown={handleMobileTerminalPointerDown}
+        onPointerMove={handleMobileTerminalPointerMove}
+        onPointerUp={handleMobileTerminalPointerEnd}
+        onPointerCancel={handleMobileTerminalPointerEnd}
       >
         <div className={props.focusRotateTerminal ? "tp-mobile-focus-rotated-viewport" : "h-full"}>
           <div className="tp-terminal-frame tp-mobile-focus-frame h-full min-h-0 flex-1">
@@ -194,6 +262,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               ref={terminalRef}
               sessionKey={props.activeSession.sid}
               snapshot={props.snapshot}
+              cursor={props.cursor}
               className="h-full"
               fontPreset="focus"
               onData={props.onTerminalData}
@@ -204,17 +273,6 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
           </div>
         </div>
         <div className="tp-mobile-focus-overlay">
-          <button
-            className={`${BUTTON_SECONDARY} tp-mobile-focus-chip`}
-            type="button"
-            onPointerDown={primeMobileKeyboardFocus}
-            onClick={(event) => {
-              event.stopPropagation();
-              focusMobileKeyboard();
-            }}
-          >
-            {mobileKeyboardFocused ? "键盘已连" : "键盘"}
-          </button>
           <button
             className={`${BUTTON_SECONDARY} tp-mobile-focus-chip`}
             type="button"
@@ -260,7 +318,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             <div className="tp-mobile-focus-tools-header">
               <div>
                 <p className="text-sm font-medium text-[var(--tp-text)]">控制工具</p>
-                <p className="mt-1 text-[11px] text-[var(--tp-text-soft)]">默认收起，常规输入直接点终端。</p>
+                <p className="mt-1 text-[11px] text-[var(--tp-text-soft)]">默认收起；短按终端会唤起键盘，长按或拖动优先滚动查看。</p>
               </div>
               <button
                 className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
@@ -273,16 +331,6 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               </button>
             </div>
             <div className="tp-mobile-focus-tools-grid">
-              <button
-                className={`${BUTTON_SECONDARY} tp-mobile-focus-shortcut`}
-                type="button"
-                onPointerDown={primeMobileKeyboardFocus}
-                onClick={focusMobileKeyboard}
-                disabled={!props.activeSid || !props.canControl}
-              >
-                <span className="block font-mono text-[12px] opacity-80">⌨</span>
-                <span className="mt-0.5 block">键盘</span>
-              </button>
               {mobileFocusControlKeys.map((shortcut) => renderCompactShortcutButton(shortcut, true, "tp-mobile-focus-shortcut"))}
             </div>
           </div>
@@ -292,12 +340,12 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   );
 
   const mobileDefaultContent = (
-    <div className="space-y-3">
-      <div className="tp-terminal-shell tp-mobile-session-terminal-shell relative p-3">
-        <div className="tp-mobile-session-terminal-header mb-3 flex items-center justify-between gap-3 px-1">
+    <div className="space-y-2.5">
+      <div className="tp-terminal-shell tp-mobile-session-terminal-shell relative p-2.5">
+        <div className="tp-mobile-session-terminal-header mb-2.5 flex items-center justify-between gap-2 px-0.5">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-[var(--tp-text)]">终端输出</p>
-            <p className="truncate text-xs text-[var(--tp-text-soft)]">{props.activeSession.cwd}</p>
+            <p className="text-[13px] font-medium text-[var(--tp-text)]">终端输出</p>
+            <p className="truncate text-[11px] text-[var(--tp-text-soft)]">{props.activeSession.cwd}</p>
           </div>
           <span className={`tp-chip min-h-0 px-3 py-1 text-[11px] ${props.activeSession.status === "running" ? "tp-chip-active" : ""}`}>
             {syncChipLabel}
@@ -306,11 +354,10 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         <div
           className="tp-mobile-terminal-surface"
           data-testid="mobile-terminal-surface"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            focusMobileKeyboard();
-          }}
-          onClick={focusMobileKeyboard}
+          onPointerDown={handleMobileTerminalPointerDown}
+          onPointerMove={handleMobileTerminalPointerMove}
+          onPointerUp={handleMobileTerminalPointerEnd}
+          onPointerCancel={handleMobileTerminalPointerEnd}
         >
           <div className="tp-terminal-frame tp-mobile-session-terminal-frame h-[64svh] min-h-[520px]">
             <XtermTerminal
@@ -318,6 +365,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               ref={terminalRef}
               sessionKey={props.activeSession.sid}
               snapshot={props.snapshot}
+              cursor={props.cursor}
               className="h-full"
               fontPreset="compact"
               onData={props.onTerminalData}
@@ -329,18 +377,9 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         </div>
         <div className="tp-mobile-terminal-meta mt-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-[var(--tp-text)]">{keyboardStatusLabel}</p>
-            <p className="mt-1 text-xs text-[var(--tp-text-soft)]">点终端正文后直接输入。手机键盘负责常规字符，特殊控制放到工具栏。</p>
+            <p className="text-[12px] font-medium text-[var(--tp-text)]">{keyboardStatusLabel}</p>
+            <p className="mt-1 text-[11px] leading-5 text-[var(--tp-text-soft)]">先缩小字号，缩到阈值后再允许轻微左右拖动查看更宽内容。</p>
           </div>
-          <button
-            className={`${BUTTON_SECONDARY} min-h-10 shrink-0 px-3 py-2 text-xs`}
-            type="button"
-            onPointerDown={primeMobileKeyboardFocus}
-            onClick={focusMobileKeyboard}
-            disabled={!props.activeSid || !props.canControl}
-          >
-            唤起键盘
-          </button>
         </div>
         <div className="tp-mobile-terminal-toolbar mt-3">
           {props.onBack ? (
@@ -354,41 +393,33 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             </button>
           ) : null}
           <button
-            className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
-            type="button"
-            onPointerDown={primeMobileKeyboardFocus}
-            onClick={focusMobileKeyboard}
-          >
-            键盘
-          </button>
-          <button
-            className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
+            className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
             type="button"
             onClick={() => scrollSectionIntoView(toolsSectionRef)}
           >
             工具
           </button>
           {showFocusAction ? (
-            <button className={`${BUTTON_PRIMARY} min-h-10 px-3 py-2 text-xs`} type="button" onClick={props.onToggleFocusMode}>
+            <button className={`${BUTTON_PRIMARY} min-h-9 px-3 py-2 text-[11px]`} type="button" onClick={props.onToggleFocusMode}>
               专注模式
             </button>
           ) : null}
         </div>
       </div>
 
-      <details ref={commandSectionRef} className="tp-card px-4 py-4" open>
+      <details ref={commandSectionRef} className="tp-card px-3.5 py-3.5" open>
         <summary className="tp-disclosure-summary list-none">
           <span>
-            <span className="block text-sm font-medium text-[var(--tp-text)]">输入与键盘</span>
-            <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">命令补发和当前光标输入都放这里</span>
+            <span className="block text-[13px] font-medium text-[var(--tp-text)]">输入与键盘</span>
+            <span className="mt-1 block text-[11px] font-normal text-[var(--tp-text-soft)]">短按终端直接输入，补发命令放这里</span>
           </span>
         </summary>
 
         <form className="mt-4 space-y-4" onSubmit={props.onSubmitCommand}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-[var(--tp-text)]">快速输入</p>
-              <p className="mt-1 text-xs text-[var(--tp-text-soft)]">补一条命令最方便，发送时会自动回车。</p>
+              <p className="text-[13px] font-medium text-[var(--tp-text)]">快速输入</p>
+              <p className="mt-1 text-[11px] text-[var(--tp-text-soft)]">补一条命令最方便，发送时会自动回车。</p>
             </div>
             <button className={`${BUTTON_PRIMARY} min-h-9 px-4 py-2 text-sm`} type="submit" disabled={!props.activeSid || !props.canControl}>
               发送
@@ -409,53 +440,20 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             disabled={!props.activeSid || !props.canControl}
           />
         </form>
-
-        <div className="mt-4 border-t border-[var(--tp-border-soft)] pt-4">
-          <div className="tp-card-muted px-4 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-[var(--tp-text)]">手机键盘直连</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--tp-text-soft)]">
-                  点上面的终端正文就能直接调起系统键盘。空格、符号、回车都走手机原生键盘；Tab、Esc、Ctrl 这类不顺手的键放到下面的控制工具里。
-                </p>
-              </div>
-              <button
-                className={`${BUTTON_SECONDARY} min-h-10 shrink-0 px-3 py-2 text-xs`}
-                type="button"
-                onPointerDown={primeMobileKeyboardFocus}
-                disabled={!props.activeSid || !props.canControl}
-                onClick={focusMobileKeyboard}
-              >
-                唤起键盘
-              </button>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <button
-                className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
-                type="button"
-                disabled={!props.activeSid || !props.canControl}
-                onClick={() => props.onSendKey("enter")}
-              >
-                回车
-              </button>
-              {mobileKeyboardToolKeys.map((shortcut) => renderCompactShortcutButton(shortcut))}
-            </div>
-          </div>
-        </div>
       </details>
 
-      <details ref={toolsSectionRef} className="tp-card px-4 py-4">
+      <details ref={toolsSectionRef} className="tp-card px-3.5 py-3.5">
         <summary className="tp-disclosure-summary list-none">
           <span>
-            <span className="block text-sm font-medium text-[var(--tp-text)]">控制与工具</span>
-            <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">快捷键、多行粘贴和退出提示</span>
+            <span className="block text-[13px] font-medium text-[var(--tp-text)]">控制与工具</span>
+            <span className="mt-1 block text-[11px] font-normal text-[var(--tp-text-soft)]">快捷键、多行粘贴和退出提示</span>
           </span>
         </summary>
 
         <div className="mt-4">
           <div className="mb-3">
-            <p className="text-sm font-medium text-[var(--tp-text)]">快捷操作</p>
-            <p className="mt-1 text-xs text-[var(--tp-text-soft)]">保持紧凑，把终端空间留给输出本身。</p>
+            <p className="text-[13px] font-medium text-[var(--tp-text)]">快捷操作</p>
+            <p className="mt-1 text-[11px] text-[var(--tp-text-soft)]">保持紧凑，把终端空间留给输出本身。</p>
           </div>
 
           <div className="grid grid-cols-3 gap-2">
@@ -631,6 +629,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                     ref={terminalRef}
                     sessionKey={props.activeSession.sid}
                     snapshot={props.snapshot}
+                    cursor={props.cursor}
                     className="h-full"
                     fontPreset="default"
                     onData={props.onTerminalData}
@@ -647,20 +646,12 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               </div>
 
               <div className="tp-card px-4 py-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-[var(--tp-text)]">直接终端输入</p>
-                    <p className="mt-1 text-xs text-[var(--tp-text-soft)]">点终端本体后直接打字。补全、回车和中断仍然保留在这里做辅助。</p>
+                    <p className="text-sm font-medium text-[var(--tp-text)]">命令带</p>
+                    <p className="mt-1 text-xs text-[var(--tp-text-soft)]">短命令和确认操作放这里，长输入直接点终端本体。</p>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-xs`}
-                      type="button"
-                      disabled={!props.activeSid || !props.canControl}
-                      onClick={() => focusMobileKeyboard()}
-                    >
-                      聚焦终端
-                    </button>
+                  <div className="flex flex-wrap gap-2">
                     <button
                       className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-xs`}
                       type="button"
@@ -670,21 +661,6 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
                       回车
                     </button>
                   </div>
-                </div>
-                <div className="tp-card-muted px-4 py-4">
-                  <p className="text-sm text-[var(--tp-text)]">
-                    终端已经改为 `xterm.js` 控件。键盘、光标和选择都直接落在终端本体上，不再经过单独的 app 输入框。
-                  </p>
-                </div>
-              </div>
-
-              <div className="tp-card px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-[var(--tp-text)]">快速输入</p>
-                    <p className="mt-1 text-xs text-[var(--tp-text-soft)]">适合补一条命令、确认一步操作，发送时会自动追加回车。</p>
-                  </div>
-                  <span className="tp-chip min-h-0 px-3 py-1 text-[11px]">当前会话</span>
                 </div>
                 <form className="mt-4 flex flex-col gap-3 md:flex-row" onSubmit={props.onSubmitCommand}>
                   <input
@@ -742,11 +718,10 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               </details>
             </div>
 
-            <aside className="tp-sidebar-sticky space-y-4">
+            <aside className="tp-sidebar-sticky space-y-3">
               <div className="tp-card px-4 py-4">
                 <div className="mb-3">
-                  <p className="text-sm font-medium text-[var(--tp-text)]">执行操作</p>
-                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">回车、中断和结束输入都在这里。</p>
+                  <p className="text-sm font-medium text-[var(--tp-text)]">执行</p>
                 </div>
                 <div className="grid gap-3">
                   {executionKeys.map(renderShortcutButton)}
@@ -755,8 +730,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
 
               <div className="tp-card px-4 py-4">
                 <div className="mb-3">
-                  <p className="text-sm font-medium text-[var(--tp-text)]">移动与补全</p>
-                  <p className="mt-1 text-xs text-[var(--tp-text-soft)]">历史命令、方向键和补全都在这里。</p>
+                  <p className="text-sm font-medium text-[var(--tp-text)]">导航</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                   {navigationKeys.map(renderShortcutButton)}
@@ -765,14 +739,14 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
 
               <div className="tp-card px-4 py-4">
                 <p className="text-sm font-medium text-[var(--tp-text)]">当前会话</p>
-                <div className="mt-3 space-y-2 text-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[var(--tp-text-soft)]">名称</span>
-                    <span className="text-right text-[var(--tp-text)]">{props.activeSession.name}</span>
+                <div className="mt-3 space-y-3 text-sm">
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--tp-text-soft)]">名称</span>
+                    <p className="truncate text-[var(--tp-text)]">{props.activeSession.name}</p>
                   </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[var(--tp-text-soft)]">目录</span>
-                    <span className="max-w-[180px] text-right text-[var(--tp-text-muted)]">{props.activeSession.cwd}</span>
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--tp-text-soft)]">目录</span>
+                    <p className="tp-path-block text-[var(--tp-text-muted)]">{props.activeSession.cwd}</p>
                   </div>
                 </div>
               </div>
@@ -783,12 +757,6 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
               </div>
             </aside>
           </div>
-        )}
-
-        {props.focusMode && isMobileView ? null : (
-          <p className="text-xs text-[var(--tp-text-soft)]">
-            当前模式是浏览器直开 PWA。适合查看流式输出、补命令和关闭会话，不适合重度长文本输入。
-          </p>
         )}
       </div>
     </Panel>

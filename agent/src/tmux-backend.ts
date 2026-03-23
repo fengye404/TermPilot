@@ -148,6 +148,31 @@ export async function captureSession(session: SessionRecord): Promise<string> {
   return runTmux(["capture-pane", "-p", "-e", "-N", "-S", "-2000", "-t", session.tmuxSessionName]);
 }
 
+export async function getSessionCursorPosition(session: SessionRecord): Promise<{ row: number; col: number } | null> {
+  try {
+    const output = await runTmux([
+      "display-message",
+      "-p",
+      "-t",
+      session.tmuxSessionName,
+      "#{cursor_x} #{cursor_y}",
+    ]);
+    const match = output.trim().match(/^(\d+)\s+(\d+)$/);
+    if (!match) {
+      return null;
+    }
+
+    const col = Number.parseInt(match[1]!, 10);
+    const row = Number.parseInt(match[2]!, 10);
+    if (!Number.isFinite(col) || !Number.isFinite(row)) {
+      return null;
+    }
+    return { row, col };
+  } catch {
+    return null;
+  }
+}
+
 export async function normalizeSessionWindow(session: SessionRecord): Promise<void> {
   await runTmux(["set-window-option", "-t", session.tmuxSessionName, "window-size", "latest"]);
   await runTmux(["set-window-option", "-t", session.tmuxSessionName, "aggressive-resize", "off"]);
@@ -274,11 +299,24 @@ export function syncSessionRuntimeMetadata(
 
 export function attachSession(session: SessionRecord): Promise<number | null> {
   return new Promise((resolve, reject) => {
-    const child = spawn("tmux", ["attach-session", "-t", session.tmuxSessionName], {
-      stdio: "inherit",
-    });
+    // Hand local tty control back to tmux before attaching so browser-driven
+    // manual resize does not leave a narrow virtual window inside a wide shell.
+    void runTmux(["set-window-option", "-t", session.tmuxSessionName, "window-size", "latest"])
+      .then(() => runTmux(["set-window-option", "-t", session.tmuxSessionName, "aggressive-resize", "off"]))
+      .then(() => {
+        if (process.env.TMUX?.trim()) {
+          return runTmux(["switch-client", "-t", session.tmuxSessionName]).then(() => {
+            resolve(0);
+          });
+        }
 
-    child.on("error", reject);
-    child.on("close", (code) => resolve(code));
+        const child = spawn("tmux", ["attach-session", "-t", session.tmuxSessionName], {
+          stdio: "inherit",
+        });
+
+        child.on("error", reject);
+        child.on("close", (code) => resolve(code));
+      })
+      .catch(reject);
   });
 }

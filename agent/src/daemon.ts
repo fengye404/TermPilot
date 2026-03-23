@@ -33,8 +33,9 @@ import {
   captureSession,
   createSession,
   ensureTmuxAvailable,
-  getAttachedClientCount,
+  getSessionCursorPosition,
   getSessionBySid,
+  getAttachedClientCount,
   hasSession,
   killSession,
   listSessions,
@@ -105,6 +106,7 @@ function toOutputFrame(
   seq: number,
   data: string,
   mode: SessionOutputMessage["payload"]["mode"],
+  cursor?: SessionOutputMessage["payload"]["cursor"] | null,
 ): SessionOutputMessage {
   return {
     type: "session.output",
@@ -114,6 +116,7 @@ function toOutputFrame(
     payload: {
       data,
       mode,
+      cursor: cursor ?? undefined,
     },
   };
 }
@@ -133,6 +136,13 @@ function deriveOutputFrame(
     data: nextBuffer.slice(previousBuffer.length),
     mode: "append",
   };
+}
+
+function isMissingTmuxTargetError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /can't find pane|can't find window|can't find session|no server running/i.test(error.message);
 }
 
 export class AgentDaemon {
@@ -214,7 +224,12 @@ export class AgentDaemon {
         if (runtimeState && nowMs - runtimeState.lastSyncedAt < syncIntervalMs) {
           continue;
         }
-        await this.syncSession(session);
+        try {
+          await this.syncSession(session);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(`同步会话 ${session.sid} 失败: ${message}`);
+        }
       }
 
       await delay(this.options.pollIntervalMs);
@@ -376,7 +391,41 @@ export class AgentDaemon {
       return;
     }
 
-    const buffer = await captureSession(session);
+    let buffer: string;
+    try {
+      buffer = await captureSession(session);
+    } catch (error) {
+      if (!isMissingTmuxTargetError(error)) {
+        throw error;
+      }
+
+      const exitedSession = markSessionExited(session.sid);
+      if (exitedSession) {
+        this.runtimeState.set(session.sid, {
+          ...runtimeState,
+          lastStatus: "exited",
+        });
+        const exitMessage: SessionExitMessage = {
+          type: "session.exit",
+          deviceId: this.options.deviceId,
+          sid: exitedSession.sid,
+          payload: {
+            reason: "tmux pane 不存在，已标记退出",
+            exitCode: null,
+          },
+        };
+        await this.broadcastBusinessMessage(exitMessage);
+        await this.broadcastBusinessMessage({
+          type: "session.state",
+          deviceId: this.options.deviceId,
+          sid: exitedSession.sid,
+          payload: {
+            session: exitedSession,
+          },
+        });
+      }
+      return;
+    }
     if (buffer === runtimeState.lastRenderedBuffer && runtimeState.lastStatus === nextSession.status && !metadataChanged) {
       if (!existingRuntimeState) {
         this.runtimeState.set(session.sid, runtimeState);
@@ -407,6 +456,7 @@ export class AgentDaemon {
         nextSession.lastSeq,
         nextFrame.data,
         nextFrame.mode,
+        await getSessionCursorPosition(session),
       );
       this.pushOutputFrame(outputMessage);
       await this.broadcastBusinessMessage(outputMessage);
@@ -566,6 +616,7 @@ export class AgentDaemon {
         session.lastSeq,
         buffer,
         "replace",
+        await getSessionCursorPosition(session),
       );
       this.pushOutputFrame(replaceFrame);
       await this.sendBusinessMessageToClient(accessToken, replaceFrame);
@@ -616,6 +667,68 @@ export class AgentDaemon {
 
       this.noteRemoteInteraction(message.sid);
       await sendInput(session, message.payload.text, message.payload.key);
+      await delay(24);
+
+      const latestSession = getSessionBySid(message.sid);
+      if (!latestSession || latestSession.status === "exited") {
+        return;
+      }
+
+      let buffer: string;
+      try {
+        buffer = await captureSession(latestSession);
+      } catch (error) {
+        if (!isMissingTmuxTargetError(error)) {
+          throw error;
+        }
+        return;
+      }
+
+      const runtimeState = this.runtimeState.get(latestSession.sid) ?? {
+        lastRenderedBuffer: "",
+        lastStatus: latestSession.status,
+        layoutNormalized: true,
+        lastSyncedAt: 0,
+        lastBufferChangeAt: 0,
+        lastRemoteInteractionAt: Date.now(),
+      };
+      runtimeState.lastRemoteInteractionAt = Date.now();
+
+      if (buffer === runtimeState.lastRenderedBuffer) {
+        this.runtimeState.set(latestSession.sid, runtimeState);
+        return;
+      }
+
+      const bumpedSession = bumpSessionSeq(latestSession.sid);
+      if (!bumpedSession) {
+        return;
+      }
+
+      const nextFrame = deriveOutputFrame(runtimeState.lastRenderedBuffer, buffer);
+      runtimeState.lastRenderedBuffer = buffer;
+      runtimeState.lastStatus = bumpedSession.status;
+      runtimeState.layoutNormalized = true;
+      runtimeState.lastBufferChangeAt = Date.now();
+      this.runtimeState.set(latestSession.sid, runtimeState);
+
+      const outputMessage = toOutputFrame(
+        this.options.deviceId,
+        latestSession.sid,
+        bumpedSession.lastSeq,
+        nextFrame.data,
+        nextFrame.mode,
+        await getSessionCursorPosition(latestSession),
+      );
+      this.pushOutputFrame(outputMessage);
+      await this.broadcastBusinessMessage(outputMessage);
+      await this.broadcastBusinessMessage({
+        type: "session.state",
+        deviceId: this.options.deviceId,
+        sid: bumpedSession.sid,
+        payload: {
+          session: bumpedSession,
+        },
+      });
     } catch (error) {
       await this.sendEncryptedError(accessToken, message.reqId, "SESSION_INPUT_FAILED", error);
     }
@@ -629,7 +742,12 @@ export class AgentDaemon {
         return;
       }
       this.noteRemoteInteraction(message.sid);
+      const attachedClientCount = await getAttachedClientCount(session);
+      if (attachedClientCount > 0) {
+        await normalizeSessionWindow(session);
+      } else {
       await resizeSession(session, message.payload.cols, message.payload.rows);
+      }
       await delay(60);
 
       const buffer = await captureSession(session);
@@ -660,6 +778,7 @@ export class AgentDaemon {
           bumpedSession.lastSeq,
           buffer,
           "replace",
+          await getSessionCursorPosition(session),
         );
         this.pushOutputFrame(outputMessage);
         await this.broadcastBusinessMessage(outputMessage);

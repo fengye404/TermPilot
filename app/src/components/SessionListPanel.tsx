@@ -28,6 +28,7 @@ const FILTER_OPTIONS: Array<{ value: SessionStatusFilter; label: string }> = [
   { value: "running", label: "运行中" },
   { value: "exited", label: "已退出" },
 ];
+const PAGE_SIZE = 6;
 
 function formatRelativeTime(iso: string | null | undefined, nowMs: number): string {
   if (!iso) {
@@ -79,6 +80,7 @@ function formatRemaining(targetIso: string | null | undefined, nowMs: number): s
 
 export function SessionListPanel(props: SessionListPanelProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [page, setPage] = useState(1);
   const sessionCounts = useMemo(() => {
     let running = 0;
     let exited = 0;
@@ -96,6 +98,12 @@ export function SessionListPanel(props: SessionListPanelProps) {
     return { running, exited, managedRunning };
   }, [props.sessions]);
   const pinnedCount = props.pinnedSids.length;
+  const pageCount = Math.max(1, Math.ceil(props.filteredSessions.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visibleSessions = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return props.filteredSessions.slice(start, start + PAGE_SIZE);
+  }, [currentPage, props.filteredSessions]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -106,25 +114,35 @@ export function SessionListPanel(props: SessionListPanelProps) {
     };
   }, [sessionCounts.managedRunning]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [props.sessionQuery, props.statusFilter]);
+
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
+
   return (
     <Panel title="会话列表">
       <div className="space-y-3">
-        <div className="tp-stat-grid">
-          <div className="tp-stat-card">
-            <div className="tp-stat-label">总会话</div>
-            <div className="tp-stat-value">{props.sessions.length}</div>
+        <div className="tp-session-overview">
+          <div className="tp-session-overview-item">
+            <span className="tp-session-overview-label">总会话</span>
+            <span className="tp-session-overview-value">{props.sessions.length}</span>
           </div>
-          <div className="tp-stat-card">
-            <div className="tp-stat-label">运行中</div>
-            <div className="tp-stat-value">{sessionCounts.running}</div>
+          <div className="tp-session-overview-item">
+            <span className="tp-session-overview-label">运行中</span>
+            <span className="tp-session-overview-value">{sessionCounts.running}</span>
           </div>
-          <div className="tp-stat-card">
-            <div className="tp-stat-label">已退出</div>
-            <div className="tp-stat-value">{sessionCounts.exited}</div>
+          <div className="tp-session-overview-item">
+            <span className="tp-session-overview-label">已退出</span>
+            <span className="tp-session-overview-value">{sessionCounts.exited}</span>
           </div>
-          <div className="tp-stat-card">
-            <div className="tp-stat-label">已置顶</div>
-            <div className="tp-stat-value">{pinnedCount}</div>
+          <div className="tp-session-overview-item">
+            <span className="tp-session-overview-label">置顶</span>
+            <span className="tp-session-overview-value">{pinnedCount}</span>
           </div>
         </div>
         <input
@@ -149,9 +167,32 @@ export function SessionListPanel(props: SessionListPanelProps) {
             </button>
           ))}
         </div>
-        <p className="text-xs text-[var(--tp-text-soft)]">
-          当前显示 {props.filteredSessions.length} / {props.sessions.length} 个会话。置顶会话会始终排在最前面。
-        </p>
+        <div className="tp-session-list-meta">
+          <p className="text-xs text-[var(--tp-text-soft)]">
+            当前显示 {props.filteredSessions.length} / {props.sessions.length} 个会话
+          </p>
+          {pageCount > 1 ? (
+            <div className="tp-session-pagination">
+              <button
+                className="tp-session-pagination-button"
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
+                上一页
+              </button>
+              <span className="tp-session-pagination-label">{currentPage} / {pageCount}</span>
+              <button
+                className="tp-session-pagination-button"
+                type="button"
+                disabled={currentPage >= pageCount}
+                onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+              >
+                下一页
+              </button>
+            </div>
+          ) : null}
+        </div>
         {props.suspectedOrphanedCount > 0 ? (
           <div className="tp-card-muted flex items-center justify-between gap-3 px-3 py-3">
             <div>
@@ -175,19 +216,21 @@ export function SessionListPanel(props: SessionListPanelProps) {
             {props.sessions.length === 0 ? "当前没有会话。" : "没有匹配当前搜索或筛选条件的会话。"}
           </p>
         ) : (
-          props.filteredSessions.map((session) => (
-            <SessionCard
-              key={session.sid}
-              session={session}
-              active={session.sid === props.activeSid}
-              pinned={props.pinnedSids.includes(session.sid)}
-              canControl={props.canControl}
-              nowMs={nowMs}
-              onTogglePinnedSession={props.onTogglePinnedSession}
-              onSelectSession={props.onSelectSession}
-              onKillSession={props.onKillSession}
-            />
-          ))
+          <div className="tp-session-list-stack">
+            {visibleSessions.map((session) => (
+              <SessionCard
+                key={session.sid}
+                session={session}
+                active={session.sid === props.activeSid}
+                pinned={props.pinnedSids.includes(session.sid)}
+                canControl={props.canControl}
+                nowMs={nowMs}
+                onTogglePinnedSession={props.onTogglePinnedSession}
+                onSelectSession={props.onSelectSession}
+                onKillSession={props.onKillSession}
+              />
+            ))}
+          </div>
         )}
       </div>
     </Panel>
@@ -214,9 +257,15 @@ const SessionCard = memo(function SessionCard(props: SessionCardProps) {
       className={`tp-session-card ${active ? "tp-session-card-active" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-medium text-[var(--tp-text)]">{session.name}</p>
-          <p className="mt-1 text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate font-medium text-[var(--tp-text)]">{session.name}</p>
+            <span className={`tp-chip min-h-0 whitespace-nowrap px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>
+              {session.status === "running" ? "运行中" : "已退出"}
+            </span>
+            {pinned ? <span className="tp-chip tp-chip-warning min-h-0 px-2.5 py-1 text-[11px]">已置顶</span> : null}
+          </div>
+          <p className="mt-1 truncate text-xs text-[var(--tp-text-muted)]">{session.cwd}</p>
           {session.launchMode === "command" && session.status === "running" ? (
             <>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -241,11 +290,8 @@ const SessionCard = memo(function SessionCard(props: SessionCardProps) {
             </>
           ) : null}
         </div>
-        <span className={`tp-chip min-h-0 px-2.5 py-1 text-[11px] ${session.status === "running" ? "tp-chip-active" : ""}`}>
-          {session.status === "running" ? "运行中" : "已退出"}
-        </span>
       </div>
-      <div className="mt-3 flex gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <button
           className={`tp-chip min-h-0 px-3 py-1.5 text-xs ${pinned ? "tp-chip-warning" : ""}`}
           type="button"

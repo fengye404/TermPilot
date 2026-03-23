@@ -264,6 +264,7 @@ export default function App() {
   const [pairingKeyReady, setPairingKeyReady] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [buffers, setBuffers] = useState<SessionMap>({});
+  const [bufferCursors, setBufferCursors] = useState<Record<string, { row: number; col: number } | null>>({});
   const [bufferSeqs, setBufferSeqs] = useState<Record<string, number>>({});
   const [activeSid, setActiveSid] = useState<string | null>(null);
   const [pinnedSids, setPinnedSids] = useState<string[]>([]);
@@ -281,7 +282,6 @@ export default function App() {
   const [createCwd, setCreateCwd] = useState("");
   const [createShell, setCreateShell] = useState("");
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
-  const [isPortraitViewport, setIsPortraitViewport] = useState(() => typeof window !== "undefined" ? window.innerHeight >= window.innerWidth : true);
   const [isTouchDevice, setIsTouchDevice] = useState(detectTouchDevice);
   const [mobileTerminalFocusMode, setMobileTerminalFocusMode] = useState(false);
 
@@ -292,6 +292,10 @@ export default function App() {
   const activeSnapshotRaw = useMemo(
     () => (activeSid ? (buffers[activeSid] ?? "") : ""),
     [activeSid, buffers],
+  );
+  const activeCursor = useMemo(
+    () => (activeSid ? (bufferCursors[activeSid] ?? null) : null),
+    [activeSid, bufferCursors],
   );
   const activeSnapshot = useDeferredValue(activeSnapshotRaw);
   const deferredSessionQuery = useDeferredValue(sessionQuery);
@@ -391,7 +395,6 @@ export default function App() {
     }
     const handleResize = () => {
       setIsDesktop(window.innerWidth >= 1024);
-      setIsPortraitViewport(window.innerHeight >= window.innerWidth);
       setIsTouchDevice(detectTouchDevice());
     };
     window.addEventListener("resize", handleResize);
@@ -481,6 +484,7 @@ export default function App() {
     setDeviceOnline(false);
     setSessions([]);
     setBuffers({});
+    setBufferCursors({});
     setBufferSeqs({});
     replayRequestRef.current = {};
     setActiveSid(null);
@@ -1050,6 +1054,7 @@ export default function App() {
     setActiveSid(null);
     setSessions([]);
     setBuffers({});
+    setBufferCursors({});
     setBufferSeqs({});
     replayRequestRef.current = {};
     setPairingMessage(options.message);
@@ -1118,6 +1123,15 @@ export default function App() {
               }
             }
             return nextBuffers;
+          });
+          setBufferCursors((current) => {
+            const nextCursors: Record<string, { row: number; col: number } | null> = {};
+            for (const session of message.payload.sessions) {
+              if (Object.prototype.hasOwnProperty.call(current, session.sid)) {
+                nextCursors[session.sid] = current[session.sid] ?? null;
+              }
+            }
+            return nextCursors;
           });
           setBufferSeqs((current) => {
             const nextSeqs: Record<string, number> = {};
@@ -1193,6 +1207,10 @@ export default function App() {
             [message.sid]: message.payload.mode === "append"
               ? `${current[message.sid] ?? ""}${message.payload.data}`
               : message.payload.data,
+          }));
+          setBufferCursors((current) => ({
+            ...current,
+            [message.sid]: message.payload.cursor ?? current[message.sid] ?? null,
           }));
           setBufferSeqs((current) => {
             const next = { ...current, [message.sid]: message.seq };
@@ -1375,6 +1393,7 @@ export default function App() {
 
     const socket = new WebSocket(url);
     socketRef.current = socket;
+    let suppressReconnectOnClose = false;
 
     socket.addEventListener("open", () => {
       if (socketRef.current !== socket) {
@@ -1389,6 +1408,11 @@ export default function App() {
         socketRef.current = null;
       }
       if (socketRef.current !== null && socketRef.current !== socket) {
+        return;
+      }
+      if (suppressReconnectOnClose) {
+        setConnectionPhase("idle");
+        setDeviceOnline(false);
         return;
       }
       setConnectionPhase((current) => (manuallyDisconnectedRef.current ? "idle" : current));
@@ -1416,6 +1440,7 @@ export default function App() {
             if (nextDeviceId !== previousDeviceId) {
               setSessions([]);
               setBuffers({});
+              setBufferCursors({});
               setBufferSeqs({});
               replayRequestRef.current = {};
               setActiveSid(null);
@@ -1464,6 +1489,7 @@ export default function App() {
         case "error":
           if (message.code === "AUTH_FAILED" || message.code === "AUTH_REVOKED") {
             stopReconnectLoop();
+            suppressReconnectOnClose = true;
             setConnectionPhase("idle");
             setDeviceOnline(false);
             if (message.code === "AUTH_REVOKED") {
@@ -1519,10 +1545,13 @@ export default function App() {
 
       setSessions([]);
       setBuffers({});
+      setBufferCursors({});
       setBufferSeqs({});
       replayRequestRef.current = {};
       setActiveSid(null);
       setDeviceId(payload.deviceId);
+      deviceIdRef.current = payload.deviceId;
+      requestedDeviceIdRef.current = payload.deviceId;
       setClientToken(payload.accessToken);
       clientTokenRef.current = payload.accessToken;
       setClientKeyPair(nextClientKeyPair);
@@ -1687,6 +1716,12 @@ export default function App() {
         rows,
       },
     });
+  }
+
+  function handleMobileTerminalResize(): void {
+    // Mobile view acts as a lightweight viewer for the shared tmux session.
+    // We keep local fitting responsive, but we do not let the phone viewport
+    // continuously rewrite the session size that desktop/local tmux uses.
   }
 
   useEffect(() => {
@@ -1895,28 +1930,28 @@ export default function App() {
   const mobileFocusShellClassName = mobileTerminalFocusMode ? "tp-mobile-focus-shell tp-mobile-focus-shell-active" : undefined;
 
   return (
-    <main className={`mx-auto flex min-h-screen w-full max-w-[1580px] flex-col px-4 py-4 text-[var(--tp-text)] sm:px-5 sm:py-5 lg:px-6 ${compactMobileChrome ? "gap-3" : "gap-4"}`}>
-      <header className={`tp-card ${compactMobileChrome ? "px-4 py-3" : "px-4 py-4 sm:px-5"}`}>
-        <div className={`flex items-start justify-between ${compactMobileChrome ? "gap-3" : "flex-wrap gap-4"}`}>
+    <main className={`mx-auto flex min-h-screen w-full max-w-[1580px] flex-col px-4 py-4 text-[var(--tp-text)] sm:px-5 sm:py-5 lg:px-6 ${compactMobileChrome ? "gap-2.5 px-3 py-3" : "gap-4"}`}>
+      <header className={`tp-card tp-app-header ${compactMobileChrome ? "px-3 py-2.5" : "px-4 py-4 sm:px-5"}`}>
+        <div className={`flex items-start justify-between ${compactMobileChrome ? "gap-2.5" : "flex-wrap gap-4"}`}>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--tp-accent-strong)]">TermPilot</p>
-            <h1 className={`font-semibold tracking-[-0.03em] text-[var(--tp-text)] ${compactMobileChrome ? "mt-1 text-[22px]" : "mt-2 text-[28px]"}`}>
+            <p className="tp-app-header-kicker">TermPilot</p>
+            <h1 className={`font-semibold tracking-[-0.04em] text-[var(--tp-text)] ${compactMobileChrome ? "mt-0.5 text-[18px]" : "mt-2 text-[24px]"}`}>
               {compactMobileChrome
                 ? (activeSession?.name ?? "当前会话")
                 : isPaired
-                  ? "会话面板"
+                  ? (activeSession?.name ?? "Workspace")
                   : "先绑定你的电脑"}
             </h1>
-            <p className={`max-w-2xl text-[var(--tp-text-muted)] ${compactMobileChrome ? "mt-1 text-xs" : "mt-2 text-sm"}`}>
+            <p className={`max-w-2xl text-[var(--tp-text-muted)] ${compactMobileChrome ? "mt-1 text-[11px] leading-5" : "mt-2 text-sm"}`}>
               {compactMobileChrome
-                ? "终端优先展示，控制和设置默认收起。"
+                ? "终端优先，附加信息默认缩小。"
                 : isPaired
-                  ? "先选一个会话，再进入查看输出和补命令。"
+                  ? "终端优先，控制和会话管理分布在两侧。"
                   : "在电脑上执行 termpilot agent --relay 你的 relay 地址。命令会直接启动后台 agent 并打印一次性配对码。"}
             </p>
           </div>
           {isPaired ? (
-            <div className={`flex ${compactMobileChrome ? "max-w-[52vw] flex-wrap justify-end gap-1.5" : "flex-wrap gap-2"}`}>
+            <div className={`flex ${compactMobileChrome ? "max-w-[52vw] flex-wrap justify-end gap-1" : "tp-app-header-chips flex-wrap gap-2"}`}>
               {compactMobileChrome ? null : <span className="tp-chip">{deviceId}</span>}
               {compactMobileChrome ? null : <span className="tp-chip">App {APP_VERSION}</span>}
               <span className={`tp-chip ${deviceOnline ? "tp-chip-active" : "tp-chip-danger"}`}>{deviceOnline ? "设备在线" : "设备离线"}</span>
@@ -1927,23 +1962,10 @@ export default function App() {
           ) : null}
         </div>
         {isPaired && !compactMobileChrome ? (
-          <div className="mt-4 tp-stat-grid">
-            <div className="tp-stat-card">
-              <div className="tp-stat-label">当前设备</div>
-              <div className="mt-2 text-sm font-medium text-[var(--tp-text)]">{deviceId}</div>
-            </div>
-            <div className="tp-stat-card">
-              <div className="tp-stat-label">运行中</div>
-              <div className="tp-stat-value">{runningSessionsCount}</div>
-            </div>
-            <div className="tp-stat-card">
-              <div className="tp-stat-label">已退出</div>
-              <div className="tp-stat-value">{exitedSessionsCount}</div>
-            </div>
-            <div className="tp-stat-card">
-              <div className="tp-stat-label">当前查看</div>
-              <div className="mt-2 text-sm font-medium text-[var(--tp-text)]">{activeSession?.name ?? "未选择"}</div>
-            </div>
+          <div className="tp-app-header-strip">
+            <span>运行中 {runningSessionsCount}</span>
+            <span>已退出 {exitedSessionsCount}</span>
+            <span>当前查看 {activeSession?.name ?? "未选择"}</span>
           </div>
         ) : null}
       </header>
@@ -2068,7 +2090,7 @@ export default function App() {
       ) : (
         <>
           {isDesktop ? (
-            <section className="grid gap-4 lg:grid-cols-[304px_minmax(0,1fr)] xl:grid-cols-[312px_minmax(0,1fr)]">
+            <section className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[336px_minmax(0,1fr)]">
               <div className="tp-sidebar-sticky space-y-4">
                 <CreateSessionPanel
                   canControl={canControlDevice}
@@ -2106,13 +2128,14 @@ export default function App() {
                   activeSid={activeSid}
                   canControl={canControlDevice}
                   focusMode={mobileTerminalFocusMode}
-                  focusRotateTerminal={mobileTerminalFocusMode && isPortraitViewport}
+                  focusRotateTerminal={false}
                   snapshotPending={activeSnapshotPending}
                   snapshotLag={activeSnapshotLag}
                   command={command}
                   pasteBuffer={pasteBuffer}
                   shortcutKeys={SHORTCUT_KEYS}
                   snapshot={activeSnapshot}
+                  cursor={activeCursor}
                   onToggleFocusMode={isTouchDevice ? () => {
                     void toggleMobileTerminalFocusMode();
                   } : undefined}
@@ -2140,16 +2163,17 @@ export default function App() {
                     activeSid={activeSid}
                     canControl={canControlDevice}
                     focusMode={mobileTerminalFocusMode}
-                    focusRotateTerminal={mobileTerminalFocusMode && isPortraitViewport}
+                    focusRotateTerminal={false}
                     snapshotPending={activeSnapshotPending}
                     snapshotLag={activeSnapshotLag}
                     command={command}
-                    pasteBuffer={pasteBuffer}
-                    shortcutKeys={SHORTCUT_KEYS}
-                    snapshot={activeSnapshot}
-                    onBack={() => {
-                      suppressMobileAutoSelectRef.current = true;
-                      setMobileTerminalFocusMode(false);
+                  pasteBuffer={pasteBuffer}
+                  shortcutKeys={SHORTCUT_KEYS}
+                  snapshot={activeSnapshot}
+                  cursor={activeCursor}
+                  onBack={() => {
+                    suppressMobileAutoSelectRef.current = true;
+                    setMobileTerminalFocusMode(false);
                       setActiveSid(null);
                     }}
                     onToggleFocusMode={() => {
@@ -2161,7 +2185,7 @@ export default function App() {
                     onPasteBufferChange={setPasteBuffer}
                     onSendPaste={handleSendPaste}
                     onTerminalData={handleTerminalData}
-                    onTerminalResize={handleTerminalResize}
+                    onTerminalResize={handleMobileTerminalResize}
                     onSendKey={sendKey}
                   />
                 </div>

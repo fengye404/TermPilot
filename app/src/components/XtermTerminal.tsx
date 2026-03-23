@@ -18,6 +18,10 @@ export interface XtermTerminalHandle {
 interface XtermTerminalProps {
   sessionKey: string;
   snapshot: string;
+  cursor?: {
+    row: number;
+    col: number;
+  } | null;
   className?: string;
   fontPreset?: "default" | "compact" | "focus";
   onData?: (data: string) => void;
@@ -130,24 +134,120 @@ function isTextInputKey(event: KeyboardEvent): boolean {
   return Array.from(event.key).length === 1;
 }
 
-function resolveTypography(fontPreset: XtermTerminalProps["fontPreset"]): Pick<ITerminalOptions, "fontSize" | "lineHeight"> {
+function resolveTypography(fontPreset: XtermTerminalProps["fontPreset"]): Pick<ITerminalOptions, "fontSize" | "lineHeight" | "letterSpacing"> {
   switch (fontPreset) {
     case "compact":
       return {
-        fontSize: 11,
-        lineHeight: 1.18,
+        fontSize: 9,
+        lineHeight: 1.12,
+        letterSpacing: -0.34,
       };
     case "focus":
       return {
-        fontSize: 11.5,
-        lineHeight: 1.16,
+        fontSize: 9.2,
+        lineHeight: 1.1,
+        letterSpacing: -0.34,
       };
     default:
       return {
         fontSize: 12,
         lineHeight: 1.22,
+        letterSpacing: -0.2,
       };
   }
+}
+
+function stripAnsiForWidth(text: string): string {
+  return text
+    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\u001b[@-Z\\-_]/g, "");
+}
+
+function estimateRequiredCols(snapshot: string): number {
+  if (!snapshot) {
+    return 0;
+  }
+  return snapshot
+    .split("\n")
+    .reduce((max, line) => Math.max(max, Array.from(stripAnsiForWidth(line)).length), 0);
+}
+
+function moveCursorSequence(cursor: XtermTerminalProps["cursor"]): string {
+  if (!cursor) {
+    return "";
+  }
+  const row = Math.max(1, cursor.row + 1);
+  const col = Math.max(1, cursor.col + 1);
+  return `\u001b[${row};${col}H`;
+}
+
+function findVisibleCursorCell(snapshot: string): { row: number; col: number } | null {
+  let row = 0;
+  let col = 0;
+  let inverse = false;
+  let lastInverseCell: { row: number; col: number } | null = null;
+
+  for (let index = 0; index < snapshot.length;) {
+    const char = snapshot[index];
+    if (char === "\u001b") {
+      const sgrMatch = snapshot.slice(index).match(/^\u001b\[([0-9;]*)m/);
+      if (sgrMatch) {
+        const params = sgrMatch[1]
+          ? sgrMatch[1].split(";").map((part) => Number.parseInt(part, 10)).filter(Number.isFinite)
+          : [0];
+        for (const param of params.length > 0 ? params : [0]) {
+          if (param === 0) {
+            inverse = false;
+          } else if (param === 7) {
+            inverse = true;
+          } else if (param === 27) {
+            inverse = false;
+          }
+        }
+        index += sgrMatch[0].length;
+        continue;
+      }
+
+      const csiMatch = snapshot.slice(index).match(/^\u001b\[[0-9;?]*[ -/]*[@-~]/);
+      if (csiMatch) {
+        index += csiMatch[0].length;
+        continue;
+      }
+
+      const oscMatch = snapshot.slice(index).match(/^\u001b\][^\u0007]*(?:\u0007|\u001b\\)/);
+      if (oscMatch) {
+        index += oscMatch[0].length;
+        continue;
+      }
+    }
+
+    if (char === "\r") {
+      col = 0;
+      index += 1;
+      continue;
+    }
+
+    if (char === "\n") {
+      row += 1;
+      col = 0;
+      index += 1;
+      continue;
+    }
+
+    const codePoint = snapshot.codePointAt(index);
+    if (codePoint === undefined) {
+      break;
+    }
+    const text = String.fromCodePoint(codePoint);
+    if (inverse) {
+      lastInverseCell = { row, col };
+    }
+    col += 1;
+    index += text.length;
+  }
+
+  return lastInverseCell;
 }
 
 export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalProps>(function XtermTerminal(props, ref) {
@@ -155,6 +255,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
   const fitAddonRef = useRef<FitAddon | null>(null);
   const fitTerminalRef = useRef<(() => void) | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const helperTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const inputMirrorRef = useRef<HTMLPreElement | null>(null);
   const onDataRef = useRef(props.onData);
   const onResizeRef = useRef(props.onResize);
@@ -164,13 +265,44 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
   const scrollLineRef = useRef(0);
   const optimisticInputRef = useRef<{ text: string; expiresAt: number }>({ text: "", expiresAt: 0 });
   const optimisticSpecialKeyRef = useRef<{ key: InputKey | null; expiresAt: number }>({ key: null, expiresAt: 0 });
+  const compositionStateRef = useRef({ active: false, composingText: "" });
   const inputMirrorValueRef = useRef("");
   const expectedSnapshotRef = useRef("");
+  const adaptiveFontSizeRef = useRef<number | null>(null);
   const deferredSnapshot = useDeferredValue(props.snapshot);
+  const visibleCursorCell = findVisibleCursorCell(deferredSnapshot);
+  const effectiveCursor = visibleCursorCell ?? props.cursor ?? null;
   const pendingFocusRef = useRef(false);
   const [terminalReady, setTerminalReady] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [bootNonce, setBootNonce] = useState(0);
+  const [horizontalOverflowRatio, setHorizontalOverflowRatio] = useState(1);
+  const allowHorizontalOverflow = props.fontPreset === "compact" || props.fontPreset === "focus";
+
+  const syncHelperTextareaPosition = () => {
+    const terminal = terminalRef.current;
+    const helperTextarea = helperTextareaRef.current;
+    const cursor = effectiveCursor;
+    if (!terminal || !helperTextarea || !cursor) {
+      return;
+    }
+
+    const screen = terminal.element?.querySelector<HTMLElement>(".xterm-screen");
+    if (!screen || terminal.cols <= 0 || terminal.rows <= 0) {
+      return;
+    }
+
+    const cellWidth = screen.clientWidth / terminal.cols;
+    const cellHeight = screen.clientHeight / terminal.rows;
+    if (!Number.isFinite(cellWidth) || !Number.isFinite(cellHeight) || cellWidth <= 0 || cellHeight <= 0) {
+      return;
+    }
+
+    helperTextarea.style.left = `${Math.max(0, Math.round(cursor.col * cellWidth))}px`;
+    helperTextarea.style.top = `${Math.max(0, Math.round(cursor.row * cellHeight))}px`;
+    helperTextarea.style.width = `${Math.max(1, Math.round(cellWidth))}px`;
+    helperTextarea.style.height = `${Math.max(1, Math.round(cellHeight))}px`;
+  };
 
   useEffect(() => {
     onDataRef.current = props.onData;
@@ -208,17 +340,19 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         }
         const fitAddon = new FitAddon();
         fitAddonRef.current = fitAddon;
-        const { fontSize, lineHeight } = resolveTypography(props.fontPreset);
+        const { fontSize, lineHeight, letterSpacing } = resolveTypography(props.fontPreset);
         const terminal = new Terminal({
           allowTransparency: false,
-          convertEol: false,
+          // Agent sends visible screen snapshots rather than raw PTY bytes, so
+          // each newline should return to column 0 when replayed into xterm.
+          convertEol: true,
           cursorBlink: true,
           cursorStyle: "bar",
           drawBoldTextInBrightColors: false,
           fontFamily: '"SF Mono", "JetBrains Mono", Menlo, monospace',
           fontSize,
           lineHeight,
-          letterSpacing: -0.2,
+          letterSpacing,
           scrollback: 5000,
           theme: readTerminalTheme(),
         });
@@ -233,6 +367,9 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           try {
             fitAddonRef.current.fit();
             onResizeRef.current?.(terminal.cols, terminal.rows);
+            window.requestAnimationFrame(() => {
+              syncHelperTextareaPosition();
+            });
           } catch {
             // xterm can transiently lose renderer dimensions while the node is detaching.
           }
@@ -242,6 +379,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
 
         const helperTextarea = terminal.textarea;
         if (helperTextarea) {
+          helperTextareaRef.current = helperTextarea;
           helperTextarea.setAttribute("aria-label", "终端输入");
           helperTextarea.setAttribute("data-testid", "terminal-input");
           helperTextarea.setAttribute("autocapitalize", "none");
@@ -352,6 +490,9 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         };
 
         const keyDisposable = terminal.onKey(({ key, domEvent }) => {
+          if (domEvent.isComposing || compositionStateRef.current.active) {
+            return;
+          }
           if (!isTextInputKey(domEvent)) {
             return;
           }
@@ -373,12 +514,16 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           shouldStickToBottomRef.current = current.baseY - viewportY < 3;
         });
         const handleFocus = () => {
+          syncHelperTextareaPosition();
           onFocusChangeRef.current?.(true);
         };
         const handleBlur = () => {
           onFocusChangeRef.current?.(false);
         };
         const handleTextareaKeyDown = (event: KeyboardEvent) => {
+          if (event.isComposing || compositionStateRef.current.active) {
+            return;
+          }
           const mapped = mapSpecialKey(event);
           if (!mapped || event.defaultPrevented || hasPendingSpecialKey(mapped)) {
             return;
@@ -389,6 +534,12 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         };
         const handleBeforeInput = (event: Event) => {
           if (!(event instanceof InputEvent)) {
+            return;
+          }
+          if (event.isComposing || event.inputType.startsWith("insertComposition")) {
+            if (typeof event.data === "string") {
+              compositionStateRef.current.composingText = event.data;
+            }
             return;
           }
           if (event.inputType === "insertLineBreak") {
@@ -405,11 +556,31 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           rememberOptimisticInput(event.data);
           forwardTerminalData(event.data);
         };
+        const handleCompositionStart = () => {
+          compositionStateRef.current = {
+            active: true,
+            composingText: "",
+          };
+        };
+        const handleCompositionEnd = (event: CompositionEvent) => {
+          const committed = event.data || compositionStateRef.current.composingText;
+          compositionStateRef.current = {
+            active: false,
+            composingText: "",
+          };
+          if (!committed || hasOptimisticInput(committed)) {
+            return;
+          }
+          rememberOptimisticInput(committed);
+          forwardTerminalData(committed);
+        };
         if (helperTextarea instanceof HTMLElement) {
           helperTextarea.addEventListener("focus", handleFocus);
           helperTextarea.addEventListener("blur", handleBlur);
           helperTextarea.addEventListener("keydown", handleTextareaKeyDown);
           helperTextarea.addEventListener("beforeinput", handleBeforeInput);
+          helperTextarea.addEventListener("compositionstart", handleCompositionStart);
+          helperTextarea.addEventListener("compositionend", handleCompositionEnd);
         }
 
         const applyTheme = () => {
@@ -458,6 +629,8 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
             helperTextarea.removeEventListener("blur", handleBlur);
             helperTextarea.removeEventListener("keydown", handleTextareaKeyDown);
             helperTextarea.removeEventListener("beforeinput", handleBeforeInput);
+            helperTextarea.removeEventListener("compositionstart", handleCompositionStart);
+            helperTextarea.removeEventListener("compositionend", handleCompositionEnd);
           }
           scrollDisposable.dispose();
           resizeDisposable.dispose();
@@ -467,6 +640,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           terminalRef.current = null;
           fitAddonRef.current = null;
           fitTerminalRef.current = null;
+          helperTextareaRef.current = null;
         };
       } catch (error) {
         if (disposed) {
@@ -491,16 +665,113 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
     if (!terminal || !terminalReady) {
       return;
     }
-    const { fontSize, lineHeight } = resolveTypography(props.fontPreset);
-    if (terminal.options.fontSize === fontSize && terminal.options.lineHeight === lineHeight) {
+    const { fontSize, lineHeight, letterSpacing } = resolveTypography(props.fontPreset);
+    if (
+      terminal.options.fontSize === fontSize
+      && terminal.options.lineHeight === lineHeight
+      && terminal.options.letterSpacing === letterSpacing
+    ) {
       return;
     }
     terminal.options.fontSize = fontSize;
     terminal.options.lineHeight = lineHeight;
+    terminal.options.letterSpacing = letterSpacing;
     window.requestAnimationFrame(() => {
       fitTerminalRef.current?.();
     });
   }, [props.fontPreset, terminalReady]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    const fitTerminal = fitTerminalRef.current;
+    if (!terminal || !terminalReady || !fitTerminal) {
+      return;
+    }
+
+    const typography = resolveTypography(props.fontPreset);
+    const baseFontSize = typography.fontSize ?? 12;
+    const lineHeight = typography.lineHeight ?? 1.2;
+    const baseLetterSpacing = typography.letterSpacing ?? -0.2;
+    const requiredCols = estimateRequiredCols(deferredSnapshot);
+    const minFontSize = props.fontPreset === "focus"
+      ? 6.6
+      : props.fontPreset === "compact"
+        ? 6
+        : 8.5;
+    const maxOverflowRatio = props.fontPreset === "focus"
+      ? 3.6
+      : props.fontPreset === "compact"
+        ? 3.8
+        : 1;
+
+    terminal.options.lineHeight = lineHeight;
+
+    const applyMetrics = (fontSize: number, letterSpacing: number) => {
+      if (terminal.options.fontSize === fontSize && terminal.options.letterSpacing === letterSpacing) {
+        return;
+      }
+      terminal.options.fontSize = fontSize;
+      terminal.options.letterSpacing = letterSpacing;
+      fitTerminal();
+    };
+
+    applyMetrics(baseFontSize, baseLetterSpacing);
+
+    if (!requiredCols || terminal.cols >= requiredCols) {
+      adaptiveFontSizeRef.current = null;
+      if (horizontalOverflowRatio !== 1) {
+        setHorizontalOverflowRatio(1);
+      }
+      return;
+    }
+
+    let nextFontSize = baseFontSize;
+    let nextLetterSpacing = baseLetterSpacing;
+    let attempts = 0;
+    while (attempts < 6 && terminal.cols < requiredCols && nextFontSize > minFontSize) {
+      const ratio = terminal.cols > 0 ? terminal.cols / requiredCols : 0;
+      const projectedSize = ratio > 0
+        ? Number.parseFloat((nextFontSize * Math.max(ratio, 0.72)).toFixed(2))
+        : nextFontSize - 1;
+      nextFontSize = Math.max(minFontSize, projectedSize);
+      nextLetterSpacing = nextFontSize < baseFontSize - 1.2 ? -0.45 : baseLetterSpacing;
+      applyMetrics(nextFontSize, nextLetterSpacing);
+      attempts += 1;
+    }
+
+    adaptiveFontSizeRef.current = nextFontSize < baseFontSize ? nextFontSize : null;
+
+    if (!allowHorizontalOverflow) {
+      if (horizontalOverflowRatio !== 1) {
+        setHorizontalOverflowRatio(1);
+      }
+      return;
+    }
+
+    if (terminal.cols < requiredCols) {
+      const nextOverflowRatio = Math.min(maxOverflowRatio, Math.max(1.08, requiredCols / Math.max(terminal.cols, 1)));
+      if (Math.abs(nextOverflowRatio - horizontalOverflowRatio) > 0.02) {
+        setHorizontalOverflowRatio(nextOverflowRatio);
+      }
+      return;
+    }
+
+    if (horizontalOverflowRatio !== 1) {
+      setHorizontalOverflowRatio(1);
+    }
+  }, [allowHorizontalOverflow, deferredSnapshot, horizontalOverflowRatio, props.fontPreset, terminalReady]);
+
+  useEffect(() => {
+    if (horizontalOverflowRatio === 1) {
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => {
+      fitTerminalRef.current?.();
+    });
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [horizontalOverflowRatio]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -516,14 +787,20 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
       inputMirrorRef.current.textContent = "";
     }
     if (!deferredSnapshot) {
-      terminal.write(CLEAR_SCREEN_SEQUENCE);
+      terminal.write(`${CLEAR_SCREEN_SEQUENCE}\u001b[?25h`);
       return;
     }
     expectedSnapshotRef.current = deferredSnapshot;
-    terminal.write(`${CLEAR_SCREEN_SEQUENCE}${deferredSnapshot}`, () => {
+    terminal.write(
+      `${CLEAR_SCREEN_SEQUENCE}${deferredSnapshot}${
+        visibleCursorCell ? "\u001b[?25l" : `${moveCursorSequence(props.cursor)}\u001b[?25h`
+      }`,
+      () => {
+      syncHelperTextareaPosition();
       terminal.scrollToBottom();
-    });
-  }, [props.sessionKey]);
+      },
+    );
+  }, [props.cursor, props.sessionKey]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -541,7 +818,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
     expectedSnapshotRef.current = deferredSnapshot;
 
     if (!deferredSnapshot) {
-      terminal.write(CLEAR_SCREEN_SEQUENCE, () => {
+      terminal.write(`${CLEAR_SCREEN_SEQUENCE}\u001b[?25h`, () => {
         terminal.scrollToTop();
       });
       return;
@@ -549,9 +826,21 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
 
     const nextPayload = shouldAppend
       ? deferredSnapshot.slice(currentSnapshot.length)
-      : `${CLEAR_SCREEN_SEQUENCE}${deferredSnapshot}`;
+      : `${CLEAR_SCREEN_SEQUENCE}${deferredSnapshot}${
+        visibleCursorCell ? "\u001b[?25l" : `${moveCursorSequence(props.cursor)}\u001b[?25h`
+      }`;
 
     terminal.write(nextPayload, () => {
+      if (shouldAppend) {
+        if (visibleCursorCell) {
+          terminal.write("\u001b[?25l");
+        } else if (props.cursor) {
+          terminal.write(`${moveCursorSequence(props.cursor)}\u001b[?25h`);
+        } else {
+          terminal.write("\u001b[?25h");
+        }
+      }
+      syncHelperTextareaPosition();
       if (restoreScrollLine === null) {
         terminal.scrollToBottom();
         return;
@@ -559,11 +848,32 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
       const maxLine = terminal.buffer.active.baseY;
       terminal.scrollToLine(Math.min(restoreScrollLine, maxLine));
     });
-  }, [deferredSnapshot, terminalReady]);
+  }, [deferredSnapshot, props.cursor, terminalReady, visibleCursorCell]);
+
+  useEffect(() => {
+    if (!terminalReady) {
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => {
+      syncHelperTextareaPosition();
+    });
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [props.cursor, terminalReady]);
 
   return (
     <>
-      <div ref={containerRef} className={`tp-xterm-root ${props.className ?? ""}`.trim()} />
+      <div
+        ref={containerRef}
+        className={`tp-xterm-root ${horizontalOverflowRatio > 1 ? "tp-xterm-root-overflow" : ""} ${props.className ?? ""}`.trim()}
+        style={horizontalOverflowRatio > 1 ? { width: `${(horizontalOverflowRatio * 100).toFixed(1)}%` } : undefined}
+      />
+      {allowHorizontalOverflow && horizontalOverflowRatio > 1.02 ? (
+        <div className="tp-terminal-pan-hint" aria-hidden="true">
+          左右拖动查看更多
+        </div>
+      ) : null}
       {SHOULD_EXPOSE_TEST_MIRRORS ? (
         <>
           <pre aria-hidden="true" data-testid="terminal-input-mirror" ref={inputMirrorRef} className="tp-terminal-text-mirror" />

@@ -225,6 +225,10 @@ export interface SessionOutputMessage {
   payload: {
     data: string;
     mode: "replace" | "append";
+    cursor?: {
+      row: number;
+      col: number;
+    };
   };
 }
 

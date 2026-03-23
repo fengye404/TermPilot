@@ -37,6 +37,7 @@ pnpm install
 pnpm dev:relay
 pnpm dev:app
 pnpm dev:agent
+pnpm local:reset
 ```
 
 说明：
@@ -44,6 +45,18 @@ pnpm dev:agent
 - `dev:relay` 启动 relay 开发入口
 - `dev:app` 启动 Vite 开发服务器
 - `dev:agent` 以前台 daemon 形式运行 agent
+- `local:reset` 重置 `/tmp/termpilot-local` 这套本地测试环境，停止对应的 relay / agent、清理记录中的 tmux 会话并删除状态目录
+
+如果你采用 README 里推荐的 `tpdev` 本地开发函数，常用对应关系是：
+
+```bash
+tpdev build
+tpdev reset
+tpdev fresh
+tpdev relay run
+tpdev agent --relay ws://127.0.0.1:8787/ws --pair
+tpdev claude code
+```
 
 ### 构建
 

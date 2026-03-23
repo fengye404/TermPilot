@@ -306,6 +306,39 @@ async function waitForSessionCard(page: Page, name: string, timeoutMs = 15000): 
   throw new Error(`session card did not appear for ${name}`);
 }
 
+async function clickSessionCardButton(page: Page, sessionName: string, buttonText: string): Promise<void> {
+  await page.waitForFunction(([expectedSessionName, expectedButtonText]) => (
+    Array.from(document.querySelectorAll("[data-session-name]")).some((node) => (
+      node instanceof HTMLElement
+      && node.dataset.sessionName === expectedSessionName
+      && Array.from(node.querySelectorAll("button")).some((button) => (
+        button instanceof HTMLButtonElement
+        && !button.disabled
+        && button.textContent?.includes(expectedButtonText)
+      ))
+    ))
+  ), [sessionName, buttonText], { timeout: 10000 });
+
+  await page.evaluate(([expectedSessionName, expectedButtonText]) => {
+    const card = Array.from(document.querySelectorAll("[data-session-name]")).find((node) => (
+      node instanceof HTMLElement
+      && node.dataset.sessionName === expectedSessionName
+    ));
+    if (!(card instanceof HTMLElement)) {
+      throw new Error(`session card not found: ${expectedSessionName}`);
+    }
+    const button = Array.from(card.querySelectorAll("button")).find((node) => (
+      node instanceof HTMLButtonElement
+      && !node.disabled
+      && node.textContent?.includes(expectedButtonText)
+    ));
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`button not found on session card: ${expectedSessionName} / ${expectedButtonText}`);
+    }
+    button.click();
+  }, [sessionName, buttonText]);
+}
+
 async function ensureSessionListVisible(page: Page): Promise<void> {
   const backButton = page.locator(
     'button[aria-label="返回会话列表"], button:has-text("返回会话列表"), button:has-text("返回")',
@@ -404,7 +437,7 @@ async function main(): Promise<void> {
 
       await ensureSessionListVisible(page);
       await waitForSessionCard(page, sessionOne);
-      await page.locator(`[data-session-name="${sessionOne}"]:visible`).getByRole("button", { name: "查看" }).click();
+      await clickSessionCardButton(page, sessionOne, "查看");
       await page.getByText(sessionOne, { exact: false }).first().waitFor({ timeout: 15000 });
       await waitForWorkspaceInViewport(page);
 
@@ -445,11 +478,11 @@ async function main(): Promise<void> {
 
       await ensureSessionListVisible(page);
       await waitForSessionCard(page, sessionTwo);
-      await page.locator(`[data-session-name="${sessionTwo}"]:visible`).getByRole("button", { name: "查看" }).click();
+      await clickSessionCardButton(page, sessionTwo, "查看");
       await page.getByText(sessionTwo, { exact: false }).first().waitFor({ timeout: 15000 });
       await ensureSessionListVisible(page);
 
-      await page.locator(`[data-session-name="${sessionOne}"]:visible`).getByRole("button", { name: "关闭" }).click();
+      await clickSessionCardButton(page, sessionOne, "关闭");
       await page.getByText("已发送关闭会话请求。", { exact: false }).waitFor({ timeout: 10000 });
 
       await openConnectionSettings(page);

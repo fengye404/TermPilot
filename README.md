@@ -173,7 +173,41 @@ If you are iterating on the repository locally, avoid mixing your development ru
 Add this alias to `~/.zshrc`:
 
 ```bash
-alias tpdev='TERMPILOT_HOME=/tmp/termpilot-local node /Users/fengye/workspace/TermPilot/dist/cli.js'
+tpdev() {
+  local root="/Users/fengye/workspace/TermPilot"
+  local home="/tmp/termpilot-local"
+  local cmd="${1:-help}"
+
+  if [ "$#" -gt 0 ]; then
+    shift
+  fi
+
+  case "$cmd" in
+    help|-h|--help)
+      cat <<'EOF'
+tpdev build
+tpdev reset
+tpdev fresh
+tpdev relay ...
+tpdev agent ...
+tpdev claude code
+tpdev run -- <command>
+EOF
+      ;;
+    build)
+      (cd "$root" && pnpm build)
+      ;;
+    reset)
+      (cd "$root" && TERMPILOT_HOME="$home" pnpm local:reset)
+      ;;
+    fresh)
+      (cd "$root" && pnpm build && TERMPILOT_HOME="$home" pnpm local:reset)
+      ;;
+    *)
+      (cd "$root" && TERMPILOT_HOME="$home" node dist/cli.js "$cmd" "$@")
+      ;;
+  esac
+}
 ```
 
 Reload your shell:
@@ -185,10 +219,21 @@ source ~/.zshrc
 Then use this local-only flow:
 
 ```bash
+tpdev fresh
 tpdev relay run
 tpdev agent --relay ws://127.0.0.1:8787/ws --pair
 tpdev claude code
 ```
+
+`tpdev fresh` is the recommended starting point after code changes because `tpdev relay ...` and `tpdev agent ...` still execute the built `dist/cli.js`.
+
+If your local relay / agent state becomes messy during debugging, reset the entire local sandbox with:
+
+```bash
+tpdev reset
+```
+
+That command stops the local agent and relay tied to `/tmp/termpilot-local`, kills any tmux sessions recorded in that local state directory, and removes the directory itself.
 
 This setup gives you:
 

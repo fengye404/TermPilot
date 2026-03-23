@@ -171,7 +171,41 @@ termpilot attach --sid <sid>
 先把下面这段加到 `~/.zshrc`：
 
 ```bash
-alias tpdev='TERMPILOT_HOME=/tmp/termpilot-local node /Users/fengye/workspace/TermPilot/dist/cli.js'
+tpdev() {
+  local root="/Users/fengye/workspace/TermPilot"
+  local home="/tmp/termpilot-local"
+  local cmd="${1:-help}"
+
+  if [ "$#" -gt 0 ]; then
+    shift
+  fi
+
+  case "$cmd" in
+    help|-h|--help)
+      cat <<'EOF'
+tpdev build
+tpdev reset
+tpdev fresh
+tpdev relay ...
+tpdev agent ...
+tpdev claude code
+tpdev run -- <command>
+EOF
+      ;;
+    build)
+      (cd "$root" && pnpm build)
+      ;;
+    reset)
+      (cd "$root" && TERMPILOT_HOME="$home" pnpm local:reset)
+      ;;
+    fresh)
+      (cd "$root" && pnpm build && TERMPILOT_HOME="$home" pnpm local:reset)
+      ;;
+    *)
+      (cd "$root" && TERMPILOT_HOME="$home" node dist/cli.js "$cmd" "$@")
+      ;;
+  esac
+}
 ```
 
 然后重新加载 shell：
@@ -183,10 +217,21 @@ source ~/.zshrc
 之后就按这套本地专用链路跑：
 
 ```bash
+tpdev fresh
 tpdev relay run
 tpdev agent --relay ws://127.0.0.1:8787/ws --pair
 tpdev claude code
 ```
+
+如果你改了代码，推荐先跑 `tpdev fresh`，因为 `tpdev relay ...` 和 `tpdev agent ...` 走的仍然是已经构建好的 `dist/cli.js`。
+
+如果本地调试过程中 relay、agent、tmux 会话或者状态目录已经变乱了，可以直接一键重置：
+
+```bash
+tpdev reset
+```
+
+这条命令会停止 `/tmp/termpilot-local` 这套本地开发环境里的 agent 和 relay，清掉该状态目录里记录的 tmux 会话，并删除整个目录本身。
 
 这套方式的好处是：
 
