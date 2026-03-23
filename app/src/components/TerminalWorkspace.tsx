@@ -96,6 +96,15 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
     });
   };
 
+  const openDetailsAndScroll = (ref: RefObject<HTMLDetailsElement | null>) => {
+    if (ref.current && !ref.current.open) {
+      ref.current.open = true;
+    }
+    window.requestAnimationFrame(() => {
+      scrollSectionIntoView(ref);
+    });
+  };
+
   const renderShortcutButton = (shortcut: ShortcutKeyMeta) => {
     const toneClass = shortcut.tone === "primary"
       ? "tp-control-button-primary"
@@ -382,20 +391,10 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
           </div>
         </div>
         <div className="tp-mobile-terminal-toolbar mt-3">
-          {props.onBack ? (
-            <button
-              className={`${BUTTON_SECONDARY} min-h-10 px-3 py-2 text-xs`}
-              type="button"
-              aria-label="返回会话列表"
-              onClick={props.onBack}
-            >
-              返回
-            </button>
-          ) : null}
           <button
             className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
             type="button"
-            onClick={() => scrollSectionIntoView(toolsSectionRef)}
+            onClick={() => openDetailsAndScroll(toolsSectionRef)}
           >
             工具
           </button>
@@ -594,6 +593,16 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         {isMobileView && props.focusMode ? null : (
           <div className="tp-panel-header">
             <div>
+              {isMobileView && props.onBack ? (
+                <button
+                  className={`${BUTTON_SECONDARY} mb-3 min-h-9 px-3 py-2 text-[11px]`}
+                  type="button"
+                  aria-label="返回会话列表"
+                  onClick={props.onBack}
+                >
+                  返回
+                </button>
+              ) : null}
               <p className="mt-2 max-w-2xl text-sm text-[var(--tp-text-muted)]">
                 当前会话位于
                 <span className="mx-1 font-mono text-[13px] text-[var(--tp-text)]">{props.activeSession.cwd}</span>

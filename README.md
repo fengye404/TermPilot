@@ -188,6 +188,7 @@ tpdev() {
 tpdev build
 tpdev reset
 tpdev fresh
+tpdev refresh
 tpdev relay ...
 tpdev agent ...
 tpdev claude code
@@ -200,7 +201,7 @@ EOF
     reset)
       (cd "$root" && TERMPILOT_HOME="$home" pnpm local:reset)
       ;;
-    fresh)
+    fresh|refresh)
       (cd "$root" && pnpm build && TERMPILOT_HOME="$home" pnpm local:reset)
       ;;
     *)
@@ -226,6 +227,8 @@ tpdev claude code
 ```
 
 `tpdev fresh` is the recommended starting point after code changes because `tpdev relay ...` and `tpdev agent ...` still execute the built `dist/cli.js`.
+
+`tpdev refresh` is supported as an alias of `tpdev fresh`.
 
 If your local relay / agent state becomes messy during debugging, reset the entire local sandbox with:
 

@@ -705,6 +705,9 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         : 1;
 
     terminal.options.lineHeight = lineHeight;
+    const visibleBaseCols = horizontalOverflowRatio > 1
+      ? Math.max(1, Math.round(terminal.cols / horizontalOverflowRatio))
+      : terminal.cols;
 
     const applyMetrics = (fontSize: number, letterSpacing: number) => {
       if (terminal.options.fontSize === fontSize && terminal.options.letterSpacing === letterSpacing) {
@@ -717,7 +720,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
 
     applyMetrics(baseFontSize, baseLetterSpacing);
 
-    if (!requiredCols || terminal.cols >= requiredCols) {
+    if (!requiredCols || visibleBaseCols >= requiredCols) {
       adaptiveFontSizeRef.current = null;
       if (horizontalOverflowRatio !== 1) {
         setHorizontalOverflowRatio(1);
@@ -748,8 +751,8 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
       return;
     }
 
-    if (terminal.cols < requiredCols) {
-      const nextOverflowRatio = Math.min(maxOverflowRatio, Math.max(1.08, requiredCols / Math.max(terminal.cols, 1)));
+    if (visibleBaseCols < requiredCols) {
+      const nextOverflowRatio = Math.min(maxOverflowRatio, Math.max(1.08, requiredCols / Math.max(visibleBaseCols, 1)));
       if (Math.abs(nextOverflowRatio - horizontalOverflowRatio) > 0.02) {
         setHorizontalOverflowRatio(nextOverflowRatio);
       }

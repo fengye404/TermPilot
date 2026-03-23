@@ -186,6 +186,7 @@ tpdev() {
 tpdev build
 tpdev reset
 tpdev fresh
+tpdev refresh
 tpdev relay ...
 tpdev agent ...
 tpdev claude code
@@ -198,7 +199,7 @@ EOF
     reset)
       (cd "$root" && TERMPILOT_HOME="$home" pnpm local:reset)
       ;;
-    fresh)
+    fresh|refresh)
       (cd "$root" && pnpm build && TERMPILOT_HOME="$home" pnpm local:reset)
       ;;
     *)
@@ -224,6 +225,8 @@ tpdev claude code
 ```
 
 如果你改了代码，推荐先跑 `tpdev fresh`，因为 `tpdev relay ...` 和 `tpdev agent ...` 走的仍然是已经构建好的 `dist/cli.js`。
+
+`tpdev refresh` 也可以用，它是 `tpdev fresh` 的别名。
 
 如果本地调试过程中 relay、agent、tmux 会话或者状态目录已经变乱了，可以直接一键重置：
 

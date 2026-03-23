@@ -53,6 +53,7 @@ pnpm local:reset
 tpdev build
 tpdev reset
 tpdev fresh
+tpdev refresh
 tpdev relay run
 tpdev agent --relay ws://127.0.0.1:8787/ws --pair
 tpdev claude code

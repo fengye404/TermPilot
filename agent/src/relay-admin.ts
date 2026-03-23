@@ -1,6 +1,8 @@
 import type { AuditEventRecord, ClientGrantRecord, PairingCodeResponse } from "@termpilot/protocol";
 import { DEFAULT_AGENT_TOKEN, DEFAULT_DEVICE_ID } from "@termpilot/protocol";
-import { getOrCreateGeneratedDeviceId } from "./state-store.js";
+import { getOrCreateGeneratedDeviceId, loadAgentConfig, loadAgentRuntime } from "./state-store.js";
+
+const DEFAULT_RELAY_URL = "ws://127.0.0.1:8787/ws";
 
 function isLocalRelayHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || /^10\./.test(hostname) || /^192\.168\./.test(hostname) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
@@ -11,7 +13,26 @@ interface RelayBaseCandidate {
   relayUrl: string;
 }
 
-function getRelayBaseCandidates(relayUrl = process.env.TERMPILOT_RELAY_URL ?? "ws://127.0.0.1:8787/ws"): RelayBaseCandidate[] {
+function getConfiguredRelayUrl(): string {
+  const envRelayUrl = process.env.TERMPILOT_RELAY_URL?.trim();
+  if (envRelayUrl) {
+    return envRelayUrl;
+  }
+
+  const runtimeRelayUrl = loadAgentRuntime()?.relayUrl.trim();
+  if (runtimeRelayUrl) {
+    return runtimeRelayUrl;
+  }
+
+  const savedRelayUrl = loadAgentConfig()?.relayUrl.trim();
+  if (savedRelayUrl) {
+    return savedRelayUrl;
+  }
+
+  return DEFAULT_RELAY_URL;
+}
+
+function getRelayBaseCandidates(relayUrl = getConfiguredRelayUrl()): RelayBaseCandidate[] {
   let url: URL;
   try {
     url = new URL(relayUrl);

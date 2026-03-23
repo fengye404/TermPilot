@@ -325,6 +325,8 @@ export default function App() {
   const canControlDevice = connected && deviceOnline;
   const mobileSessionView = !isDesktop && Boolean(activeSession);
   const compactMobileChrome = mobileSessionView && !mobileTerminalFocusMode;
+  const compactOnboardingMobile = !isDesktop && !isPaired;
+  const onboardingDesktop = isDesktop && !isPaired;
   const parsedWsUrl = useMemo(() => tryParseUrl(wsUrl), [wsUrl]);
   const pinnedSidSet = useMemo(() => new Set(pinnedSids), [pinnedSids]);
   const relayHttpBaseUrl = useMemo(
@@ -1928,26 +1930,95 @@ export default function App() {
   }
 
   const mobileFocusShellClassName = mobileTerminalFocusMode ? "tp-mobile-focus-shell tp-mobile-focus-shell-active" : undefined;
+  const onboardingRelayTarget = parsedWsUrl?.toString() ?? "你的 relay 地址";
+  const onboardingStartCommand = `termpilot agent --relay ${onboardingRelayTarget}`;
+  const onboardingShellClass = !isPaired
+    ? `mx-auto w-full ${onboardingDesktop ? "max-w-[1120px]" : "max-w-[760px]"}`
+    : "";
+  const onboardingTitle = "TermPilot";
+  const onboardingCopy = compactOnboardingMobile
+    ? "把电脑上的终端安全带到手机上。先配对一次，后面就能直接回到会话。"
+    : "把电脑上的终端会话安全带到手机上。完成这一次配对后，后面通常会直接回到设备和会话。";
+  const onboardingVisual = (
+    <div className={`tp-onboarding-visual ${compactOnboardingMobile ? "tp-onboarding-visual-compact" : ""}`.trim()} aria-hidden="true">
+      <div className="tp-onboarding-visual-meta">
+        <span className="tp-onboarding-visual-kicker">Relay Link</span>
+        <span className="tp-onboarding-visual-status">E2EE Pairing</span>
+      </div>
+      <svg
+        className="tp-onboarding-visual-svg"
+        viewBox="0 0 640 248"
+        role="presentation"
+        focusable="false"
+      >
+        <rect x="20" y="20" width="600" height="208" rx="22" className="tp-onboarding-visual-frame" />
+        <rect x="52" y="52" width="536" height="148" rx="18" className="tp-onboarding-visual-terminal" />
+        <circle cx="82" cy="80" r="5" className="tp-onboarding-visual-window-dot" />
+        <circle cx="100" cy="80" r="5" className="tp-onboarding-visual-window-dot tp-onboarding-visual-window-dot-soft" />
+        <circle cx="118" cy="80" r="5" className="tp-onboarding-visual-window-dot tp-onboarding-visual-window-dot-soft" />
+        <text x="144" y="83" className="tp-onboarding-visual-brand">TERMPILOT</text>
+        <path d="M106 122L136 146L106 170" className="tp-onboarding-visual-glyph" />
+        <path d="M152 170H190" className="tp-onboarding-visual-cursor" />
+        <path d="M238 108H500" className="tp-onboarding-visual-line tp-onboarding-visual-line-strong" />
+        <path d="M238 136H552" className="tp-onboarding-visual-line" />
+        <path d="M238 164H468" className="tp-onboarding-visual-line tp-onboarding-visual-line-soft" />
+        <path d="M208 146H228" className="tp-onboarding-visual-pulse tp-onboarding-visual-pulse-a" />
+        <circle cx="232" cy="146" r="7" className="tp-onboarding-visual-node tp-onboarding-visual-node-a" />
+        <path d="M240 146H268" className="tp-onboarding-visual-pulse tp-onboarding-visual-pulse-b" />
+        <circle cx="276" cy="146" r="7" className="tp-onboarding-visual-node tp-onboarding-visual-node-b" />
+        <path d="M284 146H312" className="tp-onboarding-visual-pulse tp-onboarding-visual-pulse-c" />
+        <circle cx="320" cy="146" r="7" className="tp-onboarding-visual-node tp-onboarding-visual-node-c" />
+        <path d="M356 90H420" className="tp-onboarding-visual-spark" />
+        <path d="M474 174H540" className="tp-onboarding-visual-spark tp-onboarding-visual-spark-delayed" />
+        <rect x="404" y="84" width="40" height="40" rx="12" className="tp-onboarding-visual-icon-tile" />
+        <path d="M416 103C416 98.582 419.582 95 424 95C428.418 95 432 98.582 432 103" className="tp-onboarding-visual-icon-stroke" />
+        <path d="M414 106H420L425 101L431 106H434" className="tp-onboarding-visual-icon-stroke" />
+
+        <rect x="454" y="84" width="40" height="40" rx="12" className="tp-onboarding-visual-icon-tile" />
+        <path d="M474 95L482 99V106C482 111 478.5 115 474 117C469.5 115 466 111 466 106V99L474 95Z" className="tp-onboarding-visual-icon-stroke" />
+        <path d="M470 106L473 109L478 102" className="tp-onboarding-visual-icon-stroke tp-onboarding-visual-icon-stroke-accent" />
+
+        <rect x="504" y="84" width="40" height="40" rx="12" className="tp-onboarding-visual-icon-tile" />
+        <path d="M518 96H530C534 96 537 99 537 103V105C537 109 534 112 530 112H523L518 117V96Z" className="tp-onboarding-visual-icon-stroke" />
+        <circle cx="524" cy="104" r="2.2" className="tp-onboarding-visual-icon-fill" />
+        <circle cx="530" cy="104" r="2.2" className="tp-onboarding-visual-icon-fill" />
+
+        <rect x="410" y="144" width="126" height="26" rx="13" className="tp-onboarding-visual-side-chip" />
+        <circle cx="426" cy="157" r="4" className="tp-onboarding-visual-side-chip-dot" />
+        <rect x="438" y="153" width="26" height="8" rx="4" className="tp-onboarding-visual-side-bar" />
+        <rect x="470" y="153" width="32" height="8" rx="4" className="tp-onboarding-visual-side-bar tp-onboarding-visual-side-bar-soft" />
+        <rect x="508" y="153" width="16" height="8" rx="4" className="tp-onboarding-visual-side-bar tp-onboarding-visual-side-bar-faint" />
+
+        <circle cx="418" cy="104" r="3.5" className="tp-onboarding-visual-side-orbit tp-onboarding-visual-side-orbit-a" />
+        <circle cx="548" cy="108" r="3.5" className="tp-onboarding-visual-side-orbit tp-onboarding-visual-side-orbit-b" />
+        <circle cx="544" cy="162" r="3.5" className="tp-onboarding-visual-side-orbit tp-onboarding-visual-side-orbit-c" />
+      </svg>
+    </div>
+  );
 
   return (
     <main className={`mx-auto flex min-h-screen w-full max-w-[1580px] flex-col px-4 py-4 text-[var(--tp-text)] sm:px-5 sm:py-5 lg:px-6 ${compactMobileChrome ? "gap-2.5 px-3 py-3" : "gap-4"}`}>
-      <header className={`tp-card tp-app-header ${compactMobileChrome ? "px-3 py-2.5" : "px-4 py-4 sm:px-5"}`}>
-        <div className={`flex items-start justify-between ${compactMobileChrome ? "gap-2.5" : "flex-wrap gap-4"}`}>
+      <header
+        className={`tp-card tp-app-header ${(compactMobileChrome || compactOnboardingMobile) ? "px-3 py-2.5" : "px-4 py-4 sm:px-5"} ${onboardingShellClass}`.trim()}
+      >
+        <div className={`flex items-start justify-between ${(compactMobileChrome || compactOnboardingMobile) ? "gap-2.5" : "flex-wrap gap-4"}`}>
           <div>
-            <p className="tp-app-header-kicker">TermPilot</p>
-            <h1 className={`font-semibold tracking-[-0.04em] text-[var(--tp-text)] ${compactMobileChrome ? "mt-0.5 text-[18px]" : "mt-2 text-[24px]"}`}>
+            <p className="tp-app-header-kicker">
+              {isPaired ? "TermPilot" : "Secure Terminal Companion"}
+            </p>
+            <h1 className={`font-semibold tracking-[-0.04em] text-[var(--tp-text)] ${(compactMobileChrome || compactOnboardingMobile) ? "mt-1 text-[18px]" : "mt-2 text-[24px]"}`}>
               {compactMobileChrome
                 ? (activeSession?.name ?? "当前会话")
                 : isPaired
                   ? (activeSession?.name ?? "Workspace")
-                  : "先绑定你的电脑"}
+                  : onboardingTitle}
             </h1>
-            <p className={`max-w-2xl text-[var(--tp-text-muted)] ${compactMobileChrome ? "mt-1 text-[11px] leading-5" : "mt-2 text-sm"}`}>
+            <p className={`max-w-2xl text-[var(--tp-text-muted)] ${(compactMobileChrome || compactOnboardingMobile) ? "mt-1 text-[11px] leading-5" : "mt-2 text-sm"}`}>
               {compactMobileChrome
                 ? "终端优先，附加信息默认缩小。"
                 : isPaired
                   ? "终端优先，控制和会话管理分布在两侧。"
-                  : "在电脑上执行 termpilot agent --relay 你的 relay 地址。命令会直接启动后台 agent 并打印一次性配对码。"}
+                  : onboardingCopy}
             </p>
           </div>
           {isPaired ? (
@@ -1985,65 +2056,59 @@ export default function App() {
       ) : null}
 
       {!isPaired ? (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_420px]">
-          <div className="tp-card flex flex-col justify-between px-5 py-5 sm:px-6">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--tp-accent-strong)]">Onboarding</p>
-              <h2 className="mt-3 max-w-xl text-[34px] font-semibold tracking-[-0.04em] text-[var(--tp-text)]">
-                先把你的电脑接入，再在手机上继续同一条终端会话。
-              </h2>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--tp-text-muted)]">
-                这不是远程桌面，也不是新开一条 shell。TermPilot 的默认路径是让电脑和手机挂在同一条受管理会话上。
-              </p>
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="tp-card-muted px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--tp-text-soft)]">01</p>
-                <p className="mt-2 text-sm font-medium text-[var(--tp-text)]">启动 relay</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">在服务器或一台可访问机器上执行 `termpilot relay`。</p>
-              </div>
-              <div className="tp-card-muted px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--tp-text-soft)]">02</p>
-                <p className="mt-2 text-sm font-medium text-[var(--tp-text)]">启动 agent</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">在电脑上执行 `termpilot agent --relay 你的 relay 地址`。</p>
-              </div>
-              <div className="tp-card-muted px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--tp-text-soft)]">03</p>
-                <p className="mt-2 text-sm font-medium text-[var(--tp-text)]">输入配对码</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">把终端打印出的一次性配对码填到右侧面板。</p>
-              </div>
-            </div>
-          </div>
-
+        <section className={`${onboardingShellClass} flex flex-col gap-4`.trim()}>
           <div className="flex flex-col gap-4">
-            <Panel title="输入配对码">
-              <p className="text-sm text-[var(--tp-text-muted)]">
-                电脑上执行 `termpilot agent --relay 你的 relay 地址`，然后把命令输出的配对码填到这里。
-              </p>
-              <div className="mt-4 flex gap-3">
-                <input
-                  className="tp-input flex-1 text-base uppercase md:text-sm"
-                  value={pairingCode}
-                  onChange={(event) => handlePairingCodeChange(event.target.value)}
-                  placeholder="ABC-234"
-                />
-                <button
-                  className="tp-button tp-button-primary px-5 py-3 text-sm"
-                  type="button"
-                  disabled={pairingPending || !pairingKeyReady || parsedWsUrl === null}
-                  onClick={() => {
-                    void handleRedeemPairingCode();
-                  }}
-                >
-                  {pairingPending ? "配对中" : pairingKeyReady ? "配对" : "初始化中"}
-                </button>
+            <Panel title="输入配对码" className="tp-onboarding-primary">
+              <div className={onboardingDesktop ? "tp-onboarding-layout" : "space-y-4"}>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--tp-accent-strong)]">Pairing</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--tp-text-muted)]">在电脑上运行命令取码，然后在这里输入。</p>
+                  </div>
+
+                  {compactOnboardingMobile ? onboardingVisual : null}
+
+                  <div className="tp-onboarding-command">
+                    <p className="tp-onboarding-command-label">电脑上执行</p>
+                    <code className="tp-onboarding-command-code">{onboardingStartCommand}</code>
+                  </div>
+
+                  <div className="flex gap-3 max-sm:flex-col">
+                    <input
+                      className="tp-input flex-1 text-base uppercase md:text-sm"
+                      value={pairingCode}
+                      onChange={(event) => handlePairingCodeChange(event.target.value)}
+                      placeholder="ABC-234"
+                    />
+                    <button
+                      className="tp-button tp-button-primary min-w-[108px] px-5 py-3 text-sm"
+                      type="button"
+                      disabled={pairingPending || !pairingKeyReady || parsedWsUrl === null}
+                      onClick={() => {
+                        void handleRedeemPairingCode();
+                      }}
+                    >
+                      {pairingPending ? "配对中" : pairingKeyReady ? "配对" : "初始化中"}
+                    </button>
+                  </div>
+
+                  {pairingMessage || !pairingKeyReady ? (
+                    <p className="text-sm text-[var(--tp-text-muted)]">
+                      {pairingMessage || "正在初始化本地配对密钥…"}
+                    </p>
+                  ) : (
+                    <p className="text-xs leading-5 text-[var(--tp-text-soft)]">
+                      配对成功后会保存当前绑定。下次打开通常会直接回到设备和会话列表。
+                    </p>
+                  )}
+                </div>
+
+                {onboardingDesktop ? (
+                  <div className="tp-onboarding-side">
+                    {onboardingVisual}
+                  </div>
+                ) : null}
               </div>
-              {pairingMessage || !pairingKeyReady ? (
-                <p className="mt-3 text-sm text-[var(--tp-text-muted)]">
-                  {pairingMessage || "正在初始化本地配对密钥…"}
-                </p>
-              ) : null}
             </Panel>
 
             <details className="tp-card px-4 py-4 sm:px-5">
