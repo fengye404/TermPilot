@@ -636,7 +636,20 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           resizeDisposable.dispose();
           dataDisposable.dispose();
           keyDisposable.dispose();
-          terminal.dispose();
+          const disposeTerminal = () => {
+            try {
+              terminal.dispose();
+            } catch {
+              // xterm can still have a viewport refresh queued while React is tearing the node down.
+            }
+          };
+          if (typeof window !== "undefined") {
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(disposeTerminal);
+            });
+          } else {
+            disposeTerminal();
+          }
           terminalRef.current = null;
           fitAddonRef.current = null;
           fitTerminalRef.current = null;
