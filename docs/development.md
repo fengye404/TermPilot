@@ -193,7 +193,7 @@ pnpm verify:browser
 当前版本：
 
 ```bash
-0.6.9
+0.6.10
 ```
 
 说明：
