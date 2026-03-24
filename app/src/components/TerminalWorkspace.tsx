@@ -18,6 +18,7 @@ interface TerminalWorkspaceProps {
   activeSid: string | null;
   canControl: boolean;
   focusMode?: boolean;
+  focusRotateTerminal?: boolean;
   snapshotPending?: boolean;
   snapshotLag?: number;
   command: string;
@@ -88,7 +89,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const focusToolsSheetId = props.activeSid ? `tp-focus-tools-${props.activeSid}` : "tp-focus-tools";
   const mobileCompactTerminalKey = props.activeSession ? `${props.activeSession.sid}:mobile-compact` : "mobile-compact";
   const mobileFocusTerminalKey = props.activeSession
-    ? `${props.activeSession.sid}:mobile-focus`
+    ? `${props.activeSession.sid}:mobile-focus:${props.focusRotateTerminal ? "rotated" : "inline"}`
     : "mobile-focus";
 
   const scrollSectionIntoView = (ref: RefObject<HTMLElement | null>) => {
@@ -255,14 +256,14 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const mobileFocusContent = (
     <div className="tp-mobile-focus-terminal">
       <div
-        className="tp-mobile-terminal-surface tp-mobile-focus-stage"
+        className={`tp-mobile-terminal-surface tp-mobile-focus-stage ${props.focusRotateTerminal ? "tp-mobile-focus-stage-rotated-shell" : ""}`.trim()}
         data-testid="mobile-terminal-surface"
         onPointerDown={handleMobileTerminalPointerDown}
         onPointerMove={handleMobileTerminalPointerMove}
         onPointerUp={handleMobileTerminalPointerEnd}
         onPointerCancel={handleMobileTerminalPointerEnd}
       >
-        <div className="h-full">
+        <div className={props.focusRotateTerminal ? "tp-mobile-focus-rotated-viewport" : "h-full"}>
           <div className="tp-terminal-frame tp-mobile-focus-frame h-full min-h-0 flex-1">
             <XtermTerminal
               key={mobileFocusTerminalKey}

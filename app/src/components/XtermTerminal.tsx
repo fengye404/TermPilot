@@ -139,19 +139,19 @@ function resolveTypography(fontPreset: XtermTerminalProps["fontPreset"]): Pick<I
     case "compact":
       return {
         fontSize: 9,
-        lineHeight: 1.12,
-        letterSpacing: -0.34,
+        lineHeight: 1.0,
+        letterSpacing: -0.45,
       };
     case "focus":
       return {
         fontSize: 9.2,
-        lineHeight: 1.1,
-        letterSpacing: -0.34,
+        lineHeight: 1.0,
+        letterSpacing: -0.45,
       };
     default:
       return {
         fontSize: 12,
-        lineHeight: 1.22,
+        lineHeight: 1.1,
         letterSpacing: -0.2,
       };
   }
@@ -707,9 +707,9 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
     const baseLetterSpacing = typography.letterSpacing ?? -0.2;
     const requiredCols = estimateRequiredCols(deferredSnapshot);
     const minFontSize = props.fontPreset === "focus"
-      ? 5.2
+      ? 4
       : props.fontPreset === "compact"
-        ? 5
+        ? 4
         : 8.5;
     const maxOverflowRatio = props.fontPreset === "focus"
       ? 12

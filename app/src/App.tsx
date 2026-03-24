@@ -2179,6 +2179,7 @@ export default function App() {
                   activeSid={activeSid}
                   canControl={canControlDevice}
                   focusMode={focusMode.active}
+                  focusRotateTerminal={focusMode.shouldRotateTerminal}
                   snapshotPending={activeSnapshotPending}
                   snapshotLag={activeSnapshotLag}
                   command={command}
@@ -2213,6 +2214,7 @@ export default function App() {
                     activeSid={activeSid}
                     canControl={canControlDevice}
                     focusMode={focusMode.active}
+                    focusRotateTerminal={focusMode.shouldRotateTerminal}
                     snapshotPending={activeSnapshotPending}
                     snapshotLag={activeSnapshotLag}
                     command={command}

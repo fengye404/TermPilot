@@ -13,20 +13,59 @@ interface UseFocusModeOptions {
 interface FocusModeState {
   active: boolean;
   shellClassName: string | undefined;
+  shouldRotateTerminal: boolean;
   toggle: () => Promise<void>;
   reset: () => void;
 }
 
 function getScreenOrientation(): LockableScreenOrientation | undefined {
+  if (typeof screen === "undefined") {
+    return undefined;
+  }
   return ("orientation" in screen ? screen.orientation : undefined) as LockableScreenOrientation | undefined;
+}
+
+function checkIsPortrait(): boolean {
+  if (typeof window === "undefined") {
+    return true;
+  }
+  const orientation = getScreenOrientation();
+  if (orientation?.type) {
+    return orientation.type.startsWith("portrait");
+  }
+  return window.innerHeight > window.innerWidth;
 }
 
 export function useFocusMode(options: UseFocusModeOptions): FocusModeState {
   const { isDesktop, onNotice } = options;
   const [active, setActive] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(checkIsPortrait);
   const intentRef = useRef(false);
   const onNoticeRef = useRef(onNotice);
   onNoticeRef.current = onNotice;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const updateOrientation = () => {
+      setIsPortrait(checkIsPortrait());
+    };
+
+    const onOrientationChange = () => {
+      window.requestAnimationFrame(updateOrientation);
+    };
+
+    window.addEventListener("orientationchange", onOrientationChange);
+    const orientation = getScreenOrientation();
+    orientation?.addEventListener?.("change", onOrientationChange);
+
+    return () => {
+      window.removeEventListener("orientationchange", onOrientationChange);
+      orientation?.removeEventListener?.("change", onOrientationChange);
+    };
+  }, []);
 
   const toggle = useCallback(async () => {
     const next = !intentRef.current;
@@ -134,6 +173,7 @@ export function useFocusMode(options: UseFocusModeOptions): FocusModeState {
   }, []);
 
   const shellClassName = active ? "tp-mobile-focus-shell tp-mobile-focus-shell-active" : undefined;
+  const shouldRotateTerminal = active && !isDesktop && isPortrait;
 
-  return { active, shellClassName, toggle, reset };
+  return { active, shellClassName, shouldRotateTerminal, toggle, reset };
 }

@@ -728,6 +728,34 @@ summary:focus-visible {
   touch-action: pan-x pan-y;
 }
 
+.tp-mobile-focus-stage-rotated-shell {
+  overflow: visible;
+  padding: 0;
+}
+
+.tp-mobile-focus-rotated-viewport {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 55;
+  display: flex;
+  width: 100dvh;
+  height: 100dvw;
+  transform: translate(-50%, -50%) rotate(90deg);
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.tp-mobile-focus-stage-rotated-shell .tp-mobile-focus-overlay {
+  position: fixed;
+  z-index: 58;
+}
+
+.tp-mobile-focus-stage-rotated-shell .tp-mobile-focus-tools-sheet {
+  position: fixed;
+  z-index: 58;
+}
+
 .tp-mobile-focus-stage .tp-terminal-frame {
   height: 100%;
 }
