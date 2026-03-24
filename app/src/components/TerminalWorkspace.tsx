@@ -1,4 +1,4 @@
-import type { FormEvent, PointerEvent as ReactPointerEvent, RefObject, SyntheticEvent } from "react";
+import type { FormEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { InputKey, SessionRecord } from "@termpilot/protocol";
 
@@ -18,7 +18,6 @@ interface TerminalWorkspaceProps {
   activeSid: string | null;
   canControl: boolean;
   focusMode?: boolean;
-  focusRotateTerminal?: boolean;
   snapshotPending?: boolean;
   snapshotLag?: number;
   command: string;
@@ -89,7 +88,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const focusToolsSheetId = props.activeSid ? `tp-focus-tools-${props.activeSid}` : "tp-focus-tools";
   const mobileCompactTerminalKey = props.activeSession ? `${props.activeSession.sid}:mobile-compact` : "mobile-compact";
   const mobileFocusTerminalKey = props.activeSession
-    ? `${props.activeSession.sid}:mobile-focus:${props.focusRotateTerminal ? "rotated" : "inline"}`
+    ? `${props.activeSession.sid}:mobile-focus`
     : "mobile-focus";
 
   const scrollSectionIntoView = (ref: RefObject<HTMLElement | null>) => {
@@ -139,11 +138,6 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
       return;
     }
     terminalRef.current?.focus();
-  };
-
-  const primeMobileKeyboardFocus = (event: SyntheticEvent<HTMLElement>) => {
-    event.preventDefault();
-    focusMobileKeyboard();
   };
 
   const clearTouchGestureTimer = () => {
@@ -261,14 +255,14 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
   const mobileFocusContent = (
     <div className="tp-mobile-focus-terminal">
       <div
-        className={`tp-mobile-terminal-surface tp-mobile-focus-stage ${props.focusRotateTerminal ? "tp-mobile-focus-stage-rotated-shell" : ""}`.trim()}
+        className="tp-mobile-terminal-surface tp-mobile-focus-stage"
         data-testid="mobile-terminal-surface"
         onPointerDown={handleMobileTerminalPointerDown}
         onPointerMove={handleMobileTerminalPointerMove}
         onPointerUp={handleMobileTerminalPointerEnd}
         onPointerCancel={handleMobileTerminalPointerEnd}
       >
-        <div className={props.focusRotateTerminal ? "tp-mobile-focus-rotated-viewport" : "h-full"}>
+        <div className="h-full">
           <div className="tp-terminal-frame tp-mobile-focus-frame h-full min-h-0 flex-1">
             <XtermTerminal
               key={mobileFocusTerminalKey}

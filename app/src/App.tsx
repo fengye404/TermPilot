@@ -16,6 +16,7 @@ import { SessionListPanel } from "./components/SessionListPanel";
 import { NoticeBanner, Panel } from "./components/chrome";
 import { prefetchXtermRuntime } from "./components/XtermTerminal";
 import { TerminalWorkspace } from "./components/TerminalWorkspace";
+import { useFocusMode } from "./hooks/useFocusMode";
 
 declare const __TERMPILOT_APP_VERSION__: string;
 declare const __TERMPILOT_APP_BUILD_ID__: string;
@@ -314,8 +315,7 @@ export default function App() {
   const [createShell, setCreateShell] = useState("");
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
   const [isTouchDevice, setIsTouchDevice] = useState(detectTouchDevice);
-  const [isPortraitViewport, setIsPortraitViewport] = useState(() => typeof window !== "undefined" && window.innerHeight > window.innerWidth);
-  const [mobileTerminalFocusMode, setMobileTerminalFocusMode] = useState(false);
+  const focusMode = useFocusMode({ isDesktop, onNotice: showNotice });
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.sid === activeSid) ?? null,
@@ -356,7 +356,7 @@ export default function App() {
   const connected = connectionPhase === "connected";
   const canControlDevice = connected && deviceOnline;
   const mobileSessionView = !isDesktop && Boolean(activeSession);
-  const compactMobileChrome = mobileSessionView && !mobileTerminalFocusMode;
+  const compactMobileChrome = mobileSessionView && !focusMode.active;
   const compactOnboardingMobile = !isDesktop && !isPaired;
   const onboardingDesktop = isDesktop && !isPaired;
   const parsedWsUrl = useMemo(() => tryParseUrl(wsUrl), [wsUrl]);
@@ -429,10 +429,8 @@ export default function App() {
     }
     const handleResize = () => {
       const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
       setIsDesktop(viewportWidth >= 1024);
       setIsTouchDevice(detectTouchDevice());
-      setIsPortraitViewport(viewportHeight > viewportWidth);
     };
 
     const handleOrientationChange = () => {
@@ -627,57 +625,9 @@ export default function App() {
     if (activeSid) {
       return;
     }
-    setMobileTerminalFocusMode(false);
+    focusMode.reset();
   }, [activeSid]);
 
-  useEffect(() => {
-    if (mobileTerminalFocusMode || typeof document === "undefined") {
-      return;
-    }
-    if (document.fullscreenElement && document.exitFullscreen) {
-      void document.exitFullscreen().catch(() => undefined);
-    }
-    const orientation = ("orientation" in screen ? screen.orientation : undefined) as LockableScreenOrientation | undefined;
-    if (orientation?.unlock) {
-      try {
-        orientation.unlock();
-      } catch {
-        // ignore unsupported unlock
-      }
-    }
-  }, [mobileTerminalFocusMode]);
-
-  useEffect(() => {
-    if (typeof document === "undefined" || isDesktop) {
-      return;
-    }
-
-    const body = document.body;
-    const previousOverflow = body.style.overflow;
-    const previousOverscroll = body.style.overscrollBehavior;
-
-    if (mobileTerminalFocusMode) {
-      body.style.overflow = "hidden";
-      body.style.overscrollBehavior = "none";
-    }
-
-    return () => {
-      body.style.overflow = previousOverflow;
-      body.style.overscrollBehavior = previousOverscroll;
-    };
-  }, [isDesktop, mobileTerminalFocusMode]);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        setMobileTerminalFocusMode(false);
-      }
-    };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -1515,7 +1465,7 @@ export default function App() {
               if (!isDesktop) {
                 suppressMobileAutoSelectRef.current = true;
                 activeSelectionModeRef.current = "manual";
-                setMobileTerminalFocusMode(false);
+                focusMode.reset();
               } else {
                 suppressMobileAutoSelectRef.current = false;
                 activeSelectionModeRef.current = "auto";
@@ -1633,7 +1583,7 @@ export default function App() {
         suppressMobileAutoSelectRef.current = false;
         activeSelectionModeRef.current = "auto";
       }
-      setMobileTerminalFocusMode(false);
+      focusMode.reset();
       setDeviceId(payload.deviceId);
       deviceIdRef.current = payload.deviceId;
       requestedDeviceIdRef.current = payload.deviceId;
@@ -1966,55 +1916,6 @@ export default function App() {
     });
   }
 
-  async function toggleMobileTerminalFocusMode(): Promise<void> {
-    const next = !mobileTerminalFocusMode;
-    setMobileTerminalFocusMode(next);
-
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    if (next) {
-      const target = document.documentElement;
-      if (target.requestFullscreen) {
-        try {
-          await target.requestFullscreen();
-        } catch {
-          // ignore unsupported fullscreen requests
-        }
-      }
-      const orientation = ("orientation" in screen ? screen.orientation : undefined) as LockableScreenOrientation | undefined;
-      if (orientation?.lock) {
-        try {
-          await orientation.lock("landscape");
-        } catch {
-          showNotice("info", "已进入终端聚焦模式。若浏览器不支持自动横屏，请手动旋转手机。");
-        }
-      } else {
-        showNotice("info", "已进入终端聚焦模式。若想获得更宽终端，请手动旋转手机。");
-      }
-      return;
-    }
-
-    if (document.fullscreenElement && document.exitFullscreen) {
-      try {
-        await document.exitFullscreen();
-      } catch {
-        // ignore exit errors
-      }
-    }
-    const orientation = ("orientation" in screen ? screen.orientation : undefined) as LockableScreenOrientation | undefined;
-    if (orientation?.unlock) {
-      try {
-        orientation.unlock();
-      } catch {
-        // ignore unsupported unlock
-      }
-    }
-  }
-
-  const mobileFocusShellClassName = mobileTerminalFocusMode ? "tp-mobile-focus-shell tp-mobile-focus-shell-active" : undefined;
-  const shouldRotateMobileFocusTerminal = !isDesktop && mobileTerminalFocusMode && isPortraitViewport;
   const onboardingRelayTarget = parsedWsUrl?.toString() ?? "你的 relay 地址";
   const onboardingStartCommand = `termpilot agent --relay ${onboardingRelayTarget}`;
   const onboardingShellClass = !isPaired
@@ -2126,7 +2027,7 @@ export default function App() {
         ) : null}
       </header>
 
-      {notice && !mobileTerminalFocusMode ? (
+      {notice && !focusMode.active ? (
         <NoticeBanner
           kind={notice.kind}
           text={notice.text}
@@ -2277,8 +2178,7 @@ export default function App() {
                   activeSession={activeSession}
                   activeSid={activeSid}
                   canControl={canControlDevice}
-                  focusMode={mobileTerminalFocusMode}
-                  focusRotateTerminal={shouldRotateMobileFocusTerminal}
+                  focusMode={focusMode.active}
                   snapshotPending={activeSnapshotPending}
                   snapshotLag={activeSnapshotLag}
                   command={command}
@@ -2287,7 +2187,7 @@ export default function App() {
                   snapshot={activeSnapshot}
                   cursor={activeCursor}
                   onToggleFocusMode={isTouchDevice ? () => {
-                    void toggleMobileTerminalFocusMode();
+                    void focusMode.toggle();
                   } : undefined}
                   onCommandChange={setCommand}
                   onSendCommandNow={sendCommandNow}
@@ -2306,14 +2206,13 @@ export default function App() {
                 <div
                   ref={workspaceRef}
                   data-testid="terminal-workspace"
-                  className={mobileFocusShellClassName}
+                  className={focusMode.shellClassName}
                 >
                   <TerminalWorkspace
                     activeSession={activeSession}
                     activeSid={activeSid}
                     canControl={canControlDevice}
-                    focusMode={mobileTerminalFocusMode}
-                    focusRotateTerminal={shouldRotateMobileFocusTerminal}
+                    focusMode={focusMode.active}
                     snapshotPending={activeSnapshotPending}
                     snapshotLag={activeSnapshotLag}
                     command={command}
@@ -2323,12 +2222,12 @@ export default function App() {
                     cursor={activeCursor}
                     onBack={() => {
                       suppressMobileAutoSelectRef.current = true;
-                      setMobileTerminalFocusMode(false);
+                      focusMode.reset();
                       activeSelectionModeRef.current = "manual";
                       setActiveSid(null);
                     }}
                     onToggleFocusMode={() => {
-                      void toggleMobileTerminalFocusMode();
+                      void focusMode.toggle();
                     }}
                     onCommandChange={setCommand}
                     onSendCommandNow={sendCommandNow}
