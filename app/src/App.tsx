@@ -274,6 +274,7 @@ export default function App() {
   const suppressMobileAutoSelectRef = useRef(false);
   const requestedDeviceIdRef = useRef(DEFAULT_DEVICE_ID);
   const previousDeviceOnlineRef = useRef(false);
+  const relayStateReceivedRef = useRef(false);
   const previousSessionStatusRef = useRef<Record<string, SessionRecord["status"]>>({});
   const previousOrphanedSessionsRef = useRef<Record<string, boolean>>({});
   const sessionExitReasonRef = useRef<Record<string, string>>({});
@@ -724,7 +725,6 @@ export default function App() {
 
   useEffect(() => {
     if (!connected) {
-      suppressMobileAutoSelectRef.current = false;
       return;
     }
     if (sessions.length === 0) {
@@ -1388,6 +1388,7 @@ export default function App() {
     stopReconnectLoop();
     socketRef.current?.close();
     socketRef.current = null;
+    relayStateReceivedRef.current = false;
     setConnectionPhase("idle");
     setDeviceOnline(false);
   }
@@ -1450,6 +1451,7 @@ export default function App() {
     }
 
     socketRef.current?.close();
+    relayStateReceivedRef.current = false;
     setConnectionPhase(resetManual ? "connecting" : "reconnecting");
     setPairingMessage("");
 
@@ -1534,6 +1536,7 @@ export default function App() {
           }
           return;
         case "relay.state":
+          relayStateReceivedRef.current = true;
           setDeviceOnline(message.payload.agents.some((agent) => agent.deviceId === deviceIdRef.current && agent.online));
           return;
         case "secure.agent":
@@ -2107,7 +2110,7 @@ export default function App() {
             <div className={`flex ${compactMobileChrome ? "max-w-[52vw] flex-wrap justify-end gap-1" : "tp-app-header-chips flex-wrap gap-2"}`}>
               {compactMobileChrome ? null : <span className="tp-chip">{deviceId}</span>}
               {compactMobileChrome ? null : <span className="tp-chip">App {APP_VERSION}</span>}
-              <span className={`tp-chip ${deviceOnline ? "tp-chip-active" : "tp-chip-danger"}`}>{deviceOnline ? "设备在线" : "设备离线"}</span>
+              <span className={`tp-chip ${(!connected || !relayStateReceivedRef.current) ? "" : deviceOnline ? "tp-chip-active" : "tp-chip-danger"}`}>{(!connected || !relayStateReceivedRef.current) ? "设备检测中" : deviceOnline ? "设备在线" : "设备离线"}</span>
               <span className={`tp-chip ${connected ? "tp-chip-active" : ""}`}>
                 {connected ? "已连上 relay" : connectionPhase === "reconnecting" ? "正在重连 relay" : "relay 未连接"}
               </span>
