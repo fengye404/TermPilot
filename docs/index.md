@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: "TermPilot"
-  text: "让同一条终端会话持续可达"
-  tagline: "面向长期任务的本地优先终端会话连续性工具。电脑继续运行原会话，手机继续接入同一条上下文。"
+  text: "把电脑上的终端会话继续带到手机上"
+  tagline: "它不是远控桌面，也不是在手机上重开一个 shell。TermPilot 做的是另一件事：电脑上那条已经跑起来的会话，离开工位之后还能继续接上。"
   actions:
     - theme: brand
       text: 快速开始
@@ -20,27 +20,27 @@ hero:
       link: /cli-reference
 
 features:
-  - title: 同一条受管理会话
-    details: 桌面和移动端接入的是同一条会话，不需要重新开一个 shell。
-  - title: 本地优先的数据归属
-    details: 会话标题、cwd、状态详情和终端输出保留在 agent 所在电脑，relay 只保留最小元数据。
-  - title: relay 与 agent 分层
-    details: relay 负责入口、配对、授权和加密路由；agent 负责本地 tmux 会话和输出同步。
-  - title: 面向长期任务
-    details: 适合 Claude Code、部署、迁移、脚本执行等需要离开桌面后继续查看和轻控制的任务。
-  - title: 移动端终端工作区
-    details: 手机端提供终端键盘、快速输入、快捷控制和专注模式，适合轻量查看与补命令。
+  - title: 接的是原会话
+    details: 桌面和手机看到的是同一条受管理会话，不是后来又开的第二个终端。
+  - title: 数据留在电脑侧
+    details: 会话标题、cwd、状态和终端输出都保留在 agent 所在电脑，relay 只管入口、授权和路由。
+  - title: 适合长任务
+    details: Claude Code、部署、迁移、批处理这类会跑很久的任务，才是它真正想解决的场景。
+  - title: 手机端只做必要的事
+    details: 查看输出、补一条命令、发快捷键、切专注模式，这些都行；重度终端编辑不是它的目标。
+  - title: 部署路径短
+    details: 一个 relay，一个 agent，一部手机浏览器，主路径收敛得很短，适合个人长期使用。
 ---
 
-## 产品定位
+## 它解决的是什么问题
 
-TermPilot 面向的是一个很明确的使用场景：
+TermPilot 对准的是一个很具体的场景：
 
-**一条终端任务已经在你的电脑上运行，而你希望在离开桌面之后，继续从手机接入这条原会话。**
+**一条终端任务已经在你的电脑上跑起来了，你离开桌面之后，还想继续看这条会话，并在必要时补一点轻量操作。**
 
-它围绕同一条长期任务在多端之间持续可达来设计。
+很多远程方案解决的是“怎么再进一台机器”。TermPilot 解决的是另一件事：怎么把原来那条上下文继续接住。
 
-## 当前产品形态
+## 它现在是什么
 
 <div class="tp-doc-grid">
   <div class="tp-doc-panel">
@@ -51,12 +51,12 @@ TermPilot 面向的是一个很明确的使用场景：
   <div class="tp-doc-panel">
     <p class="tp-doc-kicker">会话</p>
     <h3>tmux 作为当前后端</h3>
-    <p>agent 管理本地 <code>tmux</code> 会话，当前支持普通 shell 会话和托管命令会话。</p>
+    <p>agent 管理本地 <code>tmux</code> 会话，当前覆盖普通 shell 会话和托管命令两条主路径。</p>
   </div>
   <div class="tp-doc-panel">
     <p class="tp-doc-kicker">同步</p>
     <h3>端侧输出回放</h3>
-    <p>输出同步由 agent 提供，页面回到前台后会主动补齐缺失输出，保持当前会话尽快追平。</p>
+    <p>输出同步由 agent 提供，页面回到前台后会补齐缺失输出，尽快把会话追平。</p>
   </div>
   <div class="tp-doc-panel">
     <p class="tp-doc-kicker">安全</p>
@@ -66,59 +66,59 @@ TermPilot 面向的是一个很明确的使用场景：
   <div class="tp-doc-panel">
     <p class="tp-doc-kicker">部署</p>
     <h3>单机长期运行</h3>
-    <p>relay 默认使用 SQLite 持久化最小元数据，适合一条命令启动和单机长期运行。</p>
+    <p>relay 默认用 SQLite 持久化最小元数据，适合个人部署和一条命令长期跑着。</p>
   </div>
 </div>
 
-## 典型路径
+## 主路径
 
 1. 在服务器或可访问机器上启动 `relay`
 2. 在你的电脑上启动 `agent`
 3. 手机浏览器输入一次性配对码
 4. 用 `termpilot run -- <command>` 或 `termpilot create` 启动受管理会话
-5. 在桌面和手机之间继续接入同一条上下文
+5. 桌面和手机继续接入同一条会话
 
 ## 文档地图
 
 <div class="tp-doc-links">
   <a class="tp-doc-link" href="/why-termpilot">
     <span class="tp-doc-link-title">产品概览</span>
-    <span class="tp-doc-link-body">理解它解决什么问题、适合什么任务，以及当前的产品边界。</span>
+    <span class="tp-doc-link-body">先看清楚它和 SSH、远控、手机终端到底有什么边界差异。</span>
   </a>
   <a class="tp-doc-link" href="/getting-started">
     <span class="tp-doc-link-title">快速开始</span>
-    <span class="tp-doc-link-body">用当前主路径完成 relay、agent、配对和第一条受管理会话。</span>
+    <span class="tp-doc-link-body">按最短路径跑通 relay、agent、配对和第一条共享会话。</span>
   </a>
   <a class="tp-doc-link" href="/deployment-guide">
     <span class="tp-doc-link-title">部署指南</span>
-    <span class="tp-doc-link-body">选择 npm CLI 或 Docker 部署 relay，并配置公网入口、SQLite 和反向代理。</span>
+    <span class="tp-doc-link-body">只看 relay 怎么长期部署、怎么挂公网、怎么验收。</span>
   </a>
   <a class="tp-doc-link" href="/agent-operations">
     <span class="tp-doc-link-title">Agent 运维</span>
-    <span class="tp-doc-link-body">管理 agent、配对、授权、本地状态目录、日志和会话治理。</span>
+    <span class="tp-doc-link-body">看 agent 怎么托管、配对、看日志，以及怎么处理本地会话。</span>
   </a>
   <a class="tp-doc-link" href="/troubleshooting">
     <span class="tp-doc-link-title">故障排查</span>
-    <span class="tp-doc-link-body">按症状定位“打不开页面、配对失败、看不到设备、看不到会话”等常见问题。</span>
+    <span class="tp-doc-link-body">按症状排查页面打不开、配对失败、设备不见了、会话不同步这些问题。</span>
   </a>
   <a class="tp-doc-link" href="/cli-reference">
     <span class="tp-doc-link-title">CLI 参考</span>
-    <span class="tp-doc-link-body">查看命令面、退出语义、配对命令和会话管理入口。</span>
+    <span class="tp-doc-link-body">集中看命令面，尤其是最容易搞混的退出语义。</span>
   </a>
   <a class="tp-doc-link" href="/security-design">
     <span class="tp-doc-link-title">安全设计</span>
-    <span class="tp-doc-link-body">查看数据归属、密钥绑定、加密信封和 relay 的安全职责边界。</span>
+    <span class="tp-doc-link-body">看数据留在哪里、配对怎么建绑定、relay 到底能看到什么。</span>
   </a>
   <a class="tp-doc-link" href="/architecture">
     <span class="tp-doc-link-title">代码架构</span>
-    <span class="tp-doc-link-body">理解仓库结构、运行时数据流、状态持久化和当前架构取舍。</span>
+    <span class="tp-doc-link-body">看代码组织、运行时数据流和现在这套拆分背后的取舍。</span>
   </a>
   <a class="tp-doc-link" href="/protocol">
     <span class="tp-doc-link-title">协议说明</span>
-    <span class="tp-doc-link-body">查看配对流程、WebSocket 消息、加密信封和 HTTP 接口。</span>
+    <span class="tp-doc-link-body">看配对流程、WebSocket 消息分层和几个关键 HTTP 接口。</span>
   </a>
   <a class="tp-doc-link" href="/roadmap">
     <span class="tp-doc-link-title">持续改进计划</span>
-    <span class="tp-doc-link-body">了解围绕现有主路径的稳定性、体验、运维和安全增强方向。</span>
+    <span class="tp-doc-link-body">看这条主路径接下来优先补哪些稳定性、体验和安全问题。</span>
   </a>
 </div>

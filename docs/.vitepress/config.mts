@@ -6,7 +6,7 @@ const base = process.env.GITHUB_ACTIONS ? `/${repo}/` : "/";
 export default defineConfig({
   lang: "zh-CN",
   title: "TermPilot",
-  description: "让手机和电脑继续接上同一条受管理终端会话的文档站。",
+  description: "把电脑上已经跑起来的终端会话继续带到手机上的文档。",
   base,
   lastUpdated: true,
   cleanUrls: true,
@@ -34,7 +34,7 @@ export default defineConfig({
         text: "了解产品",
         items: [
           { text: "文档首页", link: "/" },
-          { text: "Why TermPilot", link: "/why-termpilot" },
+          { text: "为什么是 TermPilot", link: "/why-termpilot" },
           { text: "快速开始", link: "/getting-started" },
         ],
       },
@@ -81,7 +81,7 @@ export default defineConfig({
       label: "本页目录",
     },
     footer: {
-      message: "文档先描述当前实现，持续改进围绕现有主路径展开。",
+      message: "先把当前实现说清楚，再谈后续改进。",
       copyright: "Copyright © 2026 Fengye",
     },
   },
