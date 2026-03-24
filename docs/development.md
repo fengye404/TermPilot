@@ -190,6 +190,17 @@ pnpm verify:browser
 @fengye404/termpilot
 ```
 
+当前版本：
+
+```bash
+0.6.9
+```
+
+说明：
+
+- 根目录 `package.json` 的版本号、脚本或发布相关配置变更后，要同步更新这份开发文档
+- `pnpm verify:fast` 会通过 `check:public-doc-freshness` 强制检查这条约定
+
 推荐发布顺序：
 
 1. 修改根目录 `package.json` 版本号

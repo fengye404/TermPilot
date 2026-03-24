@@ -127,9 +127,6 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
             >
               {props.notificationsEnabled ? "关闭浏览器提醒" : "开启浏览器提醒"}
             </button>
-            <p className="text-xs text-[var(--tp-text-soft)]">
-              断线后会自动重连。连接参数、设备访问令牌和最近查看的会话会保存在本机浏览器里。
-            </p>
           </>
         ) : null}
       </div>

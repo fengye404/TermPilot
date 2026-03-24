@@ -1999,13 +1999,11 @@ export default function App() {
                   ? (activeSession?.name ?? "Workspace")
                   : onboardingTitle}
             </h1>
-            <p className={`max-w-2xl text-[var(--tp-text-muted)] ${(compactMobileChrome || compactOnboardingMobile) ? "mt-1 text-[11px] leading-5" : "mt-2 text-sm"}`}>
-              {compactMobileChrome
-                ? "终端优先，附加信息默认缩小。"
-                : isPaired
-                  ? "终端优先，控制和会话管理分布在两侧。"
-                  : onboardingCopy}
-            </p>
+            {!isPaired ? (
+              <p className={`max-w-2xl text-[var(--tp-text-muted)] ${compactOnboardingMobile ? "mt-1 text-[11px] leading-5" : "mt-2 text-sm"}`}>
+                {onboardingCopy}
+              </p>
+            ) : null}
           </div>
           {isPaired ? (
             <div className={`flex ${compactMobileChrome ? "max-w-[52vw] flex-wrap justify-end gap-1" : "tp-app-header-chips flex-wrap gap-2"}`}>
@@ -2049,7 +2047,6 @@ export default function App() {
                 <div className="space-y-4">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--tp-accent-strong)]">Pairing</p>
-                    <p className="mt-2 text-sm leading-6 text-[var(--tp-text-muted)]">在电脑上运行命令取码，然后在这里输入。</p>
                   </div>
 
                   {compactOnboardingMobile ? onboardingVisual : null}
@@ -2082,11 +2079,7 @@ export default function App() {
                     <p className="text-sm text-[var(--tp-text-muted)]">
                       {pairingMessage || "正在初始化本地配对密钥…"}
                     </p>
-                  ) : (
-                    <p className="text-xs leading-5 text-[var(--tp-text-soft)]">
-                      配对成功后会保存当前绑定。下次打开通常会直接回到设备和会话列表。
-                    </p>
-                  )}
+                  ) : null}
                 </div>
 
                 {onboardingDesktop ? (
@@ -2288,14 +2281,8 @@ export default function App() {
           {!mobileSessionView ? (
             <details className="tp-card px-4 py-4 sm:px-5">
               <summary className="tp-disclosure-summary list-none">
-                <span>
-                  <span className="block text-sm font-medium text-[var(--tp-text)]">连接与设备设置</span>
-                  <span className="mt-1 block text-xs font-normal text-[var(--tp-text-soft)]">不常用的连接信息和设备管理项放在这里。</span>
-                </span>
+                <span className="block text-sm font-medium text-[var(--tp-text)]">连接与设备设置</span>
               </summary>
-              <p className="mt-3 text-xs text-[var(--tp-text-soft)]">
-                这里放不常用的信息和管理项。日常使用时，你主要只需要看会话列表和终端输出。
-              </p>
               <div className="mt-4">
                 <ConnectionPanel
                   title="连接与设备设置"

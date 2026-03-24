@@ -27,7 +27,6 @@ interface XtermTerminalProps {
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
   onSpecialKey?: (key: InputKey) => void;
-  onFocusChange?: (focused: boolean) => void;
 }
 
 const CLEAR_SCREEN_SEQUENCE = "\u001b[3J\u001b[2J\u001b[H";
@@ -260,7 +259,6 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
   const onDataRef = useRef(props.onData);
   const onResizeRef = useRef(props.onResize);
   const onSpecialKeyRef = useRef(props.onSpecialKey);
-  const onFocusChangeRef = useRef(props.onFocusChange);
   const shouldStickToBottomRef = useRef(true);
   const scrollLineRef = useRef(0);
   const optimisticInputRef = useRef<{ text: string; expiresAt: number }>({ text: "", expiresAt: 0 });
@@ -308,8 +306,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
     onDataRef.current = props.onData;
     onResizeRef.current = props.onResize;
     onSpecialKeyRef.current = props.onSpecialKey;
-    onFocusChangeRef.current = props.onFocusChange;
-  }, [props.onData, props.onFocusChange, props.onResize, props.onSpecialKey]);
+  }, [props.onData, props.onResize, props.onSpecialKey]);
 
   useImperativeHandle(ref, () => ({
     focus() {
@@ -519,10 +516,6 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         });
         const handleFocus = () => {
           syncHelperTextareaPosition();
-          onFocusChangeRef.current?.(true);
-        };
-        const handleBlur = () => {
-          onFocusChangeRef.current?.(false);
         };
         const handleTextareaKeyDown = (event: KeyboardEvent) => {
           if (event.isComposing || compositionStateRef.current.active) {
@@ -580,7 +573,6 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         };
         if (helperTextarea instanceof HTMLElement) {
           helperTextarea.addEventListener("focus", handleFocus);
-          helperTextarea.addEventListener("blur", handleBlur);
           helperTextarea.addEventListener("keydown", handleTextareaKeyDown);
           helperTextarea.addEventListener("beforeinput", handleBeforeInput);
           helperTextarea.addEventListener("compositionstart", handleCompositionStart);
@@ -630,7 +622,6 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
           visualViewport?.removeEventListener("resize", safeFit);
           if (helperTextarea instanceof HTMLElement) {
             helperTextarea.removeEventListener("focus", handleFocus);
-            helperTextarea.removeEventListener("blur", handleBlur);
             helperTextarea.removeEventListener("keydown", handleTextareaKeyDown);
             helperTextarea.removeEventListener("beforeinput", handleBeforeInput);
             helperTextarea.removeEventListener("compositionstart", handleCompositionStart);
