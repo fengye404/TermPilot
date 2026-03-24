@@ -339,6 +339,7 @@ summary:focus-visible {
   color: var(--tp-text-muted);
   font-size: 0.75rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .tp-chip-active {
@@ -748,6 +749,9 @@ summary:focus-visible {
 
 .tp-mobile-focus-stage-rotated-shell .tp-mobile-focus-overlay {
   position: fixed;
+  top: 10px;
+  left: 10px;
+  right: auto;
   z-index: 58;
 }
 

@@ -140,13 +140,13 @@ function resolveTypography(fontPreset: XtermTerminalProps["fontPreset"]): Pick<I
       return {
         fontSize: 9,
         lineHeight: 1.0,
-        letterSpacing: -0.45,
+        letterSpacing: -0.38,
       };
     case "focus":
       return {
         fontSize: 9.2,
         lineHeight: 1.0,
-        letterSpacing: -0.45,
+        letterSpacing: -0.38,
       };
     default:
       return {
