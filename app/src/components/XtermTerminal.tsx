@@ -707,14 +707,14 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
     const baseLetterSpacing = typography.letterSpacing ?? -0.2;
     const requiredCols = estimateRequiredCols(deferredSnapshot);
     const minFontSize = props.fontPreset === "focus"
-      ? 5.8
+      ? 5.2
       : props.fontPreset === "compact"
-        ? 5.4
+        ? 5
         : 8.5;
     const maxOverflowRatio = props.fontPreset === "focus"
-      ? 8
+      ? 12
       : props.fontPreset === "compact"
-        ? 7
+        ? 10
         : 1;
 
     terminal.options.lineHeight = lineHeight;
@@ -750,7 +750,7 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         ? Number.parseFloat((nextFontSize * Math.max(ratio, 0.64)).toFixed(2))
         : nextFontSize - 1;
       nextFontSize = Math.max(minFontSize, projectedSize);
-      nextLetterSpacing = nextFontSize < baseFontSize - 1.6 ? -0.58 : nextFontSize < baseFontSize - 0.8 ? -0.46 : baseLetterSpacing;
+      nextLetterSpacing = nextFontSize < baseFontSize - 2 ? -0.68 : nextFontSize < baseFontSize - 1.1 ? -0.54 : nextFontSize < baseFontSize - 0.6 ? -0.42 : baseLetterSpacing;
       applyMetrics(nextFontSize, nextLetterSpacing);
       attempts += 1;
     }

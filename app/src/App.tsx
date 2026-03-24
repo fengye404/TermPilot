@@ -575,8 +575,14 @@ export default function App() {
         setDeviceId(parsed.deviceId.trim());
       }
       if (hasValidStoredBinding && (typeof parsed.activeSid === "string" || parsed.activeSid === null)) {
-        activeSelectionModeRef.current = parsed.activeSid ? "restored" : "auto";
-        setActiveSid(parsed.activeSid ?? null);
+        if (detectTouchDevice()) {
+          suppressMobileAutoSelectRef.current = true;
+          activeSelectionModeRef.current = "manual";
+          setActiveSid(null);
+        } else {
+          activeSelectionModeRef.current = parsed.activeSid ? "restored" : "auto";
+          setActiveSid(parsed.activeSid ?? null);
+        }
       }
       if (Array.isArray(parsed.pinnedSids)) setPinnedSids(parsed.pinnedSids.filter((value): value is string => typeof value === "string"));
       if (typeof parsed.notificationsEnabled === "boolean") setNotificationsEnabled(parsed.notificationsEnabled);
@@ -1168,6 +1174,7 @@ export default function App() {
           return;
         }
         startTransition(() => {
+          setDeviceOnline(true);
           setSessions(message.payload.sessions);
           setBuffers((current) => {
             const nextBuffers: SessionMap = {};
@@ -1224,6 +1231,7 @@ export default function App() {
           return;
         }
         startTransition(() => {
+          setDeviceOnline(true);
           setSessions((current) => {
             const next = current.filter((item) => item.sid !== session.sid);
             next.push(session);
@@ -1258,6 +1266,7 @@ export default function App() {
           }
         }
         startTransition(() => {
+          setDeviceOnline(true);
           setBuffers((current) => ({
             ...current,
             [message.sid]: message.payload.mode === "append"
@@ -1287,6 +1296,7 @@ export default function App() {
           showNotice("info", message.payload.reason);
         }
         startTransition(() => {
+          setDeviceOnline(true);
           setSessions((current) =>
             current.map((session) =>
               session.sid === message.sid ? { ...session, status: "exited" } : session,
@@ -2311,7 +2321,7 @@ export default function App() {
                     onBack={() => {
                       suppressMobileAutoSelectRef.current = true;
                       setMobileTerminalFocusMode(false);
-                      activeSelectionModeRef.current = "auto";
+                      activeSelectionModeRef.current = "manual";
                       setActiveSid(null);
                     }}
                     onToggleFocusMode={() => {
