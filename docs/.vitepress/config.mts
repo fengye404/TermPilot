@@ -81,7 +81,7 @@ export default defineConfig({
       label: "本页目录",
     },
     footer: {
-      message: "先把当前实现说清楚，再谈后续改进。",
+      message: "TermPilot 让电脑上已经跑起来的终端会话，能被手机继续接上。",
       copyright: "Copyright © 2026 Fengye",
     },
   },
