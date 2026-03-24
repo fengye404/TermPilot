@@ -263,86 +263,171 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
         onPointerUp={handleMobileTerminalPointerEnd}
         onPointerCancel={handleMobileTerminalPointerEnd}
       >
-        <div className={props.focusRotateTerminal ? "tp-mobile-focus-rotated-viewport" : "h-full"}>
-          <div className="tp-terminal-frame tp-mobile-focus-frame h-full min-h-0 flex-1">
-            <XtermTerminal
-              key={mobileFocusTerminalKey}
-              ref={terminalRef}
-              sessionKey={mobileFocusTerminalKey}
-              snapshot={props.snapshot}
-              cursor={props.cursor}
-              className="h-full"
-              fontPreset="focus"
-              onData={props.onTerminalData}
-              onResize={props.onTerminalResize}
-              onSpecialKey={props.onSendKey}
-              onFocusChange={setMobileKeyboardFocused}
-            />
-          </div>
-        </div>
-        <div className="tp-mobile-focus-overlay">
-          <button
-            className={`${BUTTON_SECONDARY} tp-mobile-focus-chip`}
-            type="button"
-            aria-expanded={focusToolsOpen}
-            aria-controls={focusToolsSheetId}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              setFocusToolsOpen((open) => !open);
-            }}
-          >
-            {focusToolsOpen ? "收起工具" : "工具"}
-          </button>
-          {showFocusAction ? (
-            <button
-              className={`${BUTTON_PRIMARY} tp-mobile-focus-chip`}
-              type="button"
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onClick={props.onToggleFocusMode}
-            >
-              退出
-            </button>
-          ) : null}
-        </div>
-        {focusToolsOpen ? (
-          <div
-            id={focusToolsSheetId}
-            className="tp-mobile-focus-tools-sheet"
-            aria-label="专注模式控制工具"
-            onPointerDown={(event) => {
-              event.stopPropagation();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <div className="tp-mobile-focus-tools-header">
-              <div>
-                <p className="text-sm font-medium text-[var(--tp-text)]">控制工具</p>
-                <p className="mt-1 text-[11px] text-[var(--tp-text-soft)]">默认收起；短按终端会唤起键盘，长按或拖动优先滚动查看。</p>
-              </div>
+        {props.focusRotateTerminal ? (
+          <div className="tp-mobile-focus-rotated-viewport">
+            <div className="tp-terminal-frame tp-mobile-focus-frame min-h-0">
+              <XtermTerminal
+                key={mobileFocusTerminalKey}
+                ref={terminalRef}
+                sessionKey={mobileFocusTerminalKey}
+                snapshot={props.snapshot}
+                cursor={props.cursor}
+                className="h-full"
+                fontPreset="focus"
+                onData={props.onTerminalData}
+                onResize={props.onTerminalResize}
+                onSpecialKey={props.onSendKey}
+                onFocusChange={setMobileKeyboardFocused}
+              />
+            </div>
+            <div className="tp-mobile-focus-overlay">
               <button
-                className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
+                className={`${BUTTON_SECONDARY} tp-mobile-focus-chip`}
                 type="button"
-                onClick={() => {
-                  setFocusToolsOpen(false);
+                aria-expanded={focusToolsOpen}
+                aria-controls={focusToolsSheetId}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setFocusToolsOpen((open) => !open);
                 }}
               >
-                收起
+                {focusToolsOpen ? "收起工具" : "工具"}
               </button>
+              {showFocusAction ? (
+                <button
+                  className={`${BUTTON_PRIMARY} tp-mobile-focus-chip`}
+                  type="button"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={props.onToggleFocusMode}
+                >
+                  退出
+                </button>
+              ) : null}
             </div>
-            <div className="tp-mobile-focus-tools-grid">
-              {mobileFocusControlKeys.map((shortcut) => renderCompactShortcutButton(shortcut, true, "tp-mobile-focus-shortcut"))}
-            </div>
+            {focusToolsOpen ? (
+              <div
+                id={focusToolsSheetId}
+                className="tp-mobile-focus-tools-sheet"
+                aria-label="专注模式控制工具"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                }}
+              >
+                <div className="tp-mobile-focus-tools-header">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--tp-text)]">控制工具</p>
+                    <p className="mt-1 text-[11px] text-[var(--tp-text-soft)]">默认收起；短按终端会唤起键盘，长按或拖动优先滚动查看。</p>
+                  </div>
+                  <button
+                    className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
+                    type="button"
+                    onClick={() => {
+                      setFocusToolsOpen(false);
+                    }}
+                  >
+                    收起
+                  </button>
+                </div>
+                <div className="tp-mobile-focus-tools-grid">
+                  {mobileFocusControlKeys.map((shortcut) => renderCompactShortcutButton(shortcut, true, "tp-mobile-focus-shortcut"))}
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        ) : (
+          <>
+            <div className="h-full">
+              <div className="tp-terminal-frame tp-mobile-focus-frame h-full min-h-0 flex-1">
+                <XtermTerminal
+                  key={mobileFocusTerminalKey}
+                  ref={terminalRef}
+                  sessionKey={mobileFocusTerminalKey}
+                  snapshot={props.snapshot}
+                  cursor={props.cursor}
+                  className="h-full"
+                  fontPreset="focus"
+                  onData={props.onTerminalData}
+                  onResize={props.onTerminalResize}
+                  onSpecialKey={props.onSendKey}
+                  onFocusChange={setMobileKeyboardFocused}
+                />
+              </div>
+            </div>
+            <div className="tp-mobile-focus-overlay">
+              <button
+                className={`${BUTTON_SECONDARY} tp-mobile-focus-chip`}
+                type="button"
+                aria-expanded={focusToolsOpen}
+                aria-controls={focusToolsSheetId}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setFocusToolsOpen((open) => !open);
+                }}
+              >
+                {focusToolsOpen ? "收起工具" : "工具"}
+              </button>
+              {showFocusAction ? (
+                <button
+                  className={`${BUTTON_PRIMARY} tp-mobile-focus-chip`}
+                  type="button"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={props.onToggleFocusMode}
+                >
+                  退出
+                </button>
+              ) : null}
+            </div>
+            {focusToolsOpen ? (
+              <div
+                id={focusToolsSheetId}
+                className="tp-mobile-focus-tools-sheet"
+                aria-label="专注模式控制工具"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                }}
+              >
+                <div className="tp-mobile-focus-tools-header">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--tp-text)]">控制工具</p>
+                    <p className="mt-1 text-[11px] text-[var(--tp-text-soft)]">默认收起；短按终端会唤起键盘，长按或拖动优先滚动查看。</p>
+                  </div>
+                  <button
+                    className={`${BUTTON_SECONDARY} min-h-9 px-3 py-2 text-[11px]`}
+                    type="button"
+                    onClick={() => {
+                      setFocusToolsOpen(false);
+                    }}
+                  >
+                    收起
+                  </button>
+                </div>
+                <div className="tp-mobile-focus-tools-grid">
+                  {mobileFocusControlKeys.map((shortcut) => renderCompactShortcutButton(shortcut, true, "tp-mobile-focus-shortcut"))}
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );

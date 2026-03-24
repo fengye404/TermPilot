@@ -418,9 +418,13 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
         };
 
         const customKeyHandler = (event: KeyboardEvent) => {
+          if (event.type !== "keydown") return true;
           const mapped = mapSpecialKey(event);
           if (!mapped) {
             return true;
+          }
+          if (hasPendingSpecialKey(mapped)) {
+            return false;
           }
           rememberSpecialKey(mapped);
           onSpecialKeyRef.current?.(mapped);
