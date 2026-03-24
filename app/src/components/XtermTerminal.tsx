@@ -707,14 +707,14 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
     const baseLetterSpacing = typography.letterSpacing ?? -0.2;
     const requiredCols = estimateRequiredCols(deferredSnapshot);
     const minFontSize = props.fontPreset === "focus"
-      ? 6.6
+      ? 5.8
       : props.fontPreset === "compact"
-        ? 6
+        ? 5.4
         : 8.5;
     const maxOverflowRatio = props.fontPreset === "focus"
-      ? 3.6
+      ? 8
       : props.fontPreset === "compact"
-        ? 3.8
+        ? 7
         : 1;
 
     terminal.options.lineHeight = lineHeight;
@@ -744,13 +744,13 @@ export const XtermTerminal = memo(forwardRef<XtermTerminalHandle, XtermTerminalP
     let nextFontSize = baseFontSize;
     let nextLetterSpacing = baseLetterSpacing;
     let attempts = 0;
-    while (attempts < 6 && terminal.cols < requiredCols && nextFontSize > minFontSize) {
+    while (attempts < 8 && terminal.cols < requiredCols && nextFontSize > minFontSize) {
       const ratio = terminal.cols > 0 ? terminal.cols / requiredCols : 0;
       const projectedSize = ratio > 0
-        ? Number.parseFloat((nextFontSize * Math.max(ratio, 0.72)).toFixed(2))
+        ? Number.parseFloat((nextFontSize * Math.max(ratio, 0.64)).toFixed(2))
         : nextFontSize - 1;
       nextFontSize = Math.max(minFontSize, projectedSize);
-      nextLetterSpacing = nextFontSize < baseFontSize - 1.2 ? -0.45 : baseLetterSpacing;
+      nextLetterSpacing = nextFontSize < baseFontSize - 1.6 ? -0.58 : nextFontSize < baseFontSize - 0.8 ? -0.46 : baseLetterSpacing;
       applyMetrics(nextFontSize, nextLetterSpacing);
       attempts += 1;
     }

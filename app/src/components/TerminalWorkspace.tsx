@@ -273,7 +273,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             <XtermTerminal
               key={mobileFocusTerminalKey}
               ref={terminalRef}
-              sessionKey={props.activeSession.sid}
+              sessionKey={mobileFocusTerminalKey}
               snapshot={props.snapshot}
               cursor={props.cursor}
               className="h-full"
@@ -376,7 +376,7 @@ export function TerminalWorkspace(props: TerminalWorkspaceProps) {
             <XtermTerminal
               key={mobileCompactTerminalKey}
               ref={terminalRef}
-              sessionKey={props.activeSession.sid}
+              sessionKey={mobileCompactTerminalKey}
               snapshot={props.snapshot}
               cursor={props.cursor}
               className="h-full"

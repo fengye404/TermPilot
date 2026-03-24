@@ -732,18 +732,17 @@ summary:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
+  padding: 8px;
 }
 
 .tp-mobile-focus-rotated-viewport {
   display: flex;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: calc(100svh - 16px);
-  height: calc(100svw - 16px);
-  transform: translate(-50%, -50%) rotate(90deg);
-  transform-origin: center;
+  flex: none;
+  width: calc(100svh - 32px);
+  height: calc(100svw - 32px);
+  transform: rotate(90deg);
+  transform-origin: center center;
 }
 
 .tp-mobile-focus-frame {

@@ -717,8 +717,11 @@ export default function App() {
   }, [sessions]);
 
   useEffect(() => {
-    if (!connected || sessions.length === 0) {
+    if (!connected) {
       suppressMobileAutoSelectRef.current = false;
+      return;
+    }
+    if (sessions.length === 0) {
       return;
     }
     if (!isDesktop && suppressMobileAutoSelectRef.current) {
@@ -1497,7 +1500,14 @@ export default function App() {
               setBufferSeqs({});
               replayRequestRef.current = {};
               setActiveSid(null);
-              activeSelectionModeRef.current = "auto";
+              if (!isDesktop) {
+                suppressMobileAutoSelectRef.current = true;
+                activeSelectionModeRef.current = "manual";
+                setMobileTerminalFocusMode(false);
+              } else {
+                suppressMobileAutoSelectRef.current = false;
+                activeSelectionModeRef.current = "auto";
+              }
             }
             if (shouldHydrateDeviceId) {
               setDeviceId(nextDeviceId);
@@ -1603,7 +1613,14 @@ export default function App() {
       setBufferSeqs({});
       replayRequestRef.current = {};
       setActiveSid(null);
-      activeSelectionModeRef.current = "auto";
+      if (!isDesktop) {
+        suppressMobileAutoSelectRef.current = true;
+        activeSelectionModeRef.current = "manual";
+      } else {
+        suppressMobileAutoSelectRef.current = false;
+        activeSelectionModeRef.current = "auto";
+      }
+      setMobileTerminalFocusMode(false);
       setDeviceId(payload.deviceId);
       deviceIdRef.current = payload.deviceId;
       requestedDeviceIdRef.current = payload.deviceId;
